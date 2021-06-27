@@ -1,0 +1,31 @@
+# issues with matplotlib can often be resolved by specifying the backend
+from matplotlib import rcParams, cm
+rcParams['font.family'] = 'serif'
+from matplotlib import pyplot as plt
+
+def pie(steady_states):
+	# slices plotted counter-clockwise
+	labels = list(steady_states.keys()) #just to make sure order is set
+	sizes = [steady_states[labels[i]] for i in range(len(labels))]
+	
+	# could prob do this chunk more succinctly
+	del_zeros, offset = [], 0
+	for i in range(len(sizes)):
+		if sizes[i] == 0:
+			del_zeros += [i]
+	for i in del_zeros:
+		del sizes[i-offset]
+		del labels[i-offset]
+		offset += 1
+
+	fig, ax = plt.subplots(figsize=(8, 5))
+	cs=cm.Set2([i for i in range(len(labels))])
+	wedges, texts, autotexts = ax.pie(sizes,colors=cs, autopct='%1.1f%%', shadow=True, startangle=90)
+	ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+	lgd = ax.legend(wedges, labels, fontsize=12)#,title="Attractors", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+	lgd.set_title("Attractors",prop={'size':16})
+	#plt.setp(autotexts, size=8, weight="bold")
+
+	ax.set_title("Basin Sizes",size=20)
+	plt.show()
