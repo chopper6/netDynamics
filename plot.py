@@ -3,7 +3,7 @@ from matplotlib import rcParams, cm
 rcParams['font.family'] = 'serif'
 from matplotlib import pyplot as plt
 
-def pie(steady_states):
+def pie(params, steady_states):
 	# slices plotted counter-clockwise
 	labels = list(steady_states.keys()) #just to make sure order is set
 	sizes = [steady_states[labels[i]] for i in range(len(labels))]
@@ -28,4 +28,9 @@ def pie(steady_states):
 	#plt.setp(autotexts, size=8, weight="bold")
 
 	ax.set_title("Basin Sizes",size=20)
-	plt.show()
+	if params['savefig']:
+		plt.savefig("output/basinSizes.jpg") 	
+	else:
+		plt.show()
+		
+		

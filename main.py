@@ -25,7 +25,7 @@ def main(param_file):
 	
 	steady_states = basin.calc_basin_size(params, adj)
 
-	plot.pie(steady_states)
+	plot.pie(params,steady_states)
 
 
 
