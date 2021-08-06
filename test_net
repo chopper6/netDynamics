@@ -1,5 +1,5 @@
-a	a	b
+a	a&b c 
 b	c
-c	c
-d	b
-e	e	d
+c	a&d
+d	b&e c&d
+e	e d

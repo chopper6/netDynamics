@@ -1,7 +1,8 @@
 
 # YAML is like JSON, but with more minimal syntax and allows comments
 num_samples : 1000
-max_iters_per_sample : 100
-exhaustive : true
+max_iters_per_sample : 100 # if sync, stops early if at steady state. Async always goes to max iters
+exhaustive : false # all possible init conditions, otherwise rd init conditions
+sync : true # node update scheme. currently only sync is implemented
 net_file : 'test_net'
-savefig : true #as opposed to showing the image
+savefig : false #as opposed to showing the image

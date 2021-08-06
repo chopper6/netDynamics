@@ -1,3 +1,41 @@
+# key algo notes, move em elsewhere tho
+	# code bits:
+		# let x be state vec of length n, let k be max # clauses
+		# x_expanded = cp.repeat(cp.repeat(x[...,None],k,axis=1)[...,None],n,axis=2)
+		#	(poss diff name, not to be confused w expanded net repres)
+		#	weird notation, but just expanding into +2 dims and copying
+		
+		# advanced indexing in np is a mess, want to use bool ind array tho
+		# clauses = cp.where(ind,x_expanded,1), i.e. anywhere that is not indexed becomes 1 such that all=true iff all indexed eles=true
+		#	note that doing an OR would default to 0 instead
+		#	SO ind & x = n x k x n, which is fine (x m instead of n reqs ints or smthg)
+		#	in the future consider indexing by bytes or smthg instead, since v sparse array (likely density ~=.01)
+		#	and shouldn't create full x_expanded, rather go f(x,ind) -> n x k x m bool arr
+		#	eh..adv of this is that can op on same matrices, or same size, over and over again
+
+		# x = cp.any(cp.all(clauses,axis=2),axis=1)
+
+		# later: split into DNF or CNF with bool matix
+		#	then cnf: x = cp.all(cp.any(cp.where(ind,x_expanded,0),axis=2),axis=1)
+
+	# alt method with int indexing [THIS]
+		# X = bool state array of lng n
+		# clauses = n x k x m, dtype = byte (aka int8)
+		# some X[clauses] = n x k x m bool array
+		#	m, i.e. last index, should check if it's node (indicated by int) is on or off
+		#	if X is bool, this even auto makes X[clauses] bool! even if clauses is int8
+
+		# *********** so main loop of function ***************
+		#	X = cp.any(cp.all(X[clauses],axis=2),axis=1)
+
+		# spatial complexity: O(n*k*m*8)
+		# time complexity: jp the X[clauses] step, which is O(n*k*m), assuming constant time indexing
+		#	so with t iterations: O(t*n*k*m)
+
+	# write one method for now, later can write other and time if want
+
+	# array.nbytes very useful for checking actual memory size
+
 import os, yaml, util
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
@@ -9,36 +47,74 @@ def params(param_file):
 
 
 def net(net_file):
-	node_name_to_num, node_num_to_name, edgelist = {},{},{}
+	# net file should be in DNF
+	# separate node from its function by tab
+	# each clause should be separated by a space
+	# each element of clause separated by &
+	# - means element of clause is negative
+	# for example: X = (A and B) or (not C) --> X	A&B -C
+	# each node should only have 1 function, ie #lines = #nodes
+
+	node_name_to_num, node_num_to_name = {},{}
+	max_clauses, max_literals, n = 1, 1, 0
 
 	if not os.path.isfile(net_file):
 		sys.exit("Can't find network file: " + str(net_file)) 
+	
+	# go through net_file just to get # nodes, max_clauses, max_literals:
 	with open(net_file,'r') as file:
-		i,n=0,0
+		loop = 0
 		while True:
-		 
 			line = file.readline()
-		 
 			if not line: #i.e eof
 				break
-			if i > 10000000:
+			if loop > 10000000:
 				sys.exit("Hit an infinite loop, unless net is monstrously huge") 
 
 			line = line.strip().split('\t')
 			node_name_to_num[line[0]] = n
 			node_num_to_name[n] = line[0]
-			edgelist[n] = []
-			for j in range(1,len(line)):
-				edgelist[n] += line[j]
 
-			i += 1
+			clauses = line[1].split(' ')
+			max_clauses = max(max_clauses, len(clauses))
+			for clause in clauses:
+				max_literals = max(max_literals, len(clause.split('&')))
+
+			loop += 1
 			n += 1
 
-	adj = cp.zeros((n,n))
-	for source in range(n):
-		deg = len(edgelist[source])
-		for j in range(deg):
-			target = node_name_to_num[edgelist[source][j]]
-			adj[source][target] = 1/deg  		# THIS NORMZ IS SPC BC NODE OPS = AND
+	if n<256: 
+		index_dtype = cp.int8
+	elif n<65536:
+		index_dtype = cp.int16
+	else:
+		index_dtype = cp.int32
 
-	return adj, node_num_to_name, node_name_to_num
+	clause_index = cp.zeros((n,max_clauses, max_literals),dtype=index_dtype)
+	# element at i,j,k is the node # of the kth literal corresponding to the jth clause of the ith node's function
+	# need square matrix for numpy/cupy, so copy the last literal or clause to fill space but maintain same output
+
+	# go through net_file again to parse the clauses:
+	with open(net_file,'r') as file:
+
+		for _ in range(n): 
+
+			line = file.readline()
+			line = line.strip().split('\t')
+			node = node_name_to_num[line[0]]
+
+			clauses = line[1].split(' ')
+			for i in range(len(clauses)):
+				literals = clauses[i].split('&')
+				for j in range(len(literals)):
+					literal_node = node_name_to_num[literals[j]]
+					clause_index[node,i,j] = literal_node
+				for j in range(len(literals),max_literals):
+					clause_index[node,i,j] = literal_node
+					# need square matrix with same truth output, just repeat the last literal
+			for i in range(len(clauses),max_clauses):
+				clause_index[node,i] = clause_index[node,i,len(clauses)-1]
+				# need square matrix with same truth output, just repeat the last clause
+
+
+	return clause_index, node_num_to_name, node_name_to_num

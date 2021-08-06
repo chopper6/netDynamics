@@ -1,14 +1,12 @@
-# curr assuming all fns are an AND of their inputs, no nots
-# still using cupy
 # assumes all init states are premissible
-# downside of AND normz is that reqs much larger dtype...
+# basin in terms of fixed points, all oscils are grouped together for now
 #
 # TODO:
-#	git
-#	make sublime the default
+#	git push
+#	absolutely need to explicitly debug, 1hr min
 #	not sure how to display when there are many attractors, maybe group into 1 slice?
-#	incld nots (expanded net?)
-# 	later shift to more complex fns (curr adj normz in PARSE assumes AND)
+#	incld nots via expanded net
+#	start a README, incld overview of algo, todo, and rough runtime & space complexity
 
 import sys, os
 import parse, basin, plot
@@ -16,17 +14,16 @@ import parse, basin, plot
 
 def main(param_file):
 	params = parse.params(param_file)
-
-	#params = {'num_samples':1000,'max_iters_per_sample': 10, 'exhaustive':0}
-	adj, node_num_to_name, node_name_to_num = parse.net(params['net_file'])
-	
-	if len(adj[0])>10000 and params['exhaustive']:
-		sys.exit("Net is far too large to be exhaustively calculating basin")
-	
-	steady_states = basin.calc_basin_size(params, adj)
-
+	clause_index, node_num_to_name, node_name_to_num = parse.net(params['net_file'])
+	catch_errs(params, clause_index)
+	steady_states = basin.calc_basin_size(params, clause_index)
 	plot.pie(params,steady_states)
 
+
+def catch_errs(params, clause_index):
+	if clause_index.shape[0]>10000 and params['exhaustive']:
+		sys.exit("Net is far too large to be exhaustively calculating basin")
+	
 
 
 if __name__ == "__main__":
