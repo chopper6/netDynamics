@@ -14,9 +14,10 @@ import parse, basin, plot
 
 def main(param_file):
 	params = parse.params(param_file)
-	clause_index, node_num_to_name, node_name_to_num = parse.net(params['net_file'])
+	clause_index, node_num_to_name, node_name_to_num, num_nodes, num_neg_nodes = parse.net(params['net_file'])
+	# note that num_nodes does not include negative copies, and num_neg_nodes <= num_nodes
 	catch_errs(params, clause_index)
-	steady_states = basin.calc_basin_size(params, clause_index)
+	steady_states = basin.calc_basin_size(params, clause_index,num_nodes, num_neg_nodes)
 	plot.pie(params,steady_states)
 
 

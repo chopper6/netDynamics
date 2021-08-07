@@ -1,0 +1,28 @@
+apparently smallest numpy unit is a byte, due to CPU constraints
+	even for cupy i guess CPU -> GPU smallest unit is a byte
+
+so to actually take advantage of bits (8x space), would need to 'pack'
+	meh only a 4x space since need to track negatives
+	and numpy's packing requires extra time to read/write
+
+jp add expanded net representation later
+	should be a little bit faster ~1/2 ops per time step, roughly same space
+
+i don't like curr handling of nots, rather:
+	make psuedo nodes for the nots
+	doesn't matter what the function for these nodes are
+	they have to be set as opposite from their orig nodes at each step (complexity is n, which is fine)
+		and excluded from init node generation and output
+		so poss make a set matrix entirely?
+	is it possible to take f(node, pseudo_nodes, node_fns) = node states
+		i.e. main calc doesn't incld pseudo nodes?
+
+		say there are 2 pseudo nodes
+		then x[clause_index] = n x k x m
+			such that cp.all operates on n x k x m -> n x k
+			and cp.any operates on n x k -> n
+		BUT x = 2n...just fucking works wow!
+
+btw big assumption about run time and space is that there is no under the hood copying to match matrices/ make them sq ect
+
+at parse: want first l nodes to be the ones that have a negative copy
