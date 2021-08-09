@@ -1,13 +1,3 @@
-# assumes all init states are premissible
-# basin in terms of fixed points, all oscils are grouped together for now
-#
-# TODO:
-#	git push
-#	absolutely need to explicitly debug, 1hr min
-#	not sure how to display when there are many attractors, maybe group into 1 slice?
-#	incld nots via expanded net
-#	start a README, incld overview of algo, todo, and rough runtime & space complexity
-
 import sys, os
 import parse, basin, plot
 

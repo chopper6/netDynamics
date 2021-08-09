@@ -13,7 +13,7 @@ def from_init_val(params, clause_index, x, num_neg_nodes):
 		# THIS IS THE MAIN LINE OF ALGO
 		#	all: are all elements of the clause correct? if so, clause is TRUE
 		#	any: are any of the clauses correct? if so, node is ON
-		# note that CNF would just be np.all(np.any(...))
+		# note that CNF would just be cp.all(cp.any(...))
 
 		if cp.array_equal(x,x_next):
 			return {'steady_state':True, 'state':format_state_str(x_next)}

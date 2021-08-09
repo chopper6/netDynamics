@@ -4,8 +4,8 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 
 
 def calc_basin_size(params, clause_index,num_nodes, num_neg_nodes):
-	#n is the number of nodes, not counting the negative copies
-	steady_states = {'oscil':0} #oscil means anything not a fixed point
+	#num_nodes is not counting the negative copies
+	steady_states = {'oscillates':0} #oscillates means anything not a fixed point
 	if params['exhaustive']:
 		X0 = itertools.product([0,1], repeat=num_nodes)
 		for x0 in X0:
@@ -13,7 +13,7 @@ def calc_basin_size(params, clause_index,num_nodes, num_neg_nodes):
 			result = runNet.from_init_val(params,clause_index,x0,num_neg_nodes)
 			add_to_steady_states(steady_states, result)
 		for s in steady_states.keys():
-			steady_states[s] /= math.pow(2,n)
+			steady_states[s] /= math.pow(2,num_nodes)
 
 	else:
 		p = .5 #prob a given node is off at start
@@ -34,4 +34,4 @@ def add_to_steady_states(steady_states, result):
 		else:
 			steady_states[result['state']]+=1
 	else:
-		stead_states['oscil'] += 1
+		steady_states['oscillates'] += 1
