@@ -4,9 +4,9 @@
 Contents:
 1. Requirements
 2. Usage 
-3. Net File
+3. Network File
 4. Algorithm 
-5. ToDo
+5. To Do
 
 
 ## 1. Requirements
@@ -28,7 +28,7 @@ The parameter file is a YAML file, which is like JSON, but with more minimal syn
 If the parameter savefig is false, then an output image will pop up. Otherwise, the output will appear in the output/ directory.  
 
 
-## 3. Net File
+## 3. Network File
 
 I am open to changing the syntax of the input network file, but for now it is as follows. 
 
@@ -45,13 +45,13 @@ The main step of each iteration is in `runNet.py`: `x_next = cp.any(cp.all(X[cla
 
 Negative literals are handled by forming pseudo nodes, and appending them to `X` at each step. In other words, these nodes are inputs to `X[clause_index]`, but their functions are not calculated or output.
 
-The most time and space intensive step is likely `X[clause_index]`. I am not sure how it is implemented in numpy/cupy and may involve under the hood copying. An alternative would be to explicitly copy X into a 3D array of shape (n\*n\*n) and use a Boolean `clause_index` to index it.
+The most time and space intensive step is likely `X[clause_index]`. I am not sure how it is implemented in numpy/cupy and may involve under the hood copying. An alternative would be to explicitly copy X into a 3D array of shape (n,n,n) and use a Boolean `clause_index` to index it.
 
 A matrix is required for GPU/numpy applications. One downside is that `clause_index` may be unnecessarily large, since most nodes do not have the maximum number of literals or the maximum number of clauses. Biological networks could exacerbate this inefficiency, since they tend to be sparse. 
 
 
 
-## 5. ToDo
+## 5. To Do
 Soon:
 - time code with large networks
 - check size in memory with array.nbytes

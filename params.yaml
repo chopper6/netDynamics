@@ -1,5 +1,5 @@
-
 # YAML is like JSON, but with more minimal syntax and allows comments
+
 num_samples : 1000  # number of initial states tested
 max_iters_per_sample : 100 # if sync, stops early if at steady state. Async always goes to max iters
 exhaustive : true # all possible init conditions, otherwise rd init conditions
