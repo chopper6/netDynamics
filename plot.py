@@ -1,10 +1,15 @@
 # issues with matplotlib can often be resolved by specifying the backend
+# see init_mpl() function
+import matplotlib
 from matplotlib import rcParams, cm
 rcParams['font.family'] = 'serif'
 from matplotlib import pyplot as plt
 
 def pie(params, steady_states,node_num_to_name,num_nodes):
 	# slices plotted counter-clockwise
+
+	init_mpl(params)
+
 	labels = list(steady_states.keys()) #just to make sure order is set
 	sizes = [steady_states[labels[i]] for i in range(len(labels))]
 	
@@ -39,4 +44,28 @@ def pie(params, steady_states,node_num_to_name,num_nodes):
 	else:
 		plt.show()
 		
-		
+
+def init_mpl(params):
+	# in the past this helps to auto pick matplotlib backend for different computers
+
+	try:
+		if 'mpl_backend' in params.keys():
+			if params['mpl_backend'] == 'Agg':
+				matplotlib.use('Agg')
+			elif params['mpl_backend'] == 'TkAgg':
+				matplotlib.use('TkAgg')	
+			elif params['mpl_backend'] == 'WX':
+				matplotlib.use('WX')	
+			elif params['mpl_backend'] == 'QTAgg':
+				matplotlib.use('QTAgg')	
+			elif params['mpl_backend'] == 'QT4Agg':
+				matplotlib.use('QT4Agg')
+		elif "savefig" in params.keys():
+			if params['savefig']:
+				matplotlib.use('Agg')
+			else:
+				matplotlib.use('TkAgg')
+
+	except ModuleNotFoundError:
+		# fall back to MacOSX lib
+		matplotlib.use('MACOSX')
