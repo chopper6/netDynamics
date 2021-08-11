@@ -8,7 +8,6 @@ def from_init_val(params, clause_index, x, num_neg_nodes):
 		X = cp.concatenate((x,cp.logical_not(x[:num_neg_nodes])))
 		# because of how clause_index is structured, the next line only produces output for all nodes, but not their negatives
 		# however, it requires the negative nodes as separate inputs
-
 		x_next = cp.any(cp.all(X[clause_index],axis=2),axis=1)
 		# THIS IS THE MAIN LINE OF ALGO
 		#	all: are all elements of the clause correct? if so, clause is TRUE

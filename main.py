@@ -8,14 +8,12 @@ def main(param_file):
 	# note that num_nodes does not include negative copies, and num_neg_nodes <= num_nodes
 	catch_errs(params, clause_index)
 	steady_states = basin.calc_basin_size(params, clause_index,num_nodes, num_neg_nodes)
-	plot.pie(params,steady_states)
+	plot.pie(params,steady_states,node_num_to_name,num_nodes)
 
 
 def catch_errs(params, clause_index):
 	if clause_index.shape[0]>10000 and params['exhaustive']:
 		sys.exit("Net is far too large to be exhaustively calculating basin")
-	
-
 
 if __name__ == "__main__":
 	if not len(sys.argv) == 2:

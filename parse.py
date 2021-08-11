@@ -102,7 +102,7 @@ def net(net_file):
 					clause_index[node,i,j] = literal_node
 					# need square matrix with same truth output, just repeat the last literal
 			for i in range(len(clauses),max_clauses):
-				clause_index[node,i] = clause_index[node,i,len(clauses)-1]
+				clause_index[node,i] = clause_index[node,len(clauses)-1]
 				# need square matrix with same truth output, just repeat the last clause
 
 

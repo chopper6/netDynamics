@@ -1,3 +1,4 @@
-a	b&a -c
-b	b&c -a
-c	a&c -b
+a	-b
+b	-a
+c	a&b d
+d	a&c b&c

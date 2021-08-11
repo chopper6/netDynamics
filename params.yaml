@@ -6,3 +6,4 @@ exhaustive : true # all possible init conditions, otherwise rd init conditions
 sync : true # node update scheme. currently only sync is implemented
 net_file : 'test_net'
 savefig : false #as opposed to showing the image
+output_img : basinSizes.png
