@@ -1,5 +1,6 @@
 .gitignore
 params.yaml
+test_net
 __pycache__/
 *.pyc
 output/*
