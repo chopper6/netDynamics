@@ -1,0 +1,10 @@
+# specifies which nodes are 'outputs' and determine the phenotype
+# specify good and bad phenotypes
+# currently, good and bad phenos are not used
+
+# these parameters will be loaded into params['phenos']
+# for instance params['phenos']['outputs']
+
+outputs : [c,d]
+good_phenos : [[1,0],[1,0]]
+bad_phnos : [[0,0],[1,1]]

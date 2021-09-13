@@ -1,0 +1,5 @@
+# specifies which nodes are 'outputs' and determine the phenotype
+
+#outputs : ['p53','RAF','CycA','CycD','Smad','Apoptosis']
+
+outputs : ['p53','RAF','Apoptosis']

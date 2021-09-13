@@ -1,7 +1,11 @@
-import time, pickle
+import time, pickle, warnings
+
+TURN_CUPY_OFF_OVERRIDE = 0 #turns off CUPY for everything
+if (TURN_CUPY_OFF_OVERRIDE):
+	warnings.warn("Cupy is off, see util.py")
 
 def import_cp_or_np(try_cupy = True, np_warnings = False):
-	if try_cupy:
+	if try_cupy and not TURN_CUPY_OFF_OVERRIDE:
 		try:
 			import cupy as cp
 			CUPY = True
@@ -19,6 +23,16 @@ def import_cp_or_np(try_cupy = True, np_warnings = False):
 			warnings.filterwarnings("ignore")
 
 	return CUPY, cp
+
+
+CUPY, cp = import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
+# need to import here for copy_to_larger_dim
+
+def copy_to_larger_dim(x, num_copies):
+	# array will be 1 dim larger, with num_copies of the original array
+	# for example, copying array of shape (4,5) with 3 copies would result in an array of shape (3,4,5)
+	# could also try cp.newaxis?
+	return cp.tile(x,num_copies).reshape(tuple([num_copies])+x.shape)
 
 
 ###### FROM LIGHT SIMULATION #########

@@ -1,6 +1,9 @@
 
 # Simulating Boolean Networks to Infer Basin Size 
 
+***UPDATE REQUIRED***
+This README needs to be dramatically revised. More parallelism has been added, GPU implementation changed, new parameters need explanation, and plotting is currently a mess.
+
 Contents:
 1. Requirements
 2. Usage 

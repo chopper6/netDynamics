@@ -1,9 +1,28 @@
+# main parameter file
 # YAML is like JSON, but with more minimal syntax and allows comments
 
-num_samples : 1000  # number of initial states tested
-max_iters_per_sample : 100 # if sync, stops early if at steady state. Async always goes to max iters
-exhaustive : true # all possible init conditions, otherwise rd init conditions
+num_samples : 10000  # number of initial states tested (if not exhaustive)
+max_laps : 1 # max number of laps per initial state sampled, will exit even if num_samples not reached
+steps_per_lap : 1000 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+exhaustive : false # all possible init conditions, otherwise random init conditions
 sync : true # node update scheme. currently only sync is implemented
-net_file : 'test_net'
-savefig : false #as opposed to showing the image
+
+debug : true # adds various checks, may cause slow down
+use_phenos : true
+use_ON_OFF : true #temp param, rm soon
+
+# parallel
+parallelism : 10000 # number of networks to run in parallel (on my desktop 10000 is the limit)
+percent_steady : .5 # percent of networks in steady state to exit runNet loop
+lap_stop_rule : false # options: false, steady. Note that a lap always finishes after 'updates_per_lap' at the latest
+max_lap_reruns : 0 # max laps the same sample can be rerun if it doesn't reach a steady state
+  # note that max iterations per sample initial condition = (max_lap_reruns+1)*updates_per_lap
+clause_bin_size : 8 # number of clauses each threads merges at once
+
+# input
+net_file : 'input/fumia.txt' #'input/fumia.txt', 'input/test_net.txt'
+pheno_file: 'input/phenosFumia.yaml' # if you don't want it, use null or turn use_phenos off
+
+# output
 output_img : basinSizes.png
+savefig : false #as opposed to showing the image
