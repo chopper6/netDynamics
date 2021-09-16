@@ -29,6 +29,10 @@ The phenotype file specifies which nodes are output nodes and groups attractors 
 
 If the parameter savefig is false, then an output image will pop up. Otherwise, the output will appear in the output/ directory.
 
+If you just want the attractors and their basin sizes, run:
+	`params = parse.params(param_file)`
+	`attractors, node_mapping = main.find_attractors(params)`
+
 Timing a simulation:  
 	`python3 opt.py params/PARAM.yaml time`
 	This will time the current simulation. opt.py is a work in progress that will eventually aid parameter selection to optimize running time.
@@ -53,7 +57,7 @@ This program runs a network many times to estimate the attractors landscape. Typ
 
 A matrix is required for GPU/numpy applications. Especially for biological networks, there tend to be a few nodes with an overwhelming number of clauses. To balance the workload, all clauses are generated. They are then iteratively merged and mapped to the corresponding nodes. The approach is heavily dependent on disjunctive normal form. 
 
-Currently estimating the attractor landscape of the fumia network (98 nodes) using 10^6 samples and running each sample for at most 10^4 steps (before assuming it is oscillating), takes about 5 minutes using cupy on a local desktop computer.
+Currently estimating the attractor landscape of the fumia network (98 nodes) using 10^6 samples and running each sample for at most 10^3 steps (before assuming it is oscillating), takes less than 10 minutes using cupy on a local desktop computer.
 
 
 
