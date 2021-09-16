@@ -1,28 +1,31 @@
 # main parameter file
 # YAML is like JSON, but with more minimal syntax and allows comments
-
-num_samples : 10000  # number of initial states tested (if not exhaustive)
-max_laps : 1 # max number of laps per initial state sampled, will exit even if num_samples not reached
-steps_per_lap : 1000 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
-exhaustive : false # all possible init conditions, otherwise random init conditions
-sync : true # node update scheme. currently only sync is implemented
+# parse.py also adds support for scientific notation in the form: 10^8
 
 debug : true # adds various checks, may cause slow down
-use_phenos : true
-use_ON_OFF : true #temp param, rm soon
+verbose : true # prints out more info 
+print_lap : 10^1 # how many laps before another print statement. only if verbose 
+
+num_samples : 10^4  # number of initial states tested. false to turn off (and use only max_laps instead)
+max_steps_per_sample : 10^3 # max number of network steps taken, before a sample is assumed to not reach steady state
+
+steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+lap_stop_rule : 'steady' # options: false, steady. Lap always finishes after 'steps_per_lap' at the latest
+max_laps : false # max number of total laps, false to turn off (and use only num_samples instead)
+
+exhaustive : false # all possible init conditions, otherwise random init conditions. Ignores num_samples and max_laps
+sync : true # node update scheme. currently only sync is implemented
 
 # parallel
-parallelism : 10000 # number of networks to run in parallel (on my desktop 10000 is the limit)
+parallelism : 10^4 # number of networks to run in parallel (on my desktop 10^4 is the limit)
 percent_steady : .5 # percent of networks in steady state to exit runNet loop
-lap_stop_rule : false # options: false, steady. Note that a lap always finishes after 'updates_per_lap' at the latest
-max_lap_reruns : 0 # max laps the same sample can be rerun if it doesn't reach a steady state
-  # note that max iterations per sample initial condition = (max_lap_reruns+1)*updates_per_lap
 clause_bin_size : 8 # number of clauses each threads merges at once
 
 # input
-net_file : 'input/fumia.txt' #'input/fumia.txt', 'input/test_net.txt'
-pheno_file: 'input/phenosFumia.yaml' # if you don't want it, use null or turn use_phenos off
+net_file : 'input/fumia.txt' # examples: 'input/fumia.txt', 'input/simpleNet.txt'. See README for syntax description
+pheno_file: 'input/fumiaPhenos.yaml' #'input/fumiaPhenos.yaml', 'input/simplePhenos.yaml' if you don't want it, use null or turn use_phenos off
+use_phenos : true # quick way to disable phenotypes and ignore pheno_file
 
 # output
-output_img : basinSizes.png
-savefig : false #as opposed to showing the image
+output_img : 'output/basinSizes.png'
+savefig : false # as opposed to showing the image

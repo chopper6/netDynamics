@@ -1,17 +1,17 @@
-import main, os
-import sys
+import main, parse
+import sys, os
 from timeit import default_timer as timer
 
 # TODO: add some basic optimizer for discrete params, like a GA
+# also print memory info using array.nbytes
 
 def timetest(param_file, print_output=False):
-	# TODO: 
-	# supposed to time cupy diff, but i want to check overhead ect for now
-	# also cupyx.repeat isn't working...
+	params = parse.params(param_file) #for now parsing is not timed
+	#params['verbose'] = 0 # you really want to hear it every loop?
 	reps = 1
 	tstart = timer()
 	for r in range(reps):
-		main.main(param_file, plot_run=False)
+		main.find_attractors(params)
 		print("Finished rep ",r+1)
 	tend = timer()
 

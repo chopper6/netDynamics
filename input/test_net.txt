@@ -1,5 +1,0 @@
-DNFsymbolic
-a	-b
-b	b
-c	a&b c c
-d	a&b c c -d a&-b b a&b&c&d

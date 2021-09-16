@@ -1,7 +1,9 @@
 .gitignore
 params.yaml
-test_net
+input/simpleNet.txt
+input/fumia.txt
+input/simplePhenos.txt
+input/fumiaPhenos.txt
 __pycache__/
 *.pyc
 output/*
-*l0l*

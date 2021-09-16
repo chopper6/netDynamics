@@ -1,19 +1,18 @@
 import sys, os
 import parse, basin, plot
 
-def main(param_file, plot_run=True):
+def main(param_file):
 	params = parse.params(param_file)
-	clause_mapping, node_mapping, num_nodes = parse.net(params)
-	# note that num_nodes does not include negative node copies
-	catch_errs(params,  clause_mapping, node_mapping, num_nodes)
-	attractors = basin.calc_basin_size(params,clause_mapping, node_mapping, num_nodes)
-	if plot_run: #can be disabled due to optimization loops, such as timetest
-		plot.pie(params,attractors, node_mapping, num_nodes)
+	attractors, node_mapping =  find_attractors(params)
+	plot.pie(params,attractors, node_mapping)
 
 
-def catch_errs(params, clause_mapping, node_mapping, num_nodes):
-	if num_nodes>10000 and params['exhaustive']:
-		sys.exit("Net is far too large to exhaustively calculate basin, change 'exhaustive' parameter.")
+def find_attractors(params):
+	clause_mapping, node_mapping = parse.net(params)
+	attractors = basin.calc_basin_size(params,clause_mapping, node_mapping)
+	# attractors is a dict {} indexed by the steady state string (or "oscillates")
+	#	each element of attractors[i] = {size:% of initial states, pheno:subset of label corresponding to output nodes}
+	return attractors, node_mapping
 
 
 if __name__ == "__main__":

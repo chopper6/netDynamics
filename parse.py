@@ -1,4 +1,5 @@
 import os, sys, yaml, util
+
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
 
@@ -9,6 +10,12 @@ def params(param_file):
 	
 	with open(param_file,'r') as f:
 		params = yaml.load(f,Loader=yaml.FullLoader)
+
+	# yaml doesn't maintain json's 10e5 syntax, so here is support for scientific notation. Syntax: 10^5
+	for k in params.keys():
+		if isinstance(params[k], str) and '^' in params[k]:
+			parts = params[k].split('^')
+			params[k] = int(parts[0])**int(parts[1])
 
 	params['parallelism'] = int(max(params['parallelism'],1)) #1 is actually sequential, i.e. run 1 at a time
 
@@ -184,9 +191,19 @@ def net(params):
 	#print('\n\n',clauses_to_threads)
 
 	clause_mapping = {'nodes_to_clauses':nodes_to_clauses, 'clauses_to_threads':clauses_to_threads, 'threads_to_nodes':threads_to_nodes}
-	node_mapping = {'node_num_to_name':node_num_to_name, 'node_name_to_num':node_name_to_num}
+	node_mapping = {'num_to_name':node_num_to_name, 'name_to_num':node_name_to_num}
 
-	return clause_mapping, node_mapping, n
+	catch_errs(params,  clause_mapping, node_mapping)
+	return clause_mapping, node_mapping
+
+def catch_errs(params, clause_mapping, node_mapping):
+	if len(node_mapping['name_to_num'])/2>10000 and params['exhaustive']:
+		sys.exit("ERROR: Net is far too large to exhaustively calculate basin, change 'exhaustive' parameter.")
+	if not params['max_steps_per_sample'] >= params['steps_per_lap']:
+		sys.exit("ERROR: 'max_steps_per_sample' must be >= 'steps_per_lap' since steps per sample are only checked once per lap.")
+	if params['debug']:
+		assert(len(node_mapping['name_to_num'])==len(node_mapping['num_to_name']))
+		assert(len(node_mapping['name_to_num'])%2==0) #since 1/2 should be the negative copies
 
 
 def get_file_format(format_name):
@@ -211,3 +228,4 @@ def get_file_format(format_name):
 		strip_from_node = [')','(']
 
 	return node_fn_split, clause_split, literal_split, not_str, strip_from_clause,strip_from_node
+
