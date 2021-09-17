@@ -2,8 +2,8 @@
 params.yaml
 input/simpleNet.txt
 input/fumia.txt
-input/simplePhenos.txt
-input/fumiaPhenos.txt
+input/simplePhenos.yaml
+input/fumiaPhenos.yaml
 __pycache__/
 *.pyc
 output/*

@@ -3,7 +3,7 @@ import parse, basin, plot
 
 def main(param_file):
 	params = parse.params(param_file)
-	attractors, node_mapping =  find_attractors(params)
+	attractors, node_mapping = find_attractors(params)
 	plot.pie(params,attractors, node_mapping)
 
 

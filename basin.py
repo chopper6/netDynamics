@@ -40,6 +40,11 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 		p = .5 #prob a given node is off at start
 		x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
 		x0[:,0] = 0 #0th node is the always OFF node
+
+		if params['use_inputs']:
+			for k in params['phenos']['statics']:
+				node_indx = node_name_to_num[k]
+				x0[:,node_indx] = params['phenos']['statics'][k]
 		
 		if not params['num_samples'] and not params['max_laps']:
 			sys.exit("\nERROR: Simulation exit condition required, 'num_samples' or 'max_laps' must not be > 0.") 
