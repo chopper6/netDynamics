@@ -40,7 +40,7 @@ If you just want the attractors and their basin sizes, run:
 The phenotype file specifies the following nodes: `outputs` groups attractors into phenotypes, `statics` always begin in the specified state, `inputs` can be iterated over using `multi.py`. See `inputs/fumiaPhenos.txt` for an example. 
 
 If you want to run all combinations of inputs specified in a phenotype file:
-	`python3 opt.py PARAMS.yaml inputs`
+	`python3 multi.py PARAMS.yaml inputs`
 	Note that this will make a seperate timestamped folder in the output directory to place the input files.  
 
 Timing a simulation:  
