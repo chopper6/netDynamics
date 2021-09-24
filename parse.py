@@ -197,10 +197,6 @@ def net(params):
 	return clause_mapping, node_mapping
 
 def catch_errs(params, clause_mapping, node_mapping):
-	if len(node_mapping['name_to_num'])/2>10000 and params['exhaustive']:
-		sys.exit("ERROR: Net is far too large to exhaustively calculate basin, change 'exhaustive' parameter.")
-	if not params['max_steps_per_sample'] >= params['steps_per_lap']:
-		sys.exit("ERROR: 'max_steps_per_sample' must be >= 'steps_per_lap' since steps per sample are only checked once per lap.")
 	if params['debug']:
 		assert(len(node_mapping['name_to_num'])==len(node_mapping['num_to_name']))
 		assert(len(node_mapping['name_to_num'])%2==0) #since 1/2 should be the negative copies

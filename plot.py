@@ -12,7 +12,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy n
 #TODO: pick better colors
 COLORS = ['#009999','#9933ff','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 
-def pie(params, attractors, node_mapping):
+def pie(params, attractors, node_mapping,external_label=None):
 	node_name_to_num = node_mapping['name_to_num']
 	node_num_to_name = node_mapping['num_to_name']
 	num_nodes = int(len(node_num_to_name)/2)
@@ -37,15 +37,13 @@ def pie(params, attractors, node_mapping):
 
 	if params['use_phenos']:
 
-		legend_title = "Phenotypes ("
+		legend_title = ""
 		j=0
-		for i in range(num_nodes):
-			if node_num_to_name[i] in params['phenos']['outputs']: #lazy lol
-				if j>0:
-					legend_title +=','
-				legend_title += node_num_to_name[i]
-				j+=1
-		legend_title += ")"
+		for i in range(len(params['phenos']['outputs'])):
+			if j>0:
+				legend_title +=', '
+			legend_title += params['phenos']['outputs'][i]
+			j+=1
 
 
 		outputs = [node_name_to_num[params['phenos']['outputs'][i]] for i in range(len(params['phenos']['outputs']))]
@@ -54,17 +52,13 @@ def pie(params, attractors, node_mapping):
 		pheno_labels, pheno_sizes = [],[]
 		for i in range(len(labels)):
 			lab = labels[i]
-			if lab=='oscillates':
-				pheno_labels+=[lab]
+			pheno_lab = ''.join([lab[outputs[i]-1] for i in range(len(outputs))]) # -1 since attractor labels don't include the always OFF 0 node
+			if pheno_lab not in pheno_labels:
+				pheno_labels += [pheno_lab]
 				pheno_sizes += [sizes[i]]
 			else:
-				pheno_lab = ''.join([lab[outputs[i]-1] for i in range(len(outputs))]) # -1 since attractor labels don't include the always OFF 0 node
-				if pheno_lab not in pheno_labels:
-					pheno_labels += [pheno_lab]
-					pheno_sizes += [sizes[i]]
-				else:
-					indx = pheno_labels.index(pheno_lab)
-					pheno_sizes[indx] += sizes[i]
+				indx = pheno_labels.index(pheno_lab)
+				pheno_sizes[indx] += sizes[i]
 		labels = pheno_labels
 		sizes = pheno_sizes
 
@@ -78,7 +72,20 @@ def pie(params, attractors, node_mapping):
 
 
 	fig, ax = plt.subplots(figsize=(10, 6))
-	colors=cm.Set2([i for i in range(len(labels))])	
+
+	if params['use_phenos'] and 'pheno_color_map' in params['phenos'].keys():
+		label_map = []
+		l=max(params['phenos']['pheno_color_map']) 
+		for label in labels:
+			if label in params['phenos']['pheno_color_map']:
+				label_map+= [params['phenos']['pheno_color_map'][label]]
+			else:
+				label_map+=[l]
+				l+=1
+		colors=cm.Set2(label_map)	
+
+	else:
+		colors=cm.Set2([i for i in range(len(labels))])	
 
 	wedges, texts, autotexts = ax.pie(sizes,colors=colors, counterclock=False, autopct='%1.1f%%', shadow=False, startangle=90)
 	ax.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
@@ -99,15 +106,23 @@ def pie(params, attractors, node_mapping):
 	'''
 
 	lgd = ax.legend(wedges, labels, fontsize=12)#,title="Attractors", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-	lgd.set_title(legend_title,prop={'size':16})
+	lgd.set_title(legend_title,prop={'size':14})
 	#plt.setp(autotexts, size=8, weight="bold")
 
-	ax.set_title("Basin Sizes",size=20)
+	if params['use_phenos']:
+		name='Phenotypes'
+	else:
+		name='Attractors'
+	ax.set_title("Basin Sizes of " + name,size=20)
 	if params['savefig']:
-		plt.savefig(params['output_img']) 	
+		if external_label is None:
+			plt.savefig(params['output_dir'] +'/'+params['output_img']) 	
+		else:
+			plt.text(0, -1.2, external_label, verticalalignment='bottom', horizontalalignment='center')
+			plt.savefig(params['output_dir'] +'/'+ external_label+params['output_img'])
 	else:
 		plt.show()
-		
+
 
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers

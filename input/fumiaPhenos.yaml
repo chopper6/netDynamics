@@ -1,5 +1,21 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
-#outputs : ['p53','RAF','CycA','CycD','Smad','Apoptosis']
+outputs : ['Apop','Prolif','Quiesc']
+# will produce output phenotypes in terms of these
+inputs : ['Mutagen','Nutrients','GFs','Hypoxia','Gli','TNFalpha']
+# will try all combinations of inputs ONLY IF mult.py is uses
 
-outputs : ['p53','RAF','Apoptosis']
+statics : {'G1':0, 'G2':0, 'S':0, 'M':0,'Prolif':0,'Apop':0,'Quiesc':1}
+# each initial sample is the same for the statics
+# the above are highly recommended statics for fumia
+# inputs can also be used as statics
+
+pheno_color_map : {'100':1,'010':0,'001':2} #to ensure consistent coloring between images
+
+# from fumia paper:
+# cell phenotypes: apoptotic, characterized by active caspases; 
+# glycolytic, with H1f1 activated under normoxia;
+# immortalized, in which hTert is active; migratory, associated to inactivate E cadherin;
+# mutator, corresponding to inactive Atm/Atr proteins in the presence of DNA damage; 
+# proliferative, in which cyclins are activated along the cell cycle in the correct sequence; 
+# and quiescent, with cyclins inactive or activated in a wrong sequence.

@@ -8,7 +8,7 @@ from timeit import default_timer as timer
 def timetest(param_file, print_output=False):
 	params = parse.params(param_file) #for now parsing is not timed
 	#params['verbose'] = 0 # you really want to hear it every loop?
-	reps = 1
+	reps = 2
 	tstart = timer()
 	for r in range(reps):
 		main.find_attractors(params)
