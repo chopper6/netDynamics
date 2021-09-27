@@ -186,6 +186,14 @@ def net(params):
 		i+=1
 		if i>1000000:
 			sys.exit("ERROR: infinite loop likely in parse.net()")
+	
+	if params['parallelism']<256:
+		thread_dtype = cp.uint8
+	elif params['parallelism']<65535:
+		thread_dtype = cp.uint16
+	else:
+		thread_dtype = cp.uint32
+	clauses_to_threads = cp.array(clauses_to_threads,dtype=thread_dtype)
 
 	#print('done',nodes_to_clauses)
 	#print('\n\n',clauses_to_threads)

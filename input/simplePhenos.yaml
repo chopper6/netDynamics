@@ -5,6 +5,4 @@
 # these parameters will be loaded into params['phenos']
 # for instance params['phenos']['outputs']
 
-outputs : [c,d]
-good_phenos : [[1,0],[1,0]]
-bad_phnos : [[0,0],[1,1]]
+outputs : [c,d,a,b]

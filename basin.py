@@ -25,10 +25,11 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 		x0[:,0] = 0 #0th node is the always OFF node
 		
 		if params['use_phenos']:
-			for k in params['phenos']['statics']:
-				node_indx = node_name_to_num[k]
-				x0[:,node_indx] = params['phenos']['statics'][k]
-		
+			if 'statics' in params['phenos'].keys():
+				for k in params['phenos']['statics']:
+					node_indx = node_name_to_num[k]
+					x0[:,node_indx] = params['phenos']['statics'][k]
+			
 		if params['verbose'] and i%params['print_lap']==0 and i!=0:
 			print("At lap",i)
 
@@ -46,16 +47,20 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 
 
 	loop=0
+	restart_counter=len(oscil_bin)
 	orig_steps_per_lap, orig_fraction_per_lap = params['steps_per_lap'], params['fraction_per_lap']
 	cutoff=None
 	while len(oscil_bin) > 0: 
 		if params['verbose'] and loop%params['print_lap']==0 and loop!=0:
 			print("At lap",loop,"with",len(oscil_bin),"samples remaining.")
 
-		params['steps_per_lap'] = int(params['steps_per_lap']*params['steps_per_lap_gain'])
+		if restart_counter<0:
+			params['steps_per_lap'] = int(params['steps_per_lap']*params['steps_per_lap_gain'])
+			restart_counter = len(oscil_bin)
+		restart_counter -= params['parallelism'] # decrement by # samples will run
 
 		if len(oscil_bin)*params['fraction_per_lap'] < params['parallelism']:
-			params['fraction_per_lap'] = 1 #require all to allow long oscils to finish
+			params['fraction_per_lap'] = 1 #require all threads finish to allow long oscils to finish
 		if len(oscil_bin) < params['parallelism']:
 			cutoff = len(oscil_bin)
 			oscil_bin += [oscil_bin[-1] for i in range(params['parallelism']-len(oscil_bin))]

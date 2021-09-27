@@ -74,28 +74,39 @@ def from_somewhere_in_oscil(params,x0, clause_mapping, num_nodes):
 	# run network from an initial state are see if return to it (ie reach an oscil)
 	# will return a sorted ID for the oscil (max int representation) and the period
 
-	x = cp.array(x0).copy()
-	x0 = cp.array(x0).copy() #need for comparisons
-	period = cp.array([0 for _ in range(params['parallelism'])],dtype=int)
+	x = cp.array(x0,dtype=bool).copy()
+	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
+	ids = cp.array(x0,dtype=bool).copy()
+	period = cp.array([1 for _ in range(params['parallelism'])],dtype=int)
 	not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
 	if num_nodes<256: 
 		index_dtype = cp.uint8
 	else:
 		index_dtype = cp.uint16
-	simple_ind = cp.array([i for i in range(len(x0))],dtype=index_dtype) 
-	ids = x0.copy()
+	if params['parallelism']<256:
+		thread_dtype = cp.uint8
+	elif params['parallelism']<65535:
+		thread_dtype = cp.uint16
+	else:
+		thread_dtype = cp.uint32
 
+	simple_ind = cp.array([i for i in range(params['parallelism'])],dtype=thread_dtype) 
 	nodes_to_clauses = cp.array(clause_mapping['nodes_to_clauses'])
-	clauses_to_threads = cp.array(clause_mapping['clauses_to_threads'])
+	clauses_to_threads = cp.array(clause_mapping['clauses_to_threads']) 
 	threads_to_nodes = cp.array(clause_mapping['threads_to_nodes'])
+
+	larger = cp.zeros((params['parallelism']),dtype=cp.uint8)
+	diff = cp.zeros((num_nodes, params['parallelism']),dtype=cp.uint8)
+	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 	
 	for i in range(params['steps_per_lap']):
 
 		X = cp.concatenate((x,cp.logical_not(x[:,:num_nodes])),axis=1)
-		clauses = cp.all(X[:,nodes_to_clauses],axis=2) 
+		clauses = cp.all(X[:,nodes_to_clauses],axis=2)  
 
-		x = cp.zeros((num_nodes))
+
+		x = cp.zeros((num_nodes),dtype=bool)
 
 		partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
 					
@@ -105,13 +116,14 @@ def from_somewhere_in_oscil(params,x0, clause_mapping, num_nodes):
 		not_match = cp.any(cp.logical_xor(x,x0),axis=1)
 		period += not_match*not_finished 
 		not_finished = cp.logical_and(not_finished, not_match) 
-		
+
 		# next few lines are just to replace ids with current states that are "larger", where larger is defined by int representation (i.e. first bit that is different)
-		diff = ids-x
-		first_diff_col = ((diff)!=0).argmax(axis=1)
+		diff = ids-x.astype(cp.int8)
+		first_diff_col = ((diff)!=0).argmax(axis=1).astype(index_dtype) #i'm worred that this first goes to 64 then converts to 8..
 		larger = diff[[simple_ind,first_diff_col]] #note that numpy/cupy handles this as taking all elements indexed at [simple_ind[i],first_diff_col[i]]   
-		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
 		
+		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
+
 		if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
 			exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x*not_finished[:,cp.newaxis]
 			return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period}
