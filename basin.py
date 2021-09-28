@@ -63,7 +63,7 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 
 	while len(oscil_bin) > 0: 
 		x0, cutoff = run_oscil_init(params, oscil_bin, restart_counter, loop)
-		result = lap.find_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		result = lap.find_oscil_and_fixed_points(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
 		cupy_to_numpy(params,result)
 		result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
 		
@@ -74,11 +74,11 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 	if params['debug']:
 		assert(orig_num_oscils == len(confirmed_oscils))
 
-	# CATEGORIZE OSCILS
+	# CLASSIFYING OSCILS
 	# calculate period, avg on state, ect
 	# todo: redundant w prev step, should clean into a sep fn
 	if params['verbose'] and len(confirmed_oscils)>0: 
-		print('Finished finding oscillations, now measuring oscillations.')
+		print('Finished finding oscillations, now classifying them.')
 	oscil_bin = confirmed_oscils
 	loop=0
 	while len(oscil_bin) > 0: 

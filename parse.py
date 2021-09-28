@@ -123,7 +123,17 @@ def net(params):
 			line = file.readline() 
 			line = line.strip().split(node_fn_split)
 			node = node_name_to_num[line[0]]
-			clauses = line[1].split(clause_split)
+
+			# if using mutations and this node is mutated:
+			if params['use_phenos'] and line[0] in params['phenos']['mutations'] and params['phenos']['mutations'][line[0]] == 0:
+				
+				clauses = [str(params['phenos']['mutations'][line[0]])] #should be '0' or '1' which refer to the always OFF and ON nodes
+
+				if params['debug']:
+					assert(clauses == ['0'] or clauses ==['1'])
+
+			else:
+				clauses = line[1].split(clause_split)
 
 			for i in range(len(clauses)):
 				clause_fn = []

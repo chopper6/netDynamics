@@ -67,7 +67,7 @@ This program runs a network many times to estimate the attractor landscape from 
 
 A matrix is required for GPU/numpy applications. Especially for biological networks, there tend to be a few nodes with an overwhelming number of clauses. To balance the workload, all clauses are generated. They are then iteratively merged and mapped to the corresponding nodes. The approach is heavily dependent on disjunctive normal form. 
 
-Currently estimating the attractor landscape of the fumia network (103 nodes) using 10^5 samples takes less than 1 minute using cupy on a local desktop computer.
+Currently estimating the attractor landscape of the fumia network (103 nodes) using 10^5 samples takes less than 20 seconds using cupy on a local desktop computer.
 
 
 ## 6. Fumia Network

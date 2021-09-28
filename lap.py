@@ -65,7 +65,7 @@ def fixed_point_search(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads
 
 
 
-def find_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes):
+def find_oscil_and_fixed_points(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes):
 	# run network from an initial state are see if return to it (ie reach an oscil)
 
 	x = cp.array(x0,dtype=bool).copy()
@@ -74,10 +74,12 @@ def find_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, thread
 	
 	for i in range(params['steps_per_lap']):
 
-		x = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
 
-		not_match = cp.any(cp.logical_xor(x,x0),axis=1)
+		#not_match = cp.any(cp.logical_xor(x_next,x0),axis=1) #this is without checking for fixed points still
+		not_match = cp.logical_and(cp.any(cp.logical_xor(x_next,x0),axis=1), cp.any(cp.logical_xor(x_next,x),axis=1))
 		not_finished = cp.logical_and(not_finished, not_match) 
+		x=x_next
 
 		if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
 			return {'finished':cp.logical_not(not_finished), 'state':x}

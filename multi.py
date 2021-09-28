@@ -10,7 +10,7 @@ def input_set(param_file):
 	print(params['output_dir'])
 	os.makedirs(params['output_dir'])
 
-	params['save_fig'] = True # i assume you don't want an image popping up for every combination of inputs
+	params['savefig'] = True # i assume you don't want an image popping up for every combination of inputs
 
 
 	input_sets = itertools.product([0,1], repeat=num_inputs) 
@@ -19,7 +19,7 @@ def input_set(param_file):
 	j=1
 	for input_set in input_sets:
 		if params['verbose']:
-			print("\nStarting input set #",j)
+			print("\n~~~ Starting input set #",j,'~~~\n')
 		label=''
 		for i in range(num_inputs):
 			input_node = params['phenos']['inputs'][i]

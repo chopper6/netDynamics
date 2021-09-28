@@ -6,6 +6,7 @@ inputs : ['Mutagen','Nutrients','GFs','Hypoxia','Gli','TNFalpha']
 # will try all combinations of inputs ONLY IF mult.py is uses
 
 statics : {'G1':0, 'G2':0, 'S':0, 'M':0,'Prolif':0,'Apop':0,'Quiesc':1}
+mutations : {'VHL':0}
 # each initial sample is the same for the statics
 # the above are highly recommended statics for fumia
 # inputs can also be used as statics
