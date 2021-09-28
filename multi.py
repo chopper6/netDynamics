@@ -23,7 +23,7 @@ def input_set(param_file):
 		label=''
 		for i in range(num_inputs):
 			input_node = params['phenos']['inputs'][i]
-			params['phenos']['statics'][input_node] = input_set[i]
+			params['phenos']['init'][input_node] = input_set[i]
 			if i!=0:
 				label+='_'
 			label+=input_node +str(input_set[i])

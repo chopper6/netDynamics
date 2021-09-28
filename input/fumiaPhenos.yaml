@@ -2,14 +2,17 @@
 
 outputs : ['Apop','Prolif','Quiesc']
 # will produce output phenotypes in terms of these
-inputs : ['Mutagen','Nutrients','GFs','Hypoxia','Gli','TNFalpha']
-# will try all combinations of inputs ONLY IF mult.py is uses
+inputs : ['Mutagen','Nutrients','GFs','Hypoxia','TNFalpha']
+# will try all combinations of inputs ONLY IF mult.py is used
 
-statics : {'G1':0, 'G2':0, 'S':0, 'M':0,'Prolif':0,'Apop':0,'Quiesc':1}
-mutations : {'VHL':0}
-# each initial sample is the same for the statics
-# the above are highly recommended statics for fumia
-# inputs can also be used as statics
+init : {'G1':0, 'G2':0, 'S':0, 'M':0,'Gli':0,'Prolif':0,'Apop':0,'Quiesc':1}
+# each initial sample is the same for all nodes in init
+# the above are highly recommended init for fumia
+
+mutations : {'APC':0,'Ras':1,'Smad':0,'PTEN':0,'p53':0}
+# mutations alter the function of the node to always be off or on
+# ex seq: {'APC':0,'Ras':1,'Smad':0,'PTEN':0,'p53':0}
+
 
 pheno_color_map : {'100':1,'010':0,'001':2} #to ensure consistent coloring between images
 

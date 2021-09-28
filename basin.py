@@ -34,10 +34,10 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 		x0[:,0] = 0 #0th node is the always OFF node
 		
 		if params['use_phenos']:
-			if 'statics' in params['phenos'].keys():
-				for k in params['phenos']['statics']:
+			if 'init' in params['phenos'].keys():
+				for k in params['phenos']['init']:
 					node_indx = node_name_to_num[k]
-					x0[:,node_indx] = params['phenos']['statics'][k]
+					x0[:,node_indx] = params['phenos']['init'][k]
 			
 		if params['verbose'] and i%params['print_lap']==0 and i!=0:
 			print("\tAt lap",i)

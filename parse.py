@@ -31,6 +31,7 @@ def params(param_file):
 		with open(params['pheno_file'],'r') as f:
 			params['phenos'] = yaml.load(f,Loader=yaml.FullLoader)
 
+
 	return params
 
 
@@ -218,6 +219,10 @@ def catch_errs(params, clause_mapping, node_mapping):
 	if params['debug']:
 		assert(len(node_mapping['name_to_num'])==len(node_mapping['num_to_name']))
 		assert(len(node_mapping['name_to_num'])%2==0) #since 1/2 should be the negative copies
+
+		if params['use_phenos'] and 'mutations' in params['phenos'].keys():
+			for k in params['phenos']['mutations']:
+				assert(k in node_mapping['name_to_num'].keys())
 
 
 def get_file_format(format_name):
