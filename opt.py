@@ -12,7 +12,7 @@ def timetest(param_file, print_output=False):
 	tstart = timer()
 	for r in range(reps):
 		main.find_attractors(params)
-		print("Finished rep ",r+1)
+		print("\n~~~TIMING CODE: Finished rep ",r+1,'~~~\n')
 	tend = timer()
 
 	avg_time = round((tend-tstart)/(60*reps),3)
