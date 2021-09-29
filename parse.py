@@ -9,7 +9,7 @@ def params(param_file):
 		sys.exit("Can't find network file: " + str(net_file)) 
 	
 	with open(param_file,'r') as f:
-		params = yaml.load(f,Loader=yaml.FullLoader)
+		params = yaml.load(f,Loader=yaml.SafeLoader)
 
 	# yaml doesn't maintain json's 10e5 syntax, so here is support for scientific notation. Syntax: 10^5
 	for k in params.keys():
@@ -39,11 +39,6 @@ def net(params):
 	net_file = params['net_file']
 	# net file should be in DNF
 	# separate node from its function by tab
-	# each clause should be separated by a space
-	# each element of clause separated by &
-	# - means element of clause is negative
-	# for example: X = (A and B) or (not C) --> X	A&B -C
-	# each node should only have 1 function, ie #lines = #nodes
 
 	node_name_to_num, node_num_to_name = {},[]
 	node_name_to_num['0']=0 # always OFF node is first
@@ -137,6 +132,7 @@ def net(params):
 				clauses = line[1].split(clause_split)
 
 			for i in range(len(clauses)):
+				clause = clauses[i]
 				clause_fn = []
 				for symbol in strip_from_clause:
 					clause = clause.replace(symbol,'')
@@ -243,8 +239,8 @@ def get_file_format(format_name):
 		clause_split = ' or '
 		literal_split = ' and '
 		not_str = 'not '
-		strip_from_clause = [')','(']
-		strip_from_node = [')','(']
+		strip_from_clause = ['(',')']
+		strip_from_node = ['(',')']
 
 	return node_fn_split, clause_split, literal_split, not_str, strip_from_clause,strip_from_node
 
