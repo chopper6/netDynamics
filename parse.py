@@ -29,7 +29,7 @@ def params(param_file):
 			sys.exit("Phenotype file must be yaml format, check pheno_file parameter.")
 		
 		with open(params['pheno_file'],'r') as f:
-			params['phenos'] = yaml.load(f,Loader=yaml.FullLoader)
+			params['phenos'] = yaml.load(f,Loader=yaml.SafeLoader)
 
 
 	return params
