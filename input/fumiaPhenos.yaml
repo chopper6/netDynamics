@@ -1,15 +1,16 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
 outputs : ['Apop','Prolif','Quiesc']
+output_thresholds : [0,0,0] # fumia tends to be robust to choice of output thresholds
 # will produce output phenotypes in terms of these
-inputs : ['Mutagen','Nutrients','GFs','Hypoxia','TNFalpha']
+inputs : ['Mutagen','GFs','Hypoxia','Nutrients','TNFalpha']
 # will try all combinations of inputs ONLY IF mult.py is used
 
 init : {'G1':0, 'G2':0, 'S':0, 'M':0,'Gli':0,'Prolif':0,'Apop':0,'Quiesc':1}
 # each initial sample is the same for all nodes in init
 # the above are highly recommended init for fumia
 
-mutations : {'APC':0,'Ras':1,'Smad':0,'PTEN':0,'p53':0}
+mutations : {}
 # mutations alter the function of the node to always be off or on
 # ex seq: {'APC':0,'Ras':1,'Smad':0,'PTEN':0,'p53':0}
 

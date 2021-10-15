@@ -136,7 +136,7 @@ def net(params):
 				clause_fn = []
 				for symbol in strip_from_clause:
 					clause = clause.replace(symbol,'')
-				literals = clauses[i].split(literal_split)
+				literals = clause.split(literal_split)
 				for j in range(len(literals)):
 					literal_name = literals[j]
 					for symbol in strip_from_node:
@@ -211,6 +211,90 @@ def net(params):
 	catch_errs(params,  clause_mapping, node_mapping)
 	return clause_mapping, node_mapping
 
+
+
+def sequences(seq_file_pos, seq_file_neg):
+	seqs = []
+	with open(seq_file_pos,'r') as file:
+		
+		loop = 0
+		while True:
+			line = file.readline()
+			if not line: #i.e eof
+				break
+			if loop > 1000000:
+				sys.exit("Hit an infinite loop, unless file is monstrously huge") 
+
+			seq = []
+			was_tab=True
+			word=''
+			for c in line:
+				if c=='\n':
+					if word == '':
+						seq+=['']
+					else:
+						seq+=[(word,1)]
+					seqs+=[seq]
+					break
+				elif c=='\t':
+					if was_tab:
+						seq+=['']
+					else:
+						if word == '':
+							seq+=['']
+						else:
+							seq+=[(word,1)]
+					word=''
+				else:
+					was_tab=False
+					if c in ['\\','/','-']:
+						word+='_'
+					else:
+						word+=c
+
+
+
+			loop += 1
+
+
+	with open(seq_file_neg,'r') as file:
+		
+		i = 0
+		while True:
+			line = file.readline()
+			if not line: #i.e eof
+				break
+			if i > 1000000:
+				sys.exit("Hit an infinite loop, unless file is monstrously huge") 
+
+			was_tab=True
+			word=''
+			j=0
+			for c in line:
+				if c=='\n':
+					if word != '':
+						assert(seqs[i][j]=='')
+						seqs[i][j]=(word,0)
+					break
+				elif c=='\t':
+					if not was_tab and word != '':
+						assert(seqs[i][j]=='')
+						seqs[i][j]=(word,0)
+					word=''
+					j+=1
+				else:
+					was_tab=False
+					if c in ['\\','/','-']:
+						word+='_'
+					else:
+						word+=c
+			i += 1
+
+	return seqs
+
+
+
+
 def catch_errs(params, clause_mapping, node_mapping):
 	if params['debug']:
 		assert(len(node_mapping['name_to_num'])==len(node_mapping['num_to_name']))
@@ -244,3 +328,10 @@ def get_file_format(format_name):
 
 	return node_fn_split, clause_split, literal_split, not_str, strip_from_clause,strip_from_node
 
+
+
+
+if __name__ == "__main__": # just for debugging purposes
+	print("Debugging parse.py")
+
+	sequences('input/efSeq_pos.txt', 'input/efSeq_neg.txt')

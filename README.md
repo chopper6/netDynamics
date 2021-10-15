@@ -14,7 +14,7 @@ Contents:
 
 ## 1. Requirements
 
-Python3 and the relevant python libraries must be installed. The main required python libraries are matplotlib and numpy.
+Python3 and the relevant python libraries must be installed. The main required python libraries are matplotlib, numpy, and pyyaml. There may be other libraries as well, please look at the error logs.
 
 Instead of numpy, cupy can optionally be installed. This library provides GPU computing using numpy syntax, with a speedup of roughly 20-50x. It requires that CUDA drivers are installed. Note that it works best with Intel GPUs, and is still in beta for AMD GPUs. If both numpy and cupy are installed, cupy can be forced off by changing the top of util.py or lap.py.
 

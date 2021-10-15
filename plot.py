@@ -20,6 +20,7 @@ def pie(params, attractors, node_mapping,external_label=None):
 
 
 	labels = list(attractors.keys()) #just to make sure order is set
+
 	if CUPY:
 		sizes = [attractors[labels[i]]['size'].get() for i in range(len(labels))]
 	else:
@@ -49,10 +50,12 @@ def pie(params, attractors, node_mapping,external_label=None):
 		outputs = [node_name_to_num[params['phenos']['outputs'][i]] for i in range(len(params['phenos']['outputs']))]
 
 		# shrink labels to only be the phenos, and merge sizes of attractors with same pheno
+		# todo: maybe this should be computed in basin.py instead?
 		pheno_labels, pheno_sizes = [],[]
 		for i in range(len(labels)):
 			lab = labels[i]
-			pheno_lab = ''.join([lab[outputs[i]-1] for i in range(len(outputs))]) # -1 since attractor labels don't include the always OFF 0 node
+			#pheno_lab = ''.join([lab[outputs[i]-1] for i in range(len(outputs))]) # -1 since attractor labels don't include the always OFF 0 node
+			pheno_lab = attractors[lab]['pheno']
 			if pheno_lab not in pheno_labels:
 				pheno_labels += [pheno_lab]
 				pheno_sizes += [sizes[i]]
@@ -75,7 +78,7 @@ def pie(params, attractors, node_mapping,external_label=None):
 
 	if params['use_phenos'] and 'pheno_color_map' in params['phenos'].keys():
 		label_map = []
-		l=max(params['phenos']['pheno_color_map']) 
+		l=len(params['phenos']['pheno_color_map']) 
 		for label in labels:
 			if label in params['phenos']['pheno_color_map']:
 				label_map+= [params['phenos']['pheno_color_map'][label]]
@@ -120,6 +123,48 @@ def pie(params, attractors, node_mapping,external_label=None):
 		else:
 			plt.text(0, -1.2, external_label, verticalalignment='bottom', horizontalalignment='center')
 			plt.savefig(params['output_dir'] +'/'+ external_label+params['output_img'])
+	else:
+		plt.show()
+
+
+
+def features(params,seq,feats):
+	init_mpl(params)
+	labels = feats[0].keys()
+	j=0
+	for label in labels:
+		fig, ax = plt.subplots(figsize=(10, 6))
+		plt.plot([feats[i][label] for i in range(len(feats))])
+
+		#lgd = ax.legend(labels, fontsize=12)#,title="Attractors", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+		plt.xticks([i for i in range(len(seq))],[seq[i][0]+'='+str(seq[i][1]) for i in range(len(seq))],rotation=40)
+		ax.set_ylabel('Entropy', fontsize=12)
+		ax.set_title(label + " of Mutation Sequence",size=16)
+		if params['savefig']:
+			plt.savefig(params['output_dir'] +'/' + "".join(x for x in label if x.isalnum()) + '.jpg') 	
+		else:
+			plt.show()
+		j+=1
+
+
+def clustered_time_series(params,avgs,label,CIs=None):
+	# avg should be 1d array
+	# CIs[:,1] should be 1d array of avg-CI
+	# CIs[:,2] should be avg+CI
+	init_mpl(params)
+	fig, ax = plt.subplots(figsize=(10, 6))
+
+	for i in range(len(avgs)):
+		plt.plot(avgs[i])
+		if CIs is not None and CIs[i] is not None:
+			plt.fill_between([i for i in range(len(avgs[i]))],CIs[i][1],CIs[i][0],alpha=.15,label='_nolegend_')
+
+	ax.set_xticks([i*2 for i in range(int((len(avgs[0])+1)/2))])
+	ax.set_xlabel('Mutation Number')
+	ax.set_ylabel('Entropy', fontsize=12)
+	ax.set_title(label + " across Mutation Sequence",size=16)
+	if params['savefig']:
+		plt.savefig(params['output_dir'] +'/' + "".join(x for x in label if x.isalnum()) + '.jpg') 	
 	else:
 		plt.show()
 

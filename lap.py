@@ -46,7 +46,7 @@ def fixed_point_search(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads
 
 			# if x + x_next = 0 (ie nxor is true) for all nodes, then at a steady state
 			if cp.sum(cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1))/params['parallelism'] >= params['fraction_per_lap']:
-				return {'finished':cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1), 'state':x_next}
+				return {'finished':cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1), 'state':x_next, 'avg':x_next, 'period':cp.ones(params['parallelism'])}
 			
 			x = x_next 
 
@@ -61,7 +61,7 @@ def fixed_point_search(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads
 	for j in range(len(clauses_to_threads)):
 		x_next = x_next + cp.matmul(partial_truths[:,j],threads_to_nodes[j])
 
-	return {'finished':cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1), 'state':x_next}
+	return {'finished':cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1), 'state':x_next, 'avg':x_next, 'period':cp.ones(params['parallelism'])}
 
 
 
@@ -82,9 +82,9 @@ def find_oscil_and_fixed_points(params,x0, num_nodes,nodes_to_clauses, clauses_t
 		x=x_next
 
 		if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
-			return {'finished':cp.logical_not(not_finished), 'state':x}
-			
-	return {'finished':cp.logical_not(not_finished), 'state':x}
+			return {'finished':cp.logical_not(not_finished), 'state':x,'period':cp.ones(params['parallelism']), 'avg':x}
+	# since only add fixed points to the attractors, assume period=1
+	return {'finished':cp.logical_not(not_finished), 'state':x,'period':cp.ones(params['parallelism']), 'avg':x}
 
 
 def categorize_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes):
@@ -105,7 +105,7 @@ def categorize_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, 
 	diff = cp.zeros((params['parallelism'],num_nodes),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
-	avg_states = cp.zeros((params['parallelism'],num_nodes),dtype=cp.float16) #note that this assumes all cycles have period < 10^5
+	avg_states = cp.array(x0,dtype=cp.float16)
 
 	for i in range(params['steps_per_lap']):
 
@@ -125,12 +125,13 @@ def categorize_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, 
 		avg_states = not_finished[:,cp.newaxis]*x + avg_states
 
 		if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
-			avg_states = not_finished[:,cp.newaxis]*avg_states + cp.logical_not(not_finished)[:,cp.newaxis]*avg_states/period[:,cp.newaxis]
+			avg_states = avg_states/period[:,cp.newaxis]
 			exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x0*not_finished[:,cp.newaxis]
 			return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period, 'avg':avg_states}
 			
 
-	avg_states = not_finished[:,cp.newaxis]*avg_states + cp.logical_not(not_finished)[:,cp.newaxis]*avg_states/period
+	# if return to and pick up where left off: avg_states = not_finished[:,cp.newaxis]*avg_states + cp.logical_not(not_finished)[:,cp.newaxis]*avg_states/period
+	avg_states = avg_states/period[:,cp.newaxis]
 	exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x0*not_finished[:,cp.newaxis]
 	return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period, 'avg':avg_states}
 

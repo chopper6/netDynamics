@@ -1,4 +1,5 @@
-import time, pickle, warnings
+import time, os, math, pickle, warnings
+from datetime import datetime, date
 
 TURN_CUPY_OFF_OVERRIDE = 0 #turns off CUPY for everything
 if (TURN_CUPY_OFF_OVERRIDE):
@@ -38,8 +39,6 @@ def copy_to_larger_dim(x, num_copies):
 ###### FROM LIGHT SIMULATION #########
 
 
-import os, math, pickle
-from datetime import datetime, date
 
 def true_in_dict(d,key):
 	if key in d and d[key]:

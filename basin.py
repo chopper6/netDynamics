@@ -55,7 +55,6 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 
 	# FINDING OSCIL
 	# run until sure that you are in the oscil
-	# reminder: may want to handle what are actually fixed points differently
 	loop=0
 	restart_counter=orig_num_oscils=len(oscil_bin)
 	confirmed_oscils = []
@@ -101,6 +100,7 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 
 	if params['verbose']:
 		print('Finished with',len(attractors),'attractors.')
+
 	return attractors
 
 
@@ -112,7 +112,14 @@ def map_to_phenos(params, attractors, node_name_to_num):
 	for k in attractors.keys():
 		attractors[k]['pheno'] = ''
 		for i in range(len(outputs)):
-			attractors[k]['pheno']+=k[outputs[i]-1] # -1 since attractors don't include 0 always OFF node
+			if attractors[k]['avg'][outputs[i]-1] > params['phenos']['output_thresholds'][i]:
+				# -1 since attractors don't include 0 always OFF node
+				attractors[k]['pheno']+='1'
+			else:
+				attractors[k]['pheno']+='0'
+			# old version without thresh:
+			#attractors[k]['pheno']+=k[outputs[i]-1] # -1 since attractors don't include 0 always OFF node
+
 
 
 def add_to_attractors(params, attractors, result):
@@ -120,21 +127,22 @@ def add_to_attractors(params, attractors, result):
 		if result['finished'][i]:
 			state = format_state_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
 			if state not in attractors.keys():
-				attractors[state] = {}
+				attractors[state] = {'state':state}
 				attractors[state]['size']=1
-				if 'avg' in result.keys():
-					attractors[state]['avg'] = result['avg'][i]
+				attractors[state]['period'] = result['period'][i]
+				attractors[state]['avg'] = result['avg'][i][1:] #again skip 0th node
 			else:
 				attractors[state]['size']+=1
-
 
 def format_state_str(x):
 	label=''
 	for ele in x:
 		if ele == True:
 			label+='1'
-		else:
+		elif ele == False:
 			label+='0'
+		else:
+			label+=str(ele) #to handle int strs
 	return label
 
 

@@ -1,10 +1,13 @@
 import sys, os
-import parse, basin, plot
+import parse, basin, plot, features
 
 def main(param_file):
 	params = parse.params(param_file)
 	attractors, node_mapping = find_attractors(params)
+	#feats = features.calc_entropy(params,attractors)
+	#print(feats)
 	plot.pie(params,attractors, node_mapping)
+
 
 
 def find_attractors(params):

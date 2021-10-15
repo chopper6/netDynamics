@@ -1,0 +1,100 @@
+	Mdm2	AMPK	Ras		Dsh	COX412	AKT								PI3K		E-cadh		VEGF
+		AMPK		Dsh	COX412	AKT		Ras							PI3K	E-cadh			VEGF
+	Dsh	Ras		AMPK		COX412	AKT								PI3K	E-cadh		VEGF	
+	TSC1/TSC2			Dsh	COX412	AKT	Ras									PI3K	E-cadh		VEGF
+		AMPK	Ras		Dsh		COX412	AKT								PI3K	E-cadh		VEGF
+	Slug			Dsh	COX412	Ras		AKT							PI3K	E-cadh			VEGF
+		AMPK		Dsh	Ras	COX412	AKT								PI3K	E-cadh		VEGF	
+		AMPK		Dsh	COX412	AKT	Ras									PI3K	E-cadh		VEGF
+	eEF2K	Ras					Dsh	COX412	AKT						PI3K	E-cadh			VEGF
+		AMPK	Ras		Dsh	COX412	AKT							PI3K			E-cadh		VEGF
+	VEGF			Dsh	COX412	AKT			Ras					PI3K		E-cadh			p70
+		Ras		AMPK			Dsh	COX412	AKT							PI3K	E-cadh		VEGF
+	p70			Ras			Dsh	COX412		AKT						PI3K	E-cadh		VEGF
+		AMPK		Dsh	Ras		COX412	AKT						PI3K		E-cadh		VEGF	
+		AMPK		Dsh	Ras	COX412	AKT							PI3K	E-cadh		VEGF		
+	PKC		Ras			Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+	Ras	eEF2					Dsh	COX412	AKT							PI3K	E-cadh		VEGF
+	Ras	ERK		AMPK		Dsh	COX412	AKT							PI3K	E-cadh			VEGF
+	Max			Dsh	Ras	COX412	AKT								PI3K	E-cadh			VEGF
+	VEGF			Dsh	COX412	AKT	Ras								PI3K	E-cadh			p70
+	RTK	AMPK		Dsh	COX412	AKT				Ras					PI3K	E-cadh			VEGF
+	Slug			Dsh	COX412	AKT				Ras				PI3K			E-cadh		VEGF
+		Ras			AMPK		Dsh	COX412	AKT						PI3K	E-cadh		VEGF	
+		AMPK		Dsh	COX412	Ras			AKT							PI3K	E-cadh		VEGF
+	beta-cat	AMPK		Dsh	COX412	AKT		Ras							PI3K	E-cadh			VEGF
+		Ras	AMPK		Dsh	COX412	AKT						PI3K		E-cadh			VEGF	
+	Dsh	AMPK		Ras	COX412		AKT						PI3K	E-cadh				VEGF	
+	Dsh	Ras	AMPK		COX412		AKT								PI3K	E-cadh		VEGF	
+		AMPK		Dsh	COX412	AKT			Ras						PI3K	E-cadh			VEGF
+		AMPK		Ras	Dsh	COX412	AKT								PI3K	E-cadh			VEGF
+	COX412			Ras	Dsh										PI3K	E-cadh		VEGF	
+	TSC1/TSC2			Dsh	COX412	AKT				Ras						PI3K	E-cadh		VEGF
+	RTK	Ras	AMPK			Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+		AMPK		Dsh	COX412	Ras	AKT									PI3K	E-cadh		VEGF
+	Ras	eEF2				Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+		AMPK		Ras	Dsh	COX412	AKT									PI3K	E-cadh		VEGF
+		AMPK	Ras		Dsh	COX412	AKT							PI3K	E-cadh				VEGF
+	mTOR	AMPK		Dsh	COX412	AKT						Ras	PI3K	E-cadh					VEGF
+		Ras	AMPK		Dsh			COX412		AKT						PI3K	E-cadh		VEGF
+		Ras	AMPK			Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+	LDHA	Ras					Dsh	COX412	AKT						PI3K	E-cadh			VEGF
+		AMPK		Dsh	COX412	Ras	AKT									PI3K	E-cadh		VEGF
+	Miz-1			Dsh	COX412	AKT	Ras									PI3K	E-cadh		VEGF
+	FosJun			Dsh	COX412	AKT						Ras	PI3K	E-cadh					VEGF
+	MXI1		Ras		Dsh	COX412	AKT									PI3K	E-cadh		VEGF
+	mTOR	AMPK		Ras			Dsh	COX412	AKT							PI3K	E-cadh		VEGF
+		AMPK		Dsh	COX412	Ras	AKT									PI3K	E-cadh		VEGF
+		AMPK		Dsh	COX412	AKT				Ras				PI3K		E-cadh			VEGF
+	PHDs	AMPK		Dsh	COX412	AKT	Ras						PI3K		E-cadh				VEGF
+	Ras			p70				Dsh	COX412	AKT						PI3K	E-cadh		VEGF
+		Ras		AMPK		Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+	Bcl-2	Ras	AMPK			Dsh	COX412	AKT							PI3K		E-cadh		VEGF
+	FOXO			Ras			Dsh	COX412	AKT							PI3K	E-cadh		VEGF
+	RHEB			Ras	Dsh		COX412	AKT							PI3K		E-cadh		VEGF
+	Glut-1			Dsh	COX412	AKT		Ras								PI3K	E-cadh		VEGF
+	PHDs	AMPK		Ras	Dsh	COX412	AKT									PI3K	E-cadh		VEGF
+	Ras	NF1			Dsh		COX412	AKT								PI3K	E-cadh		VEGF
+	TAK1	Ras				Dsh		COX412	AKT							PI3K	E-cadh		VEGF
+	ERK	AMPK		Ras		Dsh	COX412	AKT							PI3K		E-cadh		VEGF
+	Ras	RTK	AMPK			Dsh	COX412	AKT							PI3K	E-cadh			VEGF
+	p90	Ras		AMPK			Dsh	COX412	AKT						PI3K	E-cadh			VEGF
+	Ras	PDK1			Dsh	COX412			AKT							PI3K	E-cadh		VEGF
+	MXI1			Dsh	COX412	AKT		Ras								PI3K	E-cadh		VEGF
+	NF1		Ras			Dsh		COX412	AKT							PI3K	E-cadh		VEGF
+	Myc	AMPK		Dsh	COX412	AKT					Ras			PI3K	E-cadh				VEGF
+	Myc	AMPK		Ras		Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+		Ras		AMPK				Dsh	COX412	AKT						PI3K	E-cadh		VEGF
+	E-cadh	AMPK		Dsh	COX412	Ras	AKT								PI3K			VEGF	
+		AMPK	Dsh	COX412	AKT	Ras						PI3K		E-cadh				VEGF	
+	FosJun			Dsh	COX412	AKT	Ras									PI3K	E-cadh		VEGF
+	PHDs	AMPK		Ras	Dsh	COX412		AKT								PI3K	E-cadh		VEGF
+	Bcl-XL	AMPK		Dsh	COX412	AKT			Ras					PI3K	E-cadh				VEGF
+	JNK	AMPK		Ras			Dsh	COX412	AKT							PI3K	E-cadh		VEGF
+		AMPK		Ras	Dsh	COX412			AKT					PI3K		E-cadh		VEGF	
+	TAK1		Ras			Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+	E-cadh	AMPK		Ras	Dsh			COX412	AKT							PI3K		VEGF	
+	PKC	Ras				Dsh	COX412	AKT						PI3K	E-cadh				VEGF
+	IKK	Ras				Dsh	COX412	AKT						PI3K			E-cadh		VEGF
+	Bcl-2	AMPK		Dsh	Ras	COX412		AKT						PI3K	E-cadh				VEGF
+	Miz-1	Ras				Dsh	COX412	AKT							PI3K	E-cadh			VEGF
+		AMPK		Dsh	COX412	AKT				Ras				PI3K		E-cadh			VEGF
+		AMPK		Dsh	COX412	Ras			AKT					PI3K	E-cadh			VEGF	
+	AMPK			Dsh	Ras	COX412	AKT							PI3K	E-cadh				VEGF
+		AMPK	Ras		Dsh	COX412	AKT									PI3K	E-cadh		VEGF
+		AMPK		Dsh	COX412	Ras	AKT							PI3K		E-cadh			VEGF
+		AMPK	Ras		Dsh	COX412		AKT							PI3K	E-cadh			VEGF
+	Mdm2	AMPK	Ras			Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+	Ras		WNT	AMPK			Dsh	COX412	AKT							PI3K	E-cadh		VEGF
+	cdc20			Ras		Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+	Glut-1			Dsh	Ras		COX412	AKT								PI3K	E-cadh		VEGF
+		AMPK	Ras		Dsh	COX412	AKT									PI3K	E-cadh		VEGF
+	MXI1			Dsh	COX412	AKT	Ras								PI3K	E-cadh			VEGF
+	Ras		Dsh	AMPK		COX412	AKT							PI3K	E-cadh			VEGF	
+	hTERT	AMPK		Dsh	COX412	AKT		Ras					PI3K			E-cadh			VEGF
+		AMPK	Ras			Dsh	COX412	AKT						PI3K	E-cadh			VEGF	
+	PKC			Dsh	COX412	AKT						PI3K	Ras	E-cadh					VEGF
+	Ras	ERK		AMPK		Dsh	COX412	AKT								PI3K	E-cadh		VEGF
+		AMPK		Dsh	COX412	Ras		AKT						PI3K		E-cadh		VEGF	
+		AMPK		Ras	Dsh		COX412	AKT					PI3K		E-cadh			VEGF	
+	RHEB	Ras					Dsh	COX412	AKT							PI3K	E-cadh		VEGF
