@@ -1,0 +1,29 @@
+# main parameter file
+# YAML is like JSON, but with more minimal syntax and allows comments
+# parse.py also adds support for scientific notation in the form: 10^8
+
+debug : true # adds various checks, may cause slow down
+verbose : true # prints out more info 
+print_lap : 10 # how many laps before another print statement. only if verbose 
+
+num_samples : 10^2 # number of initial states tested. false to turn off (and use only max_laps instead)
+steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+lap_stop_rule : 'steady' # options: false, steady. Lap always finishes after 'steps_per_lap' at the latest
+steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
+
+sync : true # node update scheme. currently only sync is implemented
+
+# parallel
+parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+fraction_per_lap : 1 # fraction of networks needed to satisfy stop condition to exit a lap
+clause_bin_size : 8 # number of clauses each threads merges at once
+
+# input
+net_file : 'input/toyNet.txt' # examples: 'input/fumia.txt', 'input/simpleNet.txt'. See README for syntax description
+pheno_file: 'input/toyPhenos.yaml' #'input/fumiaPhenos.yaml', 'input/simplePhenos.yaml' if you don't want it, use null or turn use_phenos off
+use_phenos : true # quick way to disable phenotypes and ignore pheno_file
+
+# output
+output_dir : 'output/'
+output_img : 'basinSizes.png'
+savefig : 0 # as opposed to showing the image

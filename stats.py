@@ -30,8 +30,8 @@ def normal_CI(a, confidence=0.95):
 	return conf_min, conf_max
 
 
-def t_CI(a, skewed=True, confidence=0.95):
-	# asymmetric confidence interval based on an altered t-test
+def t_CI(a, skewed=False, confidence=0.95):
+	# asymmetric confidence interval (skewed) is based on an altered t-test
 	# from eqn 2.7 of https://www.jstor.org/stable/pdf/2286597.pdf
 	# thanks to https://stats.stackexchange.com/questions/16516/
 	mean = np.mean(a)

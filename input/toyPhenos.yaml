@@ -1,0 +1,14 @@
+# specifies which nodes are 'outputs' and determine the phenotype
+
+outputs : ['p1','p2']
+output_thresholds : [0,0] 
+# will produce output phenotypes in terms of these
+
+init : {}
+# each sample begins with these states (x0) 
+
+
+mutations : {}
+# mutations alter the function of the node to always be off or on
+
+pheno_color_map : {'00':0, '01':1,'10':2,'11':3,} #to ensure consistent coloring between images

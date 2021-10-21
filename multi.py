@@ -53,22 +53,19 @@ def many_sequences(param_file):
 	cancer_seqs = parse.sequences('input/efSeq_pos.txt', 'input/efSeq_neg.txt')
 	params = parse.params(param_file)
 
-	run_cancer, run_scramble, run_random = [1,1,1]
+	run_cancer, run_scramble, run_driverScramble, run_sideScramble, run_random = [0,1,1,1,0]
 
-	all_feats = {'cancerous':[],'scrambled':[],'random':[]}
+	all_feats = {'cancerous':[],'scrambled':[],'random':[],'scrambled_drivers':[],'scrambled_passengers':[]}
 	params['savefig'] = True # i assume
-	cap = 40
+	cap = None
+	k=4
 	if cap is None: 
 		cap = len(cancer_seqs)
-
-	orig_dir = params['output_dir']
 
 	if run_cancer:
 		print("\n~~~ Cancerous Sequences~~~\n")
 		i=0
 		for seq in cancer_seqs[:cap]:
-			params['output_dir'] = orig_dir + 'Cancerous_' + str(i)+ '_' +datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-			#os.makedirs(params['output_dir']) #only if plotting each one, pr del this soon
 			if params['verbose']:
 				print("\tStarting sequence #",i+1)
 			all_feats['cancerous'] += [sequence(params,seq)]
@@ -78,21 +75,56 @@ def many_sequences(param_file):
 		print("\n~~~ Scrambled Sequences~~~\n")	
 		i=0	
 		for seq in cancer_seqs[:cap]:
-			params['output_dir'] = orig_dir + 'Scrambled_' + str(i)+ '_' +datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-			#os.makedirs(params['output_dir'])
 			if params['verbose']:
 				print("\tStarting sequence #",i+1)
-			rd.shuffle(seq)	# shuffles order in place
+			while seq.index(('APC',0)) < seq.index(('Ras',1)) < seq.index(('PTEN',0)) < seq.index(('Smad',0)) < seq.index(('p53',0)):
+				# ensures at least one of the main drivers are out of order
+				rd.shuffle(seq)	# shuffles order in place
 			all_feats['scrambled'] += [sequence(params,seq)]
 			i+=1
+
+	if run_driverScramble:
+		print("\n~~~ Scrambled Main Driver Sequences ~~~\n")
+		i=0	
+		for seq in cancer_seqs[:cap]:
+			if params['verbose']:
+				print("\tStarting sequence #",i+1)
+
+			drivers = [('APC',0),('Ras',1),('PTEN',0),('Smad',0),('p53',0)]
+			driver_seq = [seq.index(drivers[i]) for i in range(len(drivers))]
+			rd.shuffle(driver_seq)
+			for j in range(len(driver_seq)):
+				seq[driver_seq[j]] = drivers[j]
+
+			all_feats['scrambled_drivers'] += [sequence(params,seq)]
+			i+=1
+
+	if run_sideScramble:
+		print("\n~~~ Scrambled Passenger Sequences ~~~\n")
+		i=0	
+		for seq in cancer_seqs[:cap]:
+			if params['verbose']:
+				print("\tStarting sequence #",i+1)
+
+			drivers = [('APC',0),('Ras',1),('PTEN',0),('Smad',0),('p53',0)]
+			driver_seq = [seq.index(drivers[i]) for i in range(len(drivers))]
+			passenger_seq = [j for j in range(len(seq))]
+			for j in driver_seq:
+				passenger_seq.remove(j)
+			passengers = [seq[j] for j in passenger_seq]
+			rd.shuffle(passenger_seq)
+			for j in range(len(passenger_seq)):
+				seq[passenger_seq[j]] = passengers[j]
+
+			all_feats['scrambled_passengers'] += [sequence(params,seq)]
+			i+=1
+
 
 	if run_random:
 		clause_mapping, node_mapping = parse.net(params)
 		nodes = node_mapping['num_to_name']
 		print("\n~~~ Random Sequences~~~\n")	
 		for i in range(cap):
-			params['output_dir'] = orig_dir + 'Random_' + str(i)+ '_'+ datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-			#os.makedirs(params['output_dir'])
 			if params['verbose']:
 				print("\n~~~ Starting sequence #",i+1,' ~~~\n')
 			# build a seq by picking rd nodes and rd flips
@@ -102,12 +134,14 @@ def many_sequences(param_file):
 			#print('build random seq:',seq)
 			all_feats['random'] += [sequence(params,seq)]
 
-	params['output_dir'] = orig_dir
-	pickle_file = orig_dir + '/multi' + '_'+ datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.pickle'
+	params['output_dir'] += 'seqs_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+	os.makedirs(params['output_dir'])
+
+	pickle_file = params['output_dir'] + '/multi' + '_'+ datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.pickle'
 	print("Pickling a file to: ", pickle_file)
 	pickle.dump( {'data':all_feats, 'params':params}, open( pickle_file, "wb" ) )
 
-	cluster_time_series(all_feats, params)
+	cluster_time_series(all_feats, params,k=k)
 
 
 def sequence(params,seq,plotit=False):
@@ -176,28 +210,31 @@ def normz_attractors(attractors, num_inputs):
 
 
 def plot_from_pickle(pickle_file):
+	k=4
 	a_pickle = pickle.load( open( pickle_file, "rb" ) )
 	data, params = a_pickle['data'], a_pickle['params']
-	cluster_time_series(data, params)
+	cluster_time_series(data, params,k=k)
 
-def cluster_time_series(data, params):
-	for k in ['cancerous', 'scrambled','random']:
-		if data[k] != []:
+def cluster_time_series(data, params, k):
+	for key in data.keys():
+		if data[key] != [] and data[key] != {}: #ie non empty
 			for feat in ['H(pheno)','H(attr|pheno)','H(xf|attr)','H(attr)','H(input|pheno)','H(pheno|input)','H(input|attr)','H(attr|input)']:
 				oneSet = []
-				for i in range(len(data[k])):
+				for i in range(len(data[key])):
 					oneSeries = []
-					for j in range(len(data[k][i])):
-						oneSeries += [data[k][i][j][feat]]
+					for j in range(len(data[key][i])):
+						oneSeries += [data[key][i][j][feat]]
 					oneSet += [oneSeries]
-				label = k+'_'+feat
-				kmeans_cluster(params, oneSet,label,k=4)
+				label = key+'_'+feat
+				kmeans_cluster(params, oneSet,label,k=k)
 
 
 def kmeans_cluster(params, series,label,k=8):
 	# series = [[time_series1],...[time_seriesN]]
 	from sklearn.cluster import KMeans
+	# importing here cause don't want to import sklearn unless abs nec
 	#alt: from tslearn.clustering.TimeSeriesKMeans
+
 
 	clusters = KMeans(n_clusters=k, random_state=0).fit(series, y=None, sample_weight=None).labels_
 
@@ -219,9 +256,10 @@ def kmeans_cluster(params, series,label,k=8):
 				#assert(0)
 			#cluster_label = label + '_cluster' + str(i)
 			CIS += [cluster_CIs]
-		else:
+		elif aCluster != []: #i.e. there is at least 1 series in this cluster
 			CIS += [None]
-		avgs += [cluster_avg]
+		if aCluster != []:
+			avgs += [cluster_avg]
 	
 	plot.clustered_time_series(params,avgs ,label,CIs=CIS)
 
