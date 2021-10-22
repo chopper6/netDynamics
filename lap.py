@@ -1,4 +1,4 @@
-import itertools, util
+import itertools, util, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 def step(params, x, num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes):
@@ -36,22 +36,32 @@ def fixed_point_search(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads
 	x = cp.array(x0)
 	
 	for i in range(params['steps_per_lap']):
+		x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
 
-
-		if not params['lap_stop_rule']:
-			x = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-
-		elif params['lap_stop_rule'] == 'steady': # i doubt frequently checking for steady state is efficient
-			x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-
+		if params['lap_stop_rule'] == 'steady': # i doubt frequently checking for steady state is efficient
 			# if x + x_next = 0 (ie nxor is true) for all nodes, then at a steady state
 			if cp.sum(cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1))/params['parallelism'] >= params['fraction_per_lap']:
 				return {'finished':cp.all(cp.logical_not(cp.logical_xor(x,x_next)),axis=1), 'state':x_next, 'avg':x_next, 'period':cp.ones(params['parallelism'])}
 			
-			x = x_next 
-
-		else:
+		elif params['lap_stop_rule']: # i.e. if not "False" otherwise unrecognized
 			sys.exit("ERROR: unrecognized argument for 'lap_stop_rule'")
+
+		if params['update_rule']=='sync':
+			x = x_next
+		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
+			p=.5
+			which_nodes = cp.random.rand(params['parallelism'], num_nodes) > p
+			x = which_nodes*x_next + (1-which_nodes)*x 
+		elif params['update_rule']=='async':
+			# WARNING: this is incredibly inefficient (uses an array to update a single element)
+			# only use to check against Gasync
+			which_nodes = cp.zeros((params['parallelism'], num_nodes), dtype=bool)
+			indx = cp.random.randint(0, high=num_nodes, size=params['parallelism'])
+			for i in range(params['parallelism']):
+				which_nodes[i,indx[i]]=1
+			x = which_nodes*x_next + (1-which_nodes)*x
+		else:
+			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
 	# do once more but keep x_next sep to check for steady state
 	X = cp.concatenate((x,cp.logical_not(x[:,:num_nodes])),axis=1)

@@ -64,7 +64,7 @@ def net(params):
 				sys.exit("Hit an infinite loop, unless net is monstrously huge") 
 
 			line = line.strip().split(node_fn_split)
-			node_name = line[0]
+			node_name = line[0].strip()
 			for symbol in strip_from_node:
 				node_name = node_name.replace(symbol,'')
 			if params['debug']:
@@ -118,7 +118,7 @@ def net(params):
 
 			line = file.readline() 
 			line = line.strip().split(node_fn_split)
-			node = node_name_to_num[line[0]]
+			node = node_name_to_num[line[0].strip()]
 
 			# if using mutations and this node is mutated:
 			if params['use_phenos'] and line[0] in params['phenos']['mutations'] and params['phenos']['mutations'][line[0]] == 0:
@@ -129,7 +129,7 @@ def net(params):
 					assert(clauses == ['0'] or clauses ==['1'])
 
 			else:
-				clauses = line[1].split(clause_split)
+				clauses = [splited.strip() for splited in line[1].split(clause_split)]
 
 			for i in range(len(clauses)):
 				clause = clauses[i]

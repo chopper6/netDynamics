@@ -4,51 +4,6 @@ import random as rd
 import numpy as np
 
 
-def input_set(**kwargs):
-	param_file = kwargs.get('param_file', None)
-	plotpie = kwargs.get('plotpie', False)
-	params = kwargs.get('params', None)
-
-	if param_file==None and params==None:
-		sys.err("ERROR: must pass a param file or params!")
-	if params is None:
-		params = parse.params(param_file)
-	num_inputs = len(params['phenos']['inputs'])
-	all_attractors = {}
-
-
-	if plotpie==True:
-		params['output_dir'] = os.path.join(os.getcwd()+'/'+params['output_dir'], datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-		os.makedirs(params['output_dir'])
-
-		params['savefig'] = True # i assume you don't want an image popping up for every combination of inputs
-
-
-	input_sets = itertools.product([0,1], repeat=num_inputs) 
-	if params['verbose']:
-		print("\nRunning",2**num_inputs,'input combinations.')
-	j=1
-	for input_set in input_sets:
-		if params['verbose']:
-			print("\n~~~ Starting input set #",j,'~~~\n')
-		label=''
-		for i in range(num_inputs):
-			input_node = params['phenos']['inputs'][i]
-			params['phenos']['init'][input_node] = input_set[i]
-			if i!=0:
-				label+='_'
-			label+=input_node +str(input_set[i])
-		attractors, node_mapping = main.find_attractors(params)
-		add_attractors(all_attractors,attractors,input_set) # WARNING: not really attractors, but attractors x inputs now
-
-		if plotpie==True:
-			plot.pie(params,attractors, node_mapping,external_label=label)
-		j+=1
-
-	normz_attractors(all_attractors, num_inputs)
-	return all_attractors
-
-
 def many_sequences(param_file):
 	cancer_seqs = parse.sequences('input/efSeq_pos.txt', 'input/efSeq_neg.txt')
 	params = parse.params(param_file)
@@ -63,7 +18,7 @@ def many_sequences(param_file):
 		cap = len(cancer_seqs)
 
 	if run_cancer:
-		print("\n~~~ Cancerous Sequences~~~\n")
+		print("\n~~~ Cancerous Sequences ~~~\n")
 		i=0
 		for seq in cancer_seqs[:cap]:
 			if params['verbose']:
@@ -72,7 +27,7 @@ def many_sequences(param_file):
 			i+=1
 
 	if run_scramble:
-		print("\n~~~ Scrambled Sequences~~~\n")	
+		print("\n~~~ Scrambled Sequences ~~~\n")	
 		i=0	
 		for seq in cancer_seqs[:cap]:
 			if params['verbose']:
@@ -123,7 +78,7 @@ def many_sequences(param_file):
 	if run_random:
 		clause_mapping, node_mapping = parse.net(params)
 		nodes = node_mapping['num_to_name']
-		print("\n~~~ Random Sequences~~~\n")	
+		print("\n~~~ Random Sequences ~~~\n")	
 		for i in range(cap):
 			if params['verbose']:
 				print("\n~~~ Starting sequence #",i+1,' ~~~\n')
@@ -131,7 +86,6 @@ def many_sequences(param_file):
 			seq=[]
 			for m in range(len(cancer_seqs[0])):
 				seq+=[(nodes[rd.randint(1,math.floor(len(nodes)/2))],rd.choice([0,1]))] #note that nodes includes negative nodes
-			#print('build random seq:',seq)
 			all_feats['random'] += [sequence(params,seq)]
 
 	params['output_dir'] += 'seqs_'+datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -142,6 +96,51 @@ def many_sequences(param_file):
 	pickle.dump( {'data':all_feats, 'params':params}, open( pickle_file, "wb" ) )
 
 	cluster_time_series(all_feats, params,k=k)
+
+
+def input_set(**kwargs):
+	param_file = kwargs.get('param_file', None)
+	plotpie = kwargs.get('plotpie', False)
+	params = kwargs.get('params', None)
+
+	if param_file==None and params==None:
+		sys.err("ERROR: must pass a param file or params!")
+	if params is None:
+		params = parse.params(param_file)
+	num_inputs = len(params['phenos']['inputs'])
+	all_attractors = {}
+
+
+	if plotpie==True:
+		params['output_dir'] = os.path.join(os.getcwd()+'/'+params['output_dir'], datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
+		os.makedirs(params['output_dir'])
+
+		params['savefig'] = True # i assume you don't want an image popping up for every combination of inputs
+
+
+	input_sets = itertools.product([0,1], repeat=num_inputs) 
+	if params['verbose']:
+		print("\nRunning",2**num_inputs,'input combinations.')
+	j=1
+	for input_set in input_sets:
+		if params['verbose']:
+			print("\n~~~ Starting input set #",j,'~~~\n')
+		label=''
+		for i in range(num_inputs):
+			input_node = params['phenos']['inputs'][i]
+			params['phenos']['init'][input_node] = input_set[i]
+			if i!=0:
+				label+='_'
+			label+=input_node +str(input_set[i])
+		attractors, node_mapping = main.find_attractors(params)
+		add_attractors(all_attractors,attractors,input_set) # WARNING: not really attractors, but attractors x inputs now
+
+		if plotpie==True:
+			plot.pie(params,attractors, node_mapping,external_label=label)
+		j+=1
+
+	normz_attractors(all_attractors, num_inputs)
+	return all_attractors
 
 
 def sequence(params,seq,plotit=False):
@@ -203,8 +202,6 @@ def add_attractors(all_attractors,attractors,input_set):
 def normz_attractors(attractors, num_inputs):
 	for k in attractors.keys():
 		attractors[k]['size'] /= 2**num_inputs
-
-
 
 
 

@@ -84,7 +84,7 @@ void write_to_file(char file_name[], int num_vars, int num_clauses, int reduced_
             if (j!=0) {
                 fprintf(fptr,",");
             }
-            fprintf(fptr,"%d",reduced_clauses[num_clauses*i+j]);
+            fprintf(fptr,"%d",reduced_clauses[num_vars*i+j]);
         } 
         fprintf(fptr,"\n");
     }
