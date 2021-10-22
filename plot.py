@@ -147,7 +147,7 @@ def features(params,seq,feats):
 		j+=1
 
 
-def clustered_time_series(params,avgs,label,CIs=None):
+def clustered_time_series(params,avgs,label,CIs=None,ybounds=None):
 	# avg should be 1d array
 	# CIs[:,1] should be 1d array of avg-CI
 	# CIs[:,2] should be avg+CI
@@ -158,6 +158,11 @@ def clustered_time_series(params,avgs,label,CIs=None):
 		plt.plot(avgs[i])
 		if CIs is not None and CIs[i] is not None:
 			plt.fill_between([i for i in range(len(avgs[i]))],CIs[i][1],CIs[i][0],alpha=.15,label='_nolegend_')
+
+	if ybounds is not None:
+		ax.set_ylim(ybounds)
+
+	plt.grid(alpha=.2)
 
 	ax.set_xticks([i*2 for i in range(int((len(avgs[0])+1)/2))])
 	ax.set_xlabel('Mutation Number')

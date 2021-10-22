@@ -6,7 +6,7 @@ debug : true # adds various checks, may cause slow down
 verbose : true # prints out more info 
 print_lap : 10 # how many laps before another print statement. only if verbose 
 
-num_samples : 10^5 # number of initial states tested. false to turn off (and use only max_laps instead)
+num_samples : 10^2 # number of initial states tested. false to turn off (and use only max_laps instead)
 steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 lap_stop_rule : false # options: false, steady. Lap always finishes after 'steps_per_lap' at the latest
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
@@ -16,7 +16,7 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
 # parallel
-parallelism : 10^5 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
 fraction_per_lap : .5 # fraction of networks needed to satisfy stop condition to exit a lap
 clause_bin_size : 4 # number of clauses each threads merges at once
 
@@ -27,5 +27,5 @@ use_phenos : true # quick way to disable phenotypes and ignore pheno_file
 
 # output
 output_dir : 'output/'
-output_img : 'basinSizes_Gasync.png'
+output_img : 'basinSizes.png'
 savefig : 1 # as opposed to showing the image

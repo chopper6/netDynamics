@@ -1,32 +1,32 @@
 import math
 
-def calc_entropy(params,attractors,num_inputs):
-	# later: add node-level H (= H on path to fixed point? jpp)
-
-	# WARNING: with x0s, not really "attractors" dict, but attractors x x0s now
-
+def calc_entropy(params,ioPairs,num_inputs):
 	# note that there is a lot of redundancy with the features and P's calculated here
-	# 'state' should really be caled xf everywhere
+	# 'state' of an iopair is the attractor, i.e. xf 
 
-	features = {'H(pheno)':0,'H(attr|pheno)':0,'H(xf|attr)':0,'H(attr)':0,'H(input|pheno)':0,'H(pheno|input)':0,'H(input|attr)':0,'H(attr|input)':0}
+	features = {}
 	P={'attr,pheno':{},'pheno':{},'attr':{}, 'input,pheno':{}, 'input,attr':{},'xf,attr':[]} 
 
 	H_inputs = num_inputs #since each input has 2 states and are equally likely
 
-	for k in attractors.keys():
-		attr = attractors[k]
-		for i in range(int(attr['period'])): 
-			P['xf,attr']+=[(1/attr['period'])*attr['size'] ]
+	for k in ioPairs.keys():
+		iopair = ioPairs[k]
+		for i in range(int(iopair['period'])): 
+			if params['update_rule'] != 'sync':
+				assert(False) #period will not work here
+				# want a way to def subattractors, but time spent in each state may be too depd on model rates ect
+				# also need to check if i def attractors by their state in the async case
+			P['xf,attr']+=[(1/iopair['period'])*iopair['size'] ]
 
-		if attr['pheno'] not in P['pheno'].keys():
-			P['pheno'][attr['pheno']] = attr['size']
+		if iopair['pheno'] not in P['pheno'].keys():
+			P['pheno'][iopair['pheno']] = iopair['size']
 		else:
-			P['pheno'][attr['pheno']] += attr['size']
+			P['pheno'][iopair['pheno']] += iopair['size']
 
-		if attr['state'] not in P['attr'].keys(): #since attractors are actually attractorsXinputs, need to seperate attractor probabilities 
-			P['attr'][attr['state']] = attr['size']
+		if iopair['state'] not in P['attr'].keys():
+			P['attr'][iopair['state']] = iopair['size']
 		else:
-			P['attr'][attr['state']] += attr['size']
+			P['attr'][iopair['state']] += iopair['size']
 
 
 		for pair in [['attr','pheno'],['input','pheno'],['input','attr']]:
@@ -35,12 +35,12 @@ def calc_entropy(params,attractors,num_inputs):
 				search1 = 'state'
 			if search2 == 'attr':
 				search2 = 'state'
-			attr_key = 	attr[search1] + ',' + attr[search2]	
+			attr_key = 	iopair[search1] + ',' + iopair[search2]	
 			P_key =	pair[0] + ',' + pair[1]
 			if attr_key not in P[P_key].keys():
-				P[P_key][attr_key] = attr['size']
+				P[P_key][attr_key] = iopair['size']
 			else:
-				P[P_key][attr_key] += attr['size']
+				P[P_key][attr_key] += iopair['size']
 
 
 
@@ -48,6 +48,7 @@ def calc_entropy(params,attractors,num_inputs):
 	features['H(pheno)'] = entropy(P['pheno'])
 	features['H(xf|attr)'] = entropy(P['xf,attr']) - features['H(attr)'] 
 	features['H(attr|pheno)'] = entropy(P['attr,pheno']) - features['H(pheno)']
+	features['H(attr,pheno)'] = entropy(P['attr,pheno'])
 
 	features['H(input|pheno)'] = entropy(P['input,pheno']) - features['H(pheno)']
 	features['H(pheno|input)'] = entropy(P['input,pheno']) - H_inputs
