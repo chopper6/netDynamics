@@ -11,7 +11,7 @@ steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_
 lap_stop_rule : false # options: false, steady. Lap always finishes after 'steps_per_lap' at the latest
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
 
-update_rule : 'async' # node update scheme: 'sync', 'async', or 'Gasync' 
+update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
