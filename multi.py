@@ -245,7 +245,7 @@ def kmeans_cluster(params, series,k=8):
 	# importing here cause don't want to import sklearn unless abs nec
 	#alt: from tslearn.clustering.TimeSeriesKMeans
 
-	clusters = KMeans(n_clusters=k, random_state=0).fit(series, y=None, sample_weight=None).labels_
+	clusters = KMeans(n_clusters=k, random_state=None,max_iter=1000).fit(series, sample_weight=None).labels_
 
 	avgs, CIS = [],[]
 	for i in range(k):

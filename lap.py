@@ -1,3 +1,8 @@
+# TODO
+# need to clean this up, esp sync side
+# rename 'state' to 'id'...but i mean everywhere
+
+
 import itertools, util, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
@@ -46,22 +51,7 @@ def fixed_point_search(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads
 		elif params['lap_stop_rule']: # i.e. if not "False" otherwise unrecognized
 			sys.exit("ERROR: unrecognized argument for 'lap_stop_rule'")
 
-		if params['update_rule']=='sync':
-			x = x_next
-		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
-			p=.5
-			which_nodes = cp.random.rand(params['parallelism'], num_nodes) > p
-			x = which_nodes*x_next + (1-which_nodes)*x 
-		elif params['update_rule']=='async':
-			# WARNING: this is incredibly inefficient (uses an array to update a single element)
-			# only use to check against Gasync
-			which_nodes = cp.zeros((params['parallelism'], num_nodes), dtype=bool)
-			indx = cp.random.randint(0, high=num_nodes, size=params['parallelism'])
-			for i in range(params['parallelism']):
-				which_nodes[i,indx[i]]=1
-			x = which_nodes*x_next + (1-which_nodes)*x
-		else:
-			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
+		x = x_next
 
 	# do once more but keep x_next sep to check for steady state
 	X = cp.concatenate((x,cp.logical_not(x[:,:num_nodes])),axis=1)
@@ -144,6 +134,86 @@ def categorize_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, 
 	avg_states = avg_states/period[:,cp.newaxis]
 	exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x0*not_finished[:,cp.newaxis]
 	return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period, 'avg':avg_states}
+
+
+
+def async_transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes):
+	x = cp.array(x0,dtype=bool).copy()
+	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
+
+	for i in range(params['steps_per_lap']):
+
+		x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		
+		if params['update_rule']=='sync':
+			x = x_next
+			assert(False) #why is async_transient() function being called with sync??
+		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
+			p=.5
+			which_nodes = cp.random.rand(params['parallelism'], num_nodes) > p
+			x = which_nodes*x_next + (1-which_nodes)*x 
+		elif params['update_rule']=='async':
+			# WARNING: this is incredibly inefficient (uses an array to update a single element)
+			# only use to check against Gasync
+			which_nodes = cp.zeros((params['parallelism'], num_nodes), dtype=bool)
+			indx = [cp.arange(params['parallelism']), cp.random.randint(0, high=num_nodes, size=params['parallelism'])]
+			which_nodes[indx]=1
+			x = which_nodes*x_next + (1-which_nodes)*x
+		else:
+			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
+
+	return x
+
+def async_categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes):
+	# assumes x0 is in the oscil
+	# will return a sorted ID for the oscil (max int representation) and the average activity of each node
+
+	x = cp.array(x0,dtype=bool).copy()
+	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
+	ids = cp.array(x0,dtype=bool).copy()
+
+	index_dtype, thread_dtype = get_dtypes(params, num_nodes)
+	simple_ind = cp.array([i for i in range(params['parallelism'])],dtype=thread_dtype) 
+	larger = cp.zeros((params['parallelism']),dtype=cp.uint8)
+	diff = cp.zeros((params['parallelism'],num_nodes),dtype=cp.uint8)
+	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
+
+	avg_states = cp.array(x0,dtype=cp.float16)
+
+	for i in range(params['steps_per_lap']):
+
+		x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		if params['update_rule']=='sync':
+			x = x_next
+			assert(False) #why is async_transient() function being called with sync??
+		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
+			p=.5
+			which_nodes = cp.random.rand(params['parallelism'], num_nodes) > p
+			x = which_nodes*x_next + (1-which_nodes)*x 
+		elif params['update_rule']=='async':
+			# WARNING: this is incredibly inefficient (uses an array to update a single element)
+			# and in fact even more efficient, maybe due to the extra for loop?
+			# only use to check against Gasync
+			which_nodes = cp.zeros((params['parallelism'], num_nodes), dtype=bool)
+			indx = [cp.arange(params['parallelism']), cp.random.randint(0, high=num_nodes, size=params['parallelism'])]
+			which_nodes[indx]=1
+			x = which_nodes*x_next + (1-which_nodes)*x
+		else:
+			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
+
+		# next few lines are just to replace ids with current states that are "larger", where larger is defined by int representation (i.e. first bit that is different)
+		diff = ids-x.astype(cp.int8)
+		first_diff_col = ((diff)!=0).argmax(axis=1).astype(index_dtype) #i'm worred that this first goes to 64 then converts to 8..
+		larger = diff[[simple_ind,first_diff_col]] #note that numpy/cupy handles this as taking all elements indexed at [simple_ind[i],first_diff_col[i]]   
+		
+		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
+
+		avg_states += avg_states
+
+	avg_states = avg_states/params['steps_per_lap']
+	return {'state':ids, 'avg':avg_states}
+
+			
 
 
 def get_dtypes(params, num_nodes):
