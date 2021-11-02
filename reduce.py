@@ -1,12 +1,15 @@
 import os, sys, yaml, util, parse
-import ctypes
+import ctypes, math
 import numpy as np
 from subprocess import call
 
 
-def DNF_via_QuineMcCluskey(net_file, output_file):
+def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 	# net file should be in DNF
 	# see README for format specifications
+
+	# if expanded is true, will explicitly build negative nodes
+	# such that nodes 1:n are regular and n:2n are negatives
 
 	# general approach: 
 	# python: parse file, call qm.exe as subprocess
@@ -24,6 +27,9 @@ def DNF_via_QuineMcCluskey(net_file, output_file):
    			ofile.write(format_name + "\n")
 
 		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
+
+		if expanded:
+			negatives_bin = []
 
 		loop = 0
 		while True:
@@ -93,82 +99,139 @@ def DNF_via_QuineMcCluskey(net_file, output_file):
 				for ec in final_expanded_clauses:
 					unreduced_clauses += [int('0b'+ec,2)]
 
+			unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
+
+			if expanded:
+				neg_clauses = [i for i in range(2**len(input_nodes))]
+				for term in unreduced_clauses:
+					neg_clauses.remove(term)
+				negatives_bin += [{'clauses':neg_clauses,'node':node,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
+
 			if len(unreduced_clauses) == 1:
-				# qm.exe just returns blank, can't reduce anyway, so just put back original line
 				with open(output_file,'a') as ofile:
-					ofile.write(lineCopy)
+					# qm.exe just returns blank, can't reduce anyway, so just put back original line
+					ofile.write(lineCopy.replace('\n','')+'\n') #ensure '\n' and no double \n
 
 			else: # run qm and write reduced function back
-				devnull = open(os.devnull, 'w') #just to hide output of subprocess
-
-				cargs = ["./logicSynth/qm.exe", str(len(input_nodes)), str(len(unreduced_clauses))]
-				for num in unreduced_clauses:
-					cargs += [str(num)]
-
-				call(cargs,stdout=devnull, stderr=devnull)
-
-				reduced_fn = ''
-				with open('c2py.txt','r') as c2py:
-					# result is 1 clause per line, comma sep for each input
-					# 1 = ON in clause, 0 = OFF in clause, -1 = not in clause, -2 = done
-					i = 0
-					while True:
-						line = c2py.readline().strip()
-						if not line: #i.e eof
-							break
-						if i > 1000000:
-							sys.exit("Hit an infinite loop, unless file is monstrously huge") 
-
-						lits = line.split(",")
-						finished_clauses = False
-						clause = ''
-						if len(strip_from_clause) > 0:
-							clause += strip_from_clause[0]
-						added_lit = False
-
-						if i!=0 and lits[0] != '-2':
-							reduced_fn += clause_split
-
-						for j in range(len(lits)):
-							if lits[j] in ['0','1']:
-								if added_lit:
-									clause += literal_split
-								else:
-									added_lit = True
-
-							if lits[j] == '0':
-								clause += not_str + input_nodes_rev[j]
-							elif lits[j] == '1':
-								clause += input_nodes_rev[j]
-							elif lits[j] == '-2':
-								finished_clauses = True
-								break
-							elif lits[j] != '-1': #note that -1 means don't include the clause
-								assert(0) #unrecognized digit
-
-						if not finished_clauses:
-							if len(strip_from_clause) > 0:
-								clause += strip_from_clause[1]
-							reduced_fn += clause 
-						else:
-							break #once reach a clause with a -2, done
-						i+=1
-
+				reduced_fn = run_qm(unreduced_clauses, len(input_nodes),format_name,input_nodes_rev)
 
 				with open(output_file,'a') as ofile:
 				   	ofile.write(node + node_fn_split + reduced_fn + '\n')
-
-				#print('resulting in:',node + node_fn_split + reduced_fn)
-				
+			
 			if loop > 1000000:
 				sys.exit("Hit an infinite loop, unless net is monstrously huge") 
 			loop+=1
 
+		if expanded:
+			for neg_dict in negatives_bin:
+				if len(neg_dict['clauses']) == 1:
+					# qm.exe just returns blank, can't reduce anyway, so just put back original line
+					bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
+					reduced_fn = ''
+					if len(strip_from_clause) > 0:
+						reduced_fn += strip_from_clause[0]
+					finished_clauses, reduced_fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name)
+					if len(strip_from_clause) > 0:
+						reduced_fn += strip_from_clause[1]	
+					with open(output_file,'a') as ofile:
+						ofile.write(not_str + neg_dict['node'] + node_fn_split + reduced_fn + '\n')
+
+				else: # run qm and write reduced function back
+					reduced_fn = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'])
+					with open(output_file,'a') as ofile:
+					   	ofile.write(not_str + neg_dict['node'] + node_fn_split + reduced_fn + '\n')
+
 	os.remove('c2py.txt') #clean up
 
 
-if __name__ == "__main__":
-	if len(sys.argv) != 3:
-		sys.exit("Usage: python3 reduce.py input_net_file output_net_file")
+def int2bool(x,lng):
+	bool_str = ''
+	while x>1:
+		bool_str+=str(x%2)
+		x=math.floor(x/2)
+	bool_str +=str(x%2)
+	for i in range(lng-len(bool_str)):
+		bool_str+='0'
+	return ''.join(reversed(bool_str))
+
+def bool2clause(bool_str, clause,input_nodes_rev, format_name):
+	# this is very specific to the syntax used to for the c program
+	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
 	
-	DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2])
+	added_lit = False
+	for j in range(len(bool_str)):
+		finished_clauses = False
+		if bool_str[j] in ['0','1']:
+			if added_lit:
+				clause += literal_split
+			else:
+				added_lit = True
+
+		if bool_str[j] == '0':
+			clause += not_str + input_nodes_rev[j]
+		elif bool_str[j] == '1':
+			clause += input_nodes_rev[j]
+		elif bool_str[j] == '-2':
+			finished_clauses = True
+			break
+		elif bool_str[j] != '-1': #note that -1 means don't include the clause
+			assert(0) #unrecognized digit
+	
+	return finished_clauses, clause
+
+
+def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
+	# calls a c logic function, MUST build the exe first
+	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
+	devnull = open(os.devnull, 'w') #just to hide output of subprocess
+
+	cargs = ["./logicSynth/qm.exe", str(num_inputs), str(len(unreduced_clauses))]
+	for num in unreduced_clauses:
+		cargs += [str(num)]
+
+	call(cargs,stdout=devnull, stderr=devnull)
+
+	reduced_fn = ''
+	with open('c2py.txt','r') as c2py:
+		# result is 1 clause per line, comma sep for each input
+		# 1 = ON in clause, 0 = OFF in clause, -1 = not in clause, -2 = done
+		i = 0
+		while True:
+			line = c2py.readline().strip()
+			if not line: #i.e eof
+				break
+			if i > 1000000:
+				sys.exit("Hit an infinite loop, unless file is monstrously huge") 
+
+			lits = line.split(",")
+			clause = ''
+			if len(strip_from_clause) > 0:
+				clause += strip_from_clause[0]
+
+			if i!=0 and lits[0] != '-2':
+				reduced_fn += clause_split
+
+			finished_clauses, clause = bool2clause(lits, clause, input_nodes_rev, format_name)
+
+			if not finished_clauses:
+				if len(strip_from_clause) > 0:
+					clause += strip_from_clause[1]
+				reduced_fn += clause 
+			else:
+				break #once reach a clause with a -2, done
+			i+=1
+
+	return reduced_fn
+
+
+if __name__ == "__main__":
+	if len(sys.argv) not in [3,4]:
+		sys.exit("Usage: python3 reduce.py input_net_file output_net_file [exp]")
+	
+	if len(sys.argv) == 4: 
+		if sys.argv[3]=='exp':
+			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)
+		else:
+			sys.exit("Unrecognized 3rd arg. Usage: python3 reduce.py input_net_file output_net_file [exp]")
+	else:
+		DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=False)

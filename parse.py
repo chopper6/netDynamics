@@ -293,6 +293,108 @@ def sequences(seq_file_pos, seq_file_neg):
 	return seqs
 
 
+def expanded_net(net_file):
+	# assumes that net_file is already in expanded form, to avoid calling qm every time
+	# use reduce.py ahead of time to do so
+	# net file should already be in DNF and include negative nodes
+
+	node_name_to_num, node_num_to_name = {},[]
+	n=num_clauses=0
+
+	if not os.path.isfile(net_file):
+		sys.exit("Can't find network file: " + str(net_file)) 
+	
+	# go through net_file 2 times
+	# go thru 1st time to get nodes & composite nodes
+	with open(net_file,'r') as file:
+		format_name = file.readline().replace('\n','')
+		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(format_name)
+
+		loop = 0
+		while True:
+			line = file.readline()
+			if not line: #i.e eof
+				break
+
+			line = line.strip().split(node_fn_split)
+			node_name = line[0].strip()
+			for symbol in strip_from_node:
+				node_name = node_name.replace(symbol,'')
+			
+			assert(node_name not in node_name_to_num.keys())
+			node_name_to_num[node_name] = n
+			node_num_to_name += [node_name]
+			n+=1
+
+			clauses = line[1].split(clause_split)
+			for clause in clauses:
+				literals = clause.split(literal_split)
+				if len(literals)>1:
+					num_clauses += 1
+
+	N = num_clauses+n
+	A = cp.zeros((N,N))
+	assert(n%2==0) #should be even since half are regular and half are complement nodes
+
+	assert(len(node_name_to_num)==len(node_num_to_name)==n) #sanity check
+
+
+	# building clauses_to_threadsex, i.e. the index for the function of each node
+	if n<256: 
+		index_dtype = cp.uint8
+	elif n<65536:
+		index_dtype = cp.uint16
+	else:
+		index_dtype = cp.uint32
+
+	composite_counter = 0
+	
+	# go thru 2nd time to build composite nodes and A
+	with open(net_file,'r') as file:
+		line = file.readline() #again skip 1st line, the encoding
+
+		for _ in range(n): 
+
+			line = file.readline() 
+			line = line.strip().split(node_fn_split)
+			node = node_name_to_num[line[0].strip()]
+
+			clauses = [splited.strip() for splited in line[1].split(clause_split)]
+
+			# fill A with A[2*n+composite_counter,node] = 1 for each composite node
+			# and A[i,2*n+composite_counter]=1 for each input i to the composite node
+
+			for i in range(len(clauses)):
+				clause = clauses[i]
+				clause_fn = []
+				for symbol in strip_from_clause:
+					clause = clause.replace(symbol,'')
+	
+				literals = clause.split(literal_split)
+
+				if len(literals)>1:
+
+					A[n+composite_counter,node]=1
+					for j in range(len(literals)):
+						literal_name = literals[j]
+						for symbol in strip_from_node:
+							literal_name = literal_name.replace(symbol,'')
+						literal_node = node_name_to_num[literal_name]
+						
+						A[literal_node,n+composite_counter]=1
+					composite_counter+=1
+				else:
+					literal_name = literals[0]
+					for symbol in strip_from_node:
+						literal_name = literal_name.replace(symbol,'')
+					literal_node = node_name_to_num[literal_name]
+					
+					A[literal_node,node]=1
+
+
+	node_mapping = {'num_to_name':node_num_to_name, 'name_to_num':node_name_to_num}
+	return A,int(n/2),N,node_mapping
+
 
 
 def catch_errs(params, clause_mapping, node_mapping):
