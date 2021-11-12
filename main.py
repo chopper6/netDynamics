@@ -3,19 +3,19 @@ import parse, basin, plot, features
 
 def main(param_file):
 	params = parse.params(param_file)
-	attractors, node_mapping = find_attractors(params)
+	attractors,phenos, node_mapping = find_attractors(params)
 	#feats = features.calc_entropy(params,attractors)
 	#print(feats)
-	plot.pie(params,attractors, node_mapping)
+	plot.pie(params,attractors,phenos, node_mapping)
 
 
 
 def find_attractors(params):
 	clause_mapping, node_mapping = parse.net(params)
-	attractors = basin.calc_basin_size(params,clause_mapping, node_mapping)
+	attractors, phenos = basin.calc_basin_size(params,clause_mapping, node_mapping)
 	# attractors is a dict {} indexed by the steady state string (or "oscillates")
 	#	each element of attractors[i] = {size:% of initial states, pheno:subset of label corresponding to output nodes}
-	return attractors, node_mapping
+	return attractors,phenos, node_mapping
 
 
 if __name__ == "__main__":

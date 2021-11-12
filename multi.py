@@ -157,11 +157,11 @@ def input_set(**kwargs):
 			if i!=0:
 				label+='_'
 			label+=input_node +str(input_set[i])
-		attractors, node_mapping = main.find_attractors(params)
+		attractors, phenos, node_mapping = main.find_attractors(params)
 		add_ioPairs(ioPairs,attractors,input_set) 
 
 		if plotpie==True:
-			plot.pie(params,attractors, node_mapping,external_label=label)
+			plot.pie(params,attractors, phenos, node_mapping,external_label=label)
 		j+=1
 
 	normz_ioPairs(ioPairs, num_inputs)

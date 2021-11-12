@@ -4,28 +4,38 @@ import matplotlib
 from matplotlib import rcParams, cm
 rcParams['font.family'] = 'serif'
 from matplotlib import pyplot as plt
-
+import random as rd
 import util
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
 
 #TODO: pick better colors
-COLORS = ['#009999','#9933ff','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
+#cm_list = [40*(i+2) for i in range(8)]
+#rd.shuffle(cm_list)
+COLORS = cm.Dark2([i for i in range(20)]) #cm.Set2([i for i in range(20)])
+#COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 
-def pie(params, attractors, node_mapping,external_label=None):
+def pie(params, attractors,phenos, node_mapping,external_label=None):
 	node_name_to_num = node_mapping['name_to_num']
 	node_num_to_name = node_mapping['num_to_name']
 	num_nodes = int(len(node_num_to_name)/2)
 	init_mpl(params)
 
-
-	labels = list(attractors.keys()) #just to make sure order is set
-
 	if CUPY:
-		sizes = [attractors[labels[i]]['size'].get() for i in range(len(labels))]
+		if params['use_phenos']:
+			labels = sorted(list(phenos.keys())) #just to make sure order is set, and always the same between runs
+			sizes = [phenos[labels[i]]['size'].get() for i in range(len(labels))]
+		else:
+			labels = list(attractors.keys()) #just to make sure order is set
+			sizes = [attractors[labels[i]]['size'].get() for i in range(len(labels))]
 	else:
-		sizes = [attractors[labels[i]]['size'] for i in range(len(labels))]
-	
+		if params['use_phenos']:
+			labels = sorted(list(phenos.keys())) #just to make sure order is set, and always the same between runs
+			sizes = [phenos[labels[i]]['size'] for i in range(len(labels))]
+		else:
+			labels = list(attractors.keys()) #just to make sure order is set
+			sizes = [attractors[labels[i]]['size'] for i in range(len(labels))]
+
 	# could prob do this chunk more succinctly
 	del_zeros, offset = [], 0
 	for i in range(len(sizes)):
@@ -45,25 +55,6 @@ def pie(params, attractors, node_mapping,external_label=None):
 				legend_title +=', '
 			legend_title += params['phenos']['outputs'][i]
 			j+=1
-
-
-		outputs = [node_name_to_num[params['phenos']['outputs'][i]] for i in range(len(params['phenos']['outputs']))]
-
-		# shrink labels to only be the phenos, and merge sizes of attractors with same pheno
-		# todo: maybe this should be computed in basin.py instead?
-		pheno_labels, pheno_sizes = [],[]
-		for i in range(len(labels)):
-			lab = labels[i]
-			#pheno_lab = ''.join([lab[outputs[i]-1] for i in range(len(outputs))]) # -1 since attractor labels don't include the always OFF 0 node
-			pheno_lab = attractors[lab]['pheno']
-			if pheno_lab not in pheno_labels:
-				pheno_labels += [pheno_lab]
-				pheno_sizes += [sizes[i]]
-			else:
-				indx = pheno_labels.index(pheno_lab)
-				pheno_sizes[indx] += sizes[i]
-		labels = pheno_labels
-		sizes = pheno_sizes
 
 	else:
 		legend_title = "Attractors ("
@@ -173,6 +164,51 @@ def clustered_time_series(params,avgs,label,CIs=None,ybounds=None):
 	else:
 		plt.show()
 
+
+
+
+
+def probably_bar(params, feats):
+	# feats is 'noise':{'gate':{'loopType':'stat'[...]}}
+	# TODO normalize y to max y height
+
+	buffer, width = 1,.8
+	noises = list(feats.keys())
+	xlabels = list(feats[noises[0]].keys())
+	stats = list(feats[noises[0]][xlabels[0]].keys())
+
+	fig, axs = plt.subplots(len(noises), 2,figsize=(20,8)) # noise(vert) x stats(horz)
+	for h in range(len(stats)):
+		stat = stats[h]
+		ymax = getmax(feats,stat,noises,xlabels)
+		for v in range(len(noises)):
+			noise = noises[v]
+			c,x=0,0
+			xticks=[]
+			for group in xlabels:
+				data = feats[noise][group][stat]
+				X = [i for i in range(x,x+len(data))]
+				xticks += [x+(len(data)-1)/2]
+				x+=len(data) + buffer
+				axs[v,h].bar(X, data, width,color=COLORS[c])
+				c+=1
+			axs[v,h].set_xticks(xticks)
+			axs[v,h].set_xticklabels(xlabels,fontsize=12)
+			axs[v,h].set_ylim(0,ymax*1.1)
+			axs[v,h].set_title(noise + ' ' + stat,fontsize=16)
+		#fig.suptitle(stat,fontsize=20)
+	if params['savefig']:
+		plt.savefig(params['output_dir'] +'/loops.jpg') 	
+	else:
+		plt.show()
+
+def getmax(feats,stat,noises,xlabels):
+	ymax=0
+	for v in range(len(noises)):
+		noise = noises[v]
+		for group in xlabels:
+			ymax = max(ymax,max(feats[noise][group][stat]))
+	return ymax
 
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers

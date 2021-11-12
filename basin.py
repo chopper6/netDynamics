@@ -20,101 +20,57 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 		assert(len(node_num_to_name)%2==0)
 
 	attractors = {} #size is later normalized sT sum(size)=1
-	oscil_bin = [] #put all the samples that don't reach a steady state here
+	oscil_bin = [] #put all the samples that are unfinished oscillators
+	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
 	actual_num_samples = math.ceil(params['num_samples']/params['parallelism'])*params['parallelism']
 	if actual_num_samples != params['num_samples']:
 		print('WARNING: Due to parallelism, actual number of samples = ',actual_num_samples)
 	
-	if params['update_rule'] == 'sync': # later merge and clean these out
-		# FIXED POINTS
+	if params['update_rule'] == 'sync' and not params['PBN']['active']:
+
+		# FIXED POINTS & EASY OSCILS
 		if params['verbose']:
 			print("Starting fixed point search, using", actual_num_samples, "sample initial points.")
 		for i in range(int(actual_num_samples/params['parallelism'])):
-			p = .5 #prob a given node is off at start
-			x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
-			x0[:,0] = 0 #0th node is the always OFF node
-			
-			if params['use_phenos']:
-				if 'init' in params['phenos'].keys():
-					for k in params['phenos']['init']:
-						node_indx = node_name_to_num[k]
-						x0[:,node_indx] = params['phenos']['init'][k]
-				
-			if params['verbose'] and i%params['print_lap']==0 and i!=0:
-				print("\tAt lap",i)
+			x0 = get_init_sample(params, node_name_to_num, num_nodes)
 
+			# with fixed_points_only = True, will return finished only for fixed points
+			# and hopefully move oscillations past their transient phase
+			result = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, fixed_points_only=True)
 
-			result = lap.fixed_point_search(params, x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
 			cupy_to_numpy(params,result)
+			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
+			add_to_attractors(params, attractors, result) 
+			oscil_bin += list(result['state'][result['period']!=1])
 
-			add_to_attractors(params, attractors, result)
-			oscil_bin += list(result['state'][result['finished']==False])
-
-		if params['verbose'] and len(oscil_bin) > 0: 
-			print('Finished initial run, now finding',len(oscil_bin),'oscillations and remaining fixed points.')
-
-
-		# FINDING OSCIL
-		# run until sure that you are in the oscil
-		loop=0
-		restart_counter=orig_num_oscils=len(oscil_bin)
-		confirmed_oscils = []
-		orig_steps_per_lap, orig_fraction_per_lap = params['steps_per_lap'], params['fraction_per_lap']
-
-		while len(oscil_bin) > 0: 
-			x0, cutoff = run_oscil_init(params, oscil_bin, restart_counter, loop)
-			result = lap.find_oscil_and_fixed_points(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-			cupy_to_numpy(params,result)
-			result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
-			
-			confirmed_oscils += list(result['state'][result['finished']==True])
-
-		params['steps_per_lap'] = orig_steps_per_lap
-		params['fraction_per_lap'] = orig_fraction_per_lap
-		if params['debug']:
-			assert(orig_num_oscils == len(confirmed_oscils))
+		# TRANSIENT OSCILS
+		# run until sure that sample is in the oscil
+		confirmed_oscils = sync_run_oscils(params, oscil_bin, attractors, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=True)
 
 		# CLASSIFYING OSCILS
 		# calculate period, avg on state, ect
-		# todo: redundant w prev step, should clean into a sep fn
-		if params['verbose'] and len(confirmed_oscils)>0: 
+		if params['verbose'] and confirmed_oscils != []: 
 			print('Finished finding oscillations, now classifying them.')
-		oscil_bin = confirmed_oscils
-		loop=0
-		while len(oscil_bin) > 0: 
-			x0, cutoff =run_oscil_init(params, oscil_bin, restart_counter, loop)
-			result = lap.categorize_oscil(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-			cupy_to_numpy(params,result)
-			result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
-			
-			add_to_attractors(params, attractors, result)
+		sync_run_oscils(params, confirmed_oscils, attractors, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False)
 
-		params['steps_per_lap'] = orig_steps_per_lap
-		params['fraction_per_lap'] = orig_fraction_per_lap
 
-	elif params['update_rule'] in ['async','Gasync']: 
+	elif params['update_rule'] in ['async','Gasync'] or params['PBN']['active']: 
 		for i in range(int(actual_num_samples/params['parallelism'])):
-			p = .5 #prob a given node is off at start
-			x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
-			x0[:,0] = 0 #0th node is the always OFF node
-			
-			if params['use_phenos']:
-				if 'init' in params['phenos'].keys():
-					for k in params['phenos']['init']:
-						node_indx = node_name_to_num[k]
-						x0[:,node_indx] = params['phenos']['init'][k]
-				
-			if params['verbose'] and i%params['print_lap']==0 and i!=0:
-				print("\tAt lap",i)
+			x0 = get_init_sample(params, node_name_to_num, num_nodes)
 
-			x_in_attractor = lap.async_transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-			result = lap.async_categorize_attractor(params,x_in_attractor, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+			x_in_attractor = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+			result = lap.categorize_attractor(params,x_in_attractor, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+
 			cupy_to_numpy(params,result)
 
 			add_to_attractors(params, attractors, result)
 
 		for A in attractors.keys():
+			
+			attractors[A]['totalAvg']=attractors[A]['avg'].copy()
+			attractors[A]['totalVar']=attractors[A]['var'].copy()
 			attractors[A]['avg']/=attractors[A]['size']
+			attractors[A]['var']/=attractors[A]['size']
 
 	else:
 		sys.exit("ERROR: unrecognized parameter for 'update_rule'")
@@ -130,7 +86,63 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 	if params['verbose']:
 		print('Finished with',len(attractors),'attractors.')
 
-	return attractors
+	return attractors, attr2pheno(params, attractors)
+
+
+def get_init_sample(params, node_name_to_num, num_nodes):
+	p = .5 #prob a given node is off at start
+	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
+	x0[:,0] = 0 #0th node is the always OFF node
+	
+	if params['use_phenos']:
+		if 'init' in params['phenos'].keys():
+			for k in params['phenos']['init']:
+				node_indx = node_name_to_num[k]
+				x0[:,node_indx] = params['phenos']['init'][k]
+
+	return x0
+
+def sync_run_oscils(params, oscil_bin, attractors, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False):
+	if oscil_bin == [] or oscil_bin is None:
+		return
+	restart_counter=orig_num_oscils=len(oscil_bin)
+	orig_steps_per_lap, orig_fraction_per_lap = params['steps_per_lap'], params['fraction_per_lap']	
+	loop=0
+	confirmed_oscils = [] #only used for transient
+	while len(oscil_bin) > 0: 
+		x0, cutoff, restart_counter = run_oscil_init(params, oscil_bin, restart_counter, loop)
+		if transient:
+			result = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, fixed_points_only=False)
+		else:
+			result = lap.categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		cupy_to_numpy(params,result)
+		result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
+		
+		if transient:
+			confirmed_oscils += list(result['state'][result['finished']==True])
+		else:
+			add_to_attractors(params, attractors, result)
+
+	params['steps_per_lap'] = orig_steps_per_lap
+	params['fraction_per_lap'] = orig_fraction_per_lap
+
+	if params['debug'] and transient:
+		assert(orig_num_oscils == len(confirmed_oscils))
+		return confirmed_oscils
+
+
+def attr2pheno(params, attractors):
+	if not params['use_phenos']:
+		return None
+	phenos = {}
+	for k in attractors:
+		A = attractors[k]
+		if A['pheno'] not in phenos.keys():
+			phenos[A['pheno']] = {'attractors':{k:A},'size':A['size']}
+		else:
+			phenos[A['pheno']]['size'] += A['size']
+			phenos[A['pheno']]['attractors'][k] = A
+	return phenos
 
 
 def map_to_phenos(params, attractors, node_name_to_num):
@@ -152,15 +164,17 @@ def map_to_phenos(params, attractors, node_name_to_num):
 
 
 def add_to_attractors(params, attractors, result):
+	# only fps means only add the fixed points, i.e. where period = 1
 	for i in range(len(result['state'])):
-		if params['update_rule'] == 'sync':
+		if params['update_rule'] == 'sync' and not params['PBN']['active']:
 			if result['finished'][i]:
 				state = format_state_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
 				if state not in attractors.keys():
 					attractors[state] = {'state':state}
 					attractors[state]['size']=1
-					attractors[state]['period'] = result['period'][i]
-					attractors[state]['avg'] = result['avg'][i][1:] #again skip 0th node
+					attractors[state]['period'] = result['period'][i] #again skip 0th node
+					for k in ['avg','var']:
+						attractors[state][k] = result[k][i][1:] #again skip 0th node
 				else:
 					attractors[state]['size']+=1
 		else:
@@ -169,9 +183,12 @@ def add_to_attractors(params, attractors, result):
 				attractors[state] = {'state':state}
 				attractors[state]['size']=1
 				attractors[state]['avg'] = result['avg'][i][1:] #again skip 0th node
+				attractors[state]['var'] = result['var'][i][1:] 
 			else:
 				attractors[state]['size']+=1
 				attractors[state]['avg'] += result['avg'][i][1:] 
+				attractors[state]['var'] += result['var'][i][1:] 
+
 
 def format_state_str(x):
 	label=''
@@ -207,7 +224,7 @@ def run_oscil_init(params, oscil_bin, restart_counter, loop):
 	if params['debug']:
 		assert(cp.all(cp.logical_not(cp.array(x0)[:,0]))) #always OFF node should still be off after running awhile
 
-	return x0, cutoff
+	return x0, cutoff, restart_counter
 
 def run_oscils_extract(params, result, oscil_bin, cutoff, loop):
 	if cutoff is not None:
