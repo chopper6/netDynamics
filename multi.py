@@ -3,6 +3,45 @@ import sys, os, itertools, datetime, math, pickle
 import random as rd
 import numpy as np
 
+# CLEAR AND MERGE ALLT HIS
+
+def input_product_sim(params):
+	allPhenos={}
+	inpts = list(params['phenos']['init'])
+	n = len(inpts)
+	for inpt_set in itertools.product([0,1],repeat=n):
+		for i in range(n):
+			params['phenos']['init'][inpts[i]] = inpt_set[i]
+		attractors, phenos, node_mapping = main.find_attractors(params)
+		io_phenos(allPhenos,phenos,inpt_set)
+	normz_phenos(allPhenos, 2**n)
+	return allPhenos
+
+def io_phenos(IOs, new_phenos, input_str):
+	assert(input_str not in IOs.keys())
+	IOs[input_str] = {}
+	for k in new_phenos:
+		assert(k not in IOs[input_str].keys())
+		IOs[input_str][k] = new_phenos[k]
+
+def merge_phenos(A,B):
+	# currently used! io_phenos() replaced it
+	# takes 2 dicts of phenos & merges B into A
+	for k in B.keys():
+		if k in A.keys():
+			A[k]['size'] += B[k]['size']
+			for k2 in B[k]['attractors'].keys():
+				if k2 in A[k]['attractors'].keys():
+					A[k]['attractors'][k2]['size'] += B[k]['attractors'][k2]['size']
+				else:
+					A[k]['attractors'][k2] = B[k]['attractors'][k2]
+		else:
+			A[k] = B[k]
+
+def normz_phenos(A,repeats):
+	for k in A.keys():
+		A[k]['size'] /= repeats
+
 
 def many_sequences(param_file):
 	###### PARAMS FOR THIS: ######
@@ -207,8 +246,6 @@ def clusterplot_time_series(data, params, pickled_seqs, k):
 							ylims[key][feat]['min'] = ylims[key][feat]['max'] = data[key][i][j][feat]
 						ylims[key][feat]['min'] = min (ylims[key][feat]['min'],data[key][i][j][feat])
 						ylims[key][feat]['max'] = max (ylims[key][feat]['max'],data[key][i][j][feat])
-
-
 
 	pickled_clusters = {}
 	for key in data.keys(): #key= scrambled, cancerous, ect

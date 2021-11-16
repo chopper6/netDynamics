@@ -1,13 +1,38 @@
-import main, ldoi, parse
+import main, ldoi, multi, parse
 import sys, math
+import numpy as np
 
-def exhaustive(param_file):
+# TODO
+# auto exclude all inputs and output, via an adjacency matrix maybe. Clause_mapping is too opaque jp...
+#	also that zero node is nasty af sometimes
+# distinguish C1 and C2 when return? jpp at least for now
+# clean pheno file goddamn
+# add treatment(s), LDOI, corr, features
+
+def reverse_randomize(param_file):
+	reps = 3
+	labels = ['vanilla'] + ['random_' + str(r) for r in range(reps)]
+	stats = {label:{} for label in labels}
+	mutators, mutant_mag, controllers, control_mag = exhaustive(param_file,max_control_size=1)
+	stats['vanilla'] = {'|mutators|':len(mutators), '|controllers|':len(controllers),'mutator_mag':mutant_mag, 'control_mag':control_mag}
+	for r in range(reps):
+		param_file2 = randomize_deg_preserve(param_file)
+		mutators, mutant_mag, controllers, control_mag = exhaustive(param_file2,max_control_size=1)
+		stats['random_' + str(r)] = {'|mutators|':len(mutators), '|controllers|':len(controllers),'mutator_mag':mutant_mag, 'control_mag':control_mag}
+	plot.something(stats) #bars jp
+
+def randomize_deg_preserve(param_file):
+	return
+	# should have an easier way to do this than write to file and reparse...right?
+	# many times: pick 2 rd edges, and flip either in or out nodes x1, x2
+	#	target nodes replaces every instance of x1 with x2 and vice versa
+
+
+def exhaustive(param_file,max_control_size = 1):
 	# i assume cannot alter pheno nodes, nor input nodes, and control of the mutated node is allowed
 	# complexity is O(s*n^m+1*2^i) where s is the simulation time of a single input and i is the number of inputs, and m is the max control set size
-
-	max_control_size = 2
-	sep_inputs = False
-	excluded = ['n1','p1','p2']
+	
+	excluded = ['n1','p1','p2'] # TODO: auto exclude all inputs and output, via an adjacency matrix maybe. Clause_mapping is too opaque jp...
 	params = parse.params(param_file)
 	clause_mapping, node_mapping = parse.net(params)
 	n = len(node_mapping['num_to_name'])
@@ -16,42 +41,36 @@ def exhaustive(param_file):
 
 	params['verbose']=0 #i assume
 
-	phenosWT = input_product_sim(params,sep=sep_inputs)
-
+	phenosWT = multi.input_product_sim(params)
 	orig_mutated = params['phenos']['mutations']
-	mutators = []
-	if sep_inputs:
-		solutions = {0:[],1:[],'both':[]}
-	else:
-		solutions = []
+	mutators, solution = [],[]
+	mutant_mag, control_mag = 0,0
 
 	for M in nodes:
 		print('Testing node',M)
-		for b in [0,1]: #TODO itertools
+		for b in [0,1]:
 			params['phenos']['mutations'][M] = b
-			phenosM = input_product_sim(params,sep=sep_inputs) 
+			phenosM = multi.input_product_sim(params) 
 
-			if sep_inputs:
-				changed=False
-				for b2 in [0,1]: #TODO itertools
-					changed = changed | diff(phenosWT[b2],phenosM[b2])
-			else:
-				changed = diff(phenosWT, phenosM)
+			change = diff(phenosWT,phenosM)
 
-			if changed:
+			if change < 1:
 				mutators += [(M,b)]
+				mutant_mag += 1-change
 
-				solutions = try_and_fix(params, nodes, solutions, phenosWT, [], (M,b), 1, max_control_size,sep=sep_inputs)
+				solutions, control_mag = try_and_fix(params, nodes, solutions, control_mag, phenosWT, [], (M,b), max_control_size)
 
-				if sep_inputs:
-					corrs = check_corr(params, phenosWT, nodes, node_mapping['name_to_num'])
+				#corrs = check_corr(params, phenosWT, nodes, node_mapping['name_to_num']) # unfinished...
 				
 			params['phenos']['mutations'] = orig_mutated #reset
 
+	mutant_mag /= len(nodes-1) #incld negative nodes but not the 0 node 
+	control_mag /= len(nodes-1) 
 	#A,n,N,node_mapping = parse.expanded_net(params['net_file'])
 	#ldoi_solns, negated = ldoi.ldoi_bfs(A,n,N,pinning=1)
 	print('mutators=',mutators)
 	print('solutions=',solutions)
+	return mutators, mutant_mag, solutions, control_mag
 
 
 
@@ -65,83 +84,52 @@ def check_corr(params, nodes, phenosWT):
 
 
 
-def try_and_fix(params, nodes, solutions, phenosWT, control_set, mutator, depth, max_depth,sep=False):
-	if depth > max_depth:
-		return solutions
+def try_and_fix(params, nodes, solutions, phenosWT, control_set, control_mag, mutator, depth, max_depth): # TODO update this
+	if depth == 0:
+		return solutions, control_mag
 
 	for C in nodes:
-		for b2 in [0,1]:
-			params['phenos']['mutations'][C] = b2
-			phenosC = input_product_sim(params,sep=sep) 
+		orig_mutations = params['phenos']['mutations']
+		for b in [0,1]:
+			params['phenos']['mutations'][C] = b
+			phenosC = multi.input_product_sim(params) 
 
-			if not sep:
-				if not diff(phenosWT, phenosC):
-					solutions += [{'mutation': mutator,'control':control_set+[(C,b2)]}]
-					print("Found solution to",mutator,":",control_set+[(C,b2)])
+			change = diff(phenosWT,phenosC):
+			if change < 1:
+				control_mag += 1-change
+				solutions += [{'mutation':mutator,'control':control_set+[(C,b)]}]
 			else:
-				both=True
-				for b in [0,1]:
-					if not diff(phenosWT[b],phenosC[b]):
-						solutions[b] += [{'mutation':(M,b),'control':control_set+[(C,b2)]}]
-					else:
-						both=False
-				if both:
-					solutions['both'] += [{'mutation':(M,b),'control':control_set+[(C,b2)]}]
-			
-			solutions = try_and_fix(params, nodes, solutions, phenosWT, control_set+[(C,b2)], mutator, depth+1, max_depth,sep=sep) 
+				# recurse using this node as a control + another (until reach max_depth)
+				solutions, control_mag = try_and_fix(params, nodes, solutions, phenosWT, control_set+[(C,b2)], mutator, depth-1) 
+
+			params['phenos']['mutations'] = orig_mutations # reset (in case orig mutator was tried as a control node)
+
+	return solutions, control_mag
 
 
-
-def diff(P1, P2, err=0.1):
-	for k in P1:
-		if k not in P2:
-			return True
-		else:
-			if not math.isclose(P1[k]['size'], P2[k]['size'], abs_tol=err):
-				return True
-	return False
-
-
-# should prob put this function in a diff file
-def input_product_sim(params,sep=False):
-	allPhenos={}
-	assert(len(params['phenos']['init'])) #TODO change to itertools product for > 1. Also changed input string in io_phenos()
-	for inpt in params['phenos']['init']:
-		for b in [0,1]: 
-			params['phenos']['init'][inpt] = b
-			attractors, phenos, node_mapping = main.find_attractors(params)
-
-			if not sep:
-				merge_phenos(allPhenos,phenos)
+def diff(P1, P2, norm=1):
+	P1_basins, P2_basins = [],[]
+	for i in P1:
+		for o in P1[i]:
+			P1_basins += P1[i][o]
+			if i not in P2 or o not in P2[i]:
+				P2_basins += [0]
 			else:
-				io_phenos(allPhenos,phenos,b)
-	if not sep:
-		normz_phenos(allPhenos, 2**len(params['phenos']['init']))
-	return allPhenos
+				P2_basins += P2[i][o]
+	for i in P2:
+		for o in P2[i]:
+			if i not in P1 or o not in P1[i]:
+				# i.e only if skipped before
+				P2_basins += P2[i][o]
+				P1_basins += [0]
+	
+	P1_basins, P2_basins = np.array(P1_basins), np.array(P2_basins)
+	if norm in ['inf','max']:
+		norm = np.inf 
 
-def io_phenos(IOs, new_phenos, input_str):
-	assert(input_str not in IOs.keys())
-	IOs[input_str] = {}
-	for k in new_phenos:
-		assert(k not in IOs[input_str].keys())
-		IOs[input_str][k] = new_phenos[k]
+	return np.linalg.norm(P1_basins-P2_basins,ord=norm)
 
-def merge_phenos(A,B):
-	# takes 2 dicts of phenos & merges B into A
-	for k in B.keys():
-		if k in A.keys():
-			A[k]['size'] += B[k]['size']
-			for k2 in B[k]['attractors'].keys():
-				if k2 in A[k]['attractors'].keys():
-					A[k]['attractors'][k2]['size'] += B[k]['attractors'][k2]['size']
-				else:
-					A[k]['attractors'][k2] = B[k]['attractors'][k2]
-		else:
-			A[k] = B[k]
 
-def normz_phenos(A,l):
-	for k in A.keys():
-		A[k]['size'] /= l
 
 if __name__ == "__main__":
 	exhaustive(sys.argv[1])

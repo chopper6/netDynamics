@@ -7,6 +7,7 @@ def main(param_file):
 	#feats = features.calc_entropy(params,attractors)
 	#print(feats)
 	plot.pie(params,attractors,phenos, node_mapping)
+	print(node_mapping)
 
 
 

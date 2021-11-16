@@ -52,7 +52,11 @@ def net(params):
 	# go through net_file 2 times
 	# go thru 1st time to get nodes & max_literals:
 	with open(net_file,'r') as file:
-		format_name = file.readline().replace('\n','')
+		extension = net_file.split('.')
+		if extension[-1] == 'bnet':
+			format_name='bnet'
+		else:
+			format_name = file.readline().replace('\n','')
 		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(format_name)
 
 		loop = 0
@@ -109,7 +113,8 @@ def net(params):
 	
 	# go thru 2nd time to parse the clauses:
 	with open(net_file,'r') as file:
-		line = file.readline() #again skip 1st line, the encoding
+		if format_name!='bnet':
+			line = file.readline() #again skip 1st line, the encoding
 		# first clause is for the 0 node (always false)
 		nodes_clause[0] += [curr_clause]
 		curr_clause += 1
@@ -305,7 +310,11 @@ def expanded_net(net_file):
 	# go through net_file 2 times
 	# go thru 1st time to get nodes & composite nodes
 	with open(net_file,'r') as file:
-		format_name = file.readline().replace('\n','')
+		extension = net_file.split('.')
+		if extension[-1] == 'bnet':
+			format_name='bnet'
+		else:
+			format_name = file.readline().replace('\n','')
 		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(format_name)
 
 		loop = 0
@@ -349,7 +358,8 @@ def expanded_net(net_file):
 	
 	# go thru 2nd time to build composite nodes and A
 	with open(net_file,'r') as file:
-		line = file.readline() #again skip 1st line, the encoding
+		if format_name!='bnet':
+			line = file.readline() #again skip 1st line, the encoding
 
 		for _ in range(n): 
 
@@ -406,7 +416,7 @@ def catch_errs(params, clause_mapping, node_mapping):
 
 
 def get_file_format(format_name):
-	recognized_formats = ['DNFwords','DNFsymbolic']
+	recognized_formats = ['DNFwords','DNFsymbolic','bnet']
 
 	if format_name not in recognized_formats:
 		sys.exit("ERROR: first line of network file is the format, which must be one of" + str(recognized_formats))
@@ -425,6 +435,13 @@ def get_file_format(format_name):
 		not_str = 'not '
 		strip_from_clause = ['(',')']
 		strip_from_node = ['(',')']
+	elif format_name == 'bnet':
+		node_fn_split = ',\t'
+		clause_split = ' | '
+		literal_split = ' & '
+		not_str = '!'
+		strip_from_clause = ['(',')']
+		strip_from_node = []
 
 	return node_fn_split, clause_split, literal_split, not_str, strip_from_clause,strip_from_node
 

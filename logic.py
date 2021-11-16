@@ -1,6 +1,5 @@
-import os, sys, yaml, util, parse
-import ctypes, math
-import numpy as np
+import os, sys, parse
+import math
 from subprocess import call
 
 
@@ -21,7 +20,11 @@ def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 		sys.exit("Can't find network file: " + str(net_file)) 
 	
 	with open(net_file,'r') as file:
-		format_name = file.readline().replace('\n','') # first line is format
+		extension = net_file.split('.')
+		if extension[-1] == 'bnet':
+			format_name='bnet'
+		else:
+			format_name = file.readline().replace('\n','')
 
 		with open(output_file,'w') as ofile:
    			ofile.write(format_name + "\n")
@@ -56,7 +59,7 @@ def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 				
 				for j in range(len(literals)): #build the int min term representation of the clause
 					literal_name = literals[j]
-					for symbol in strip_from_node:
+					for symbol in strip_from_node + strip_from_clause:
 						literal_name = literal_name.replace(symbol,'')
 					if not_str in literal_name:
 						literal_name = literal_name.replace(not_str,'')
@@ -74,7 +77,7 @@ def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 				
 				for j in range(len(literals)): #build the int min term representation of the clause
 					literal_name = literals[j]
-					for symbol in strip_from_node:
+					for symbol in strip_from_node + strip_from_clause:
 						literal_name = literal_name.replace(symbol,'')
 					if not_str in literal_name:
 						sign = '0'
@@ -128,11 +131,11 @@ def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 					# qm.exe just returns blank, can't reduce anyway, so just put back original line
 					bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
 					reduced_fn = ''
-					if len(strip_from_clause) > 0:
-						reduced_fn += strip_from_clause[0]
 					finished_clauses, reduced_fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name)
-					if len(strip_from_clause) > 0:
-						reduced_fn += strip_from_clause[1]	
+					if reduced_fn == not_str + '1':
+						reduced_fn = '0'
+					if reduced_fn == not_str + '0':
+						reduced_fn = '1'
 					with open(output_file,'a') as ofile:
 						ofile.write(not_str + neg_dict['node'] + node_fn_split + reduced_fn + '\n')
 
@@ -168,7 +171,12 @@ def bool2clause(bool_str, clause,input_nodes_rev, format_name):
 				added_lit = True
 
 		if bool_str[j] == '0':
-			clause += not_str + input_nodes_rev[j]
+			if input_nodes_rev[j]=='1':
+				clause += '0' # not 1 = 0
+			elif input_nodes_rev[j]=='0':
+				clause += '1' #since not1 should be 0, ect 
+			else:
+				clause += not_str + input_nodes_rev[j]
 		elif bool_str[j] == '1':
 			clause += input_nodes_rev[j]
 		elif bool_str[j] == '-2':
@@ -205,7 +213,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 
 			lits = line.split(",")
 			clause = ''
-			if len(strip_from_clause) > 0:
+			if len(strip_from_clause) > 0 and len(lits)>1:
 				clause += strip_from_clause[0]
 
 			if i!=0 and lits[0] != '-2':
@@ -214,7 +222,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 			finished_clauses, clause = bool2clause(lits, clause, input_nodes_rev, format_name)
 
 			if not finished_clauses:
-				if len(strip_from_clause) > 0:
+				if len(strip_from_clause) > 0 and len(lits)>1:
 					clause += strip_from_clause[1]
 				reduced_fn += clause 
 			else:
@@ -226,12 +234,12 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 
 if __name__ == "__main__":
 	if len(sys.argv) not in [3,4]:
-		sys.exit("Usage: python3 reduce.py input_net_file output_net_file [exp]")
+		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce]")
 	
 	if len(sys.argv) == 4: 
-		if sys.argv[3]=='exp':
-			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)
+		if sys.argv[3]=='reduce':
+			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=False)
 		else:
-			sys.exit("Unrecognized 3rd arg. Usage: python3 reduce.py input_net_file output_net_file [exp]")
+			sys.exit("Unrecognized 3rd arg. Usage: python3 reduce.py input_net_file output_net_file [reduce]")
 	else:
-		DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=False)
+		DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)
