@@ -12,6 +12,8 @@ class Attractor:
 			self.period = period
 		self.avg = avg
 		self.var = var
+		self.totalAvg = avg #won't be normalized so is really a sum
+		self.totalVar = var 
 		if params['use_phenos']:
 			self.map_to_pheno(params,V) 
 
@@ -73,8 +75,9 @@ class SteadyStates:
 				finished = result['finished'][i]
 				period = result['period'][i]
 
-			attractor_id = format_id_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
-			self.add(attractor_id, period, result['avg'][i][1:], result['var'][i][1:]) #again skip 0th node for avg n var
+			if finished:
+				attractor_id = format_id_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
+				self.add(attractor_id, period, result['avg'][i][1:], result['var'][i][1:]) #again skip 0th node for avg n var
 
 	def normalize_attractors(self, actual_num_samples):		
 		if self.params['update_rule'] in ['async','Gasync'] or self.params['PBN']['active']:
@@ -146,11 +149,13 @@ def calc_basin_size(params, clause_mapping, V):
 		# run until sure that sample is in the oscil
 		confirmed_oscils = sync_run_oscils(params, oscil_bin, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=True)
 
+
 		# CLASSIFYING OSCILS
 		# calculate period, avg on state, ect
 		if params['verbose'] and confirmed_oscils != []: 
 			print('Finished finding oscillations, now classifying them.')
 		sync_run_oscils(params, confirmed_oscils, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False)
+
 
 	elif params['update_rule'] in ['async','Gasync'] or params['PBN']['active']: 
 		for i in range(int(actual_num_samples/params['parallelism'])):
@@ -175,17 +180,14 @@ def calc_basin_size(params, clause_mapping, V):
 def get_init_sample(params, node_name_to_num, num_nodes, V):
 	p = .5 #prob a given node is off at start
 	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
-
 	
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
-		actual_num_samples = math.floor(params['parallelism']/(2**k))*2**k
-		print('basin: actual num samples:', actual_num_samples)
 		input_indices = [V['name2#'][params['inputs'][i]] for i in range(k)]
 		input_sets = itertools.product([0,1],repeat=k)
 		i=0
 		for input_set in input_sets:
-			x0[i*actual_num_samples/(2**k):(i+1)*actual_num_samples/(2**k)][input_indices] = input_set
+			x0[i*params['parallelism']/(2**k):(i+1)*params['parallelism']/(2**k)][input_indices] = cp.array(input_set)[:,cp.newaxis]
 			i+=1
 		assert(i==2**k)
 

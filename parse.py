@@ -35,6 +35,18 @@ def params(param_file):
 		assert(len(shared_items)==0) #should not have overlaping keys between params and model files
 	params = {**model, **params} # in python3.9 can use params_model | params, but may require some people to update python
 
+	if 'inputs' in params.keys():
+		k = len(params['inputs'])
+		actual_num_samples = math.floor(params['parallelism']/(2**k))*2**k
+		assert(actual_num_samples>0) # possible to have too low parallelism for the number of inputs used (min 2^k required)
+		
+		if actual_num_samples!=params['num_samples']:
+			print("\nWARNING: only", str(actual_num_samples),"used to maintain even ratio of input samples.\n")
+			print("\nWARNIN: temp solution in parse.py sets num_samples == parallelism")
+			# TODO: should be a multiple of parallellism, not nec ==
+			# see also basin.get_init_sample()
+			params['num_samples'] = params['parallelism'] = actual_num_samples
+
 	return params
 
 
@@ -458,14 +470,6 @@ def catch_errs(params, clause_mapping, V):
 			for k in params['mutations']:
 				assert(k in V['name2#'].keys())
 
-	if 'inputs' in params.keys():
-		k = len(params['inputs'])
-		actual_num_samples = math.floor(params['parallelism']/(2**k))*2**k
-
-		assert(actual_num_samples>0) # possible to have too low parallelism for the number of inputs used (min 2^k required)
-		
-		if actual_num_samples!=params['num_samples']:
-			print("\nWARNING: only", str(actual_num_samples),"used to maintain even ratio of input samples.\n")
 
 
 def get_file_format(format_name):

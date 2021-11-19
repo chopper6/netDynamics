@@ -1,4 +1,5 @@
 import sys, os
+from copy import deepcopy
 import parse, basin, plot, features
 
 def main(param_file):
@@ -6,6 +7,9 @@ def main(param_file):
 	steadyStates, V = find_attractors(params)
 	#feats = features.calc_entropy(params,attractors)
 	#print(feats)
+	#for k in steadyStates.attractors:
+	#	A = steadyStates.attractors[k]
+	#	print(A.id,A.size)
 	plot.pie(params, steadyStates, V)
 
 
@@ -16,7 +20,8 @@ def find_attractors(params):
 	#	each element of attractors[i] = {size:% of initial states, pheno:subset of label corresponding to output nodes}
 	return steadyStates, V
 
-def find_attractors_prebuilt(params, F, V):
+def find_attractors_prebuilt(params, F_orig, V_orig):
+	F,V = deepcopy(F_orig), deepcopy(V_orig)
 	parse.apply_mutations(params,F) #TODO: this could be moved out...
 	F_mapd, A = parse.get_clause_mapping(params, F, V) 
 	steadyStates = basin.calc_basin_size(params,F_mapd,V)

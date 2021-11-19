@@ -5,6 +5,9 @@ from copy import deepcopy
 # TODO: may have to update this since classes overhaul
 # add XOR
 
+# LATER:
+# try longer loops, see if more robust
+
 
 def variance_test(param_file):
 	# TODO: fix avg & var calc, organize io/visualize, test net generator

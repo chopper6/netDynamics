@@ -7,18 +7,19 @@ from copy import deepcopy
 # TODO
 # test based DEBUG with more than just main
 #	why tf does it speed up as it goes thru nodes....?
+#	seems steady now, at least when no mutation found
 # so far don't see any C1 nodes for bladder cancer (that completely fix all inputs)...likely an err somewhere
 # return net_file to main params, model param rename to 'setting' (optional), and sep folders for params, nets, and settings
-# parse other model
+# parse other model, try toy net again
+#	annnd somehow it's bugged \:
 # add treatment(s), LDOI, corr, features
 # sep randomize into new file
-# auto divide # runs by input, and have a toggle to evenly try all inputs [jp need now for speed reasons]
-#	then clean IOs, sep toggle from phenos
-#	poss deeper than just at 'multi', since 'main' runs would likely also want to use
+# making deepcopies everywhere is clearly not an efficient way to go
 
 # TODO before thurs
 # check over main points/ double check test-based
 # give toy example of what I'm measuring and rd process
+# premeet on wed
 
 # DO LATER UNLESS NEC NOW
 # zero node is nasty af sometimes
@@ -29,11 +30,13 @@ from copy import deepcopy
 # just apply_mutations from parse instead of parsing network from scratch each time main calc attractors is called
 # add time stamped directory or something
 # forcing parallelism is bad for accessibility (basin/parse.py)
+# pick io order for phenos (curr i|o)
+#	poss only match |o part for colors of pie chart
 
 def randomize_experiment(param_file):
 	reps = 2
 	num_swaps = 10
-	dist_thresh = .01
+	dist_thresh = .4
 	labels = ['vanilla'] + ['random_' + str(r) for r in range(reps)]
 	stats = {label:{} for label in labels}
 
@@ -49,7 +52,7 @@ def randomize_experiment(param_file):
 		F_mapd, A = parse.get_clause_mapping(params, F, V) 
 		if params['debug']:
 			A_copy = A.copy()
-		swap_edges(F,A,V,num_swaps,no_repeat_edges=True) #modifies F and A in place 
+		swap_edges(deepcopy(F), deepcopy(A),deepcopy(V),num_swaps,no_repeat_edges=True) #modifies F and A in place 
 		if params['debug']:
 			# check is degre preserving
 			assert(np.all(np.sum(A_copy,axis=0)== np.sum(A,axis=0)) and np.all(np.sum(A_copy,axis=1)== np.sum(A,axis=1)))
@@ -113,6 +116,7 @@ def get_rd_edge(A):
 
 
 def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
+
 	# assumes cannot alter pheno nodes, nor input nodes
 	# complexity is O(s*n^m+1*2^i) where s is the simulation time of a single input and i is the number of inputs, and m is the max control set size
 
@@ -125,8 +129,9 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 	nodes = [node for node in nodes if node not in params['outputs'] and node not in params['inputs']]
 
 	params['verbose']=0 #i assume
+	params['use_inputs_in_pheno']=True #also assume
 
-	steadyStates = main.find_attractors_prebuilt(params, F, V).phenotypes
+	phenosWT = main.find_attractors_prebuilt(params, F, V).phenotypes
 	orig_mutated = deepcopy(params['mutations'])
 	mutators, solutions = [],[]
 	mutant_mag, control_mag = 0,0
@@ -200,15 +205,15 @@ def try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set, 
 def diff(P1, P2, norm='max'):
 	P1_basins, P2_basins = [],[]
 	for io in P1:
-		P1_basins += [P1[io]['size']]
+		P1_basins += [P1[io].size]
 		if io not in P2:
 			P2_basins += [0]
 		else:
-			P2_basins += [P2[io]['size']]
+			P2_basins += [P2[io].size]
 	for io in P2:
 		if io not in P1:
 			# i.e only if skipped before
-			P2_basins += [P2[io]['size']]
+			P2_basins += [P2[io].size]
 			P1_basins += [0]
 	
 	P1_basins, P2_basins = np.array(P1_basins), np.array(P2_basins)
@@ -223,7 +228,7 @@ if __name__ == "__main__":
 	if sys.argv[2] == 'exh':
 		params = parse.params(sys.argv[1])
 		F, V = parse.get_logic(params)
-		exhaustive(params, F, V)
+		exhaustive(params, F, V,dist_thresh=.1)
 	elif sys.argv[2] == 'rd':
 		randomize_experiment(sys.argv[1]) 
 	else:

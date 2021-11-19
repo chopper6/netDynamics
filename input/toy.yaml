@@ -1,8 +1,8 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
-net_file : 'input/toyNet.txt' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
+net_file : 'input/toyNet.txt' # examples: 'input/fumia.txt', 'input/toyNet.txt', 'input/mapk.bnet' See README for syntax description
 
-use_phenos : true # quick way to disable phenotypes and ignore pheno_file
+use_phenos : true # quick way to disable outputs
 
 outputs : ['p1','p2']
 output_thresholds : [0,0,0,0] 
@@ -13,7 +13,7 @@ init : {'n2':0}
 # each sample begins with these states (x0) 
 
 
-mutations : {}
+mutations : {'n3':1}
 # mutations alter the function of the node to always be off or on
 
 pheno_color_map : {'00':0, '01':1,'10':2,'11':3,} #to ensure consistent coloring between images
