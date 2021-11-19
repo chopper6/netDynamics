@@ -3,44 +3,18 @@ import sys, os, itertools, datetime, math, pickle
 import random as rd
 import numpy as np
 
-# CLEAR AND MERGE ALLT HIS
+# CLEAn AND MERGE ALlT HIS
+# a lot of it is irrelv now, ex input-based sims \:
 
-def input_product_sim(params):
+def input_product_sim(params, F, V):
 	allPhenos={}
-	inpts = list(params['phenos']['init'])
+	inpts = list(params['inputs'])
 	n = len(inpts)
 	for inpt_set in itertools.product([0,1],repeat=n):
 		for i in range(n):
-			params['phenos']['init'][inpts[i]] = inpt_set[i]
-		attractors, phenos, node_mapping = main.find_attractors(params)
-		io_phenos(allPhenos,phenos,inpt_set)
-	normz_phenos(allPhenos, 2**n)
+			params['init'][inpts[i]] = inpt_set[i]
+		steadyStates = main.find_attractors_prebuilt(params, F, V)
 	return allPhenos
-
-def io_phenos(IOs, new_phenos, input_str):
-	assert(input_str not in IOs.keys())
-	IOs[input_str] = {}
-	for k in new_phenos:
-		assert(k not in IOs[input_str].keys())
-		IOs[input_str][k] = new_phenos[k]
-
-def merge_phenos(A,B):
-	# currently used! io_phenos() replaced it
-	# takes 2 dicts of phenos & merges B into A
-	for k in B.keys():
-		if k in A.keys():
-			A[k]['size'] += B[k]['size']
-			for k2 in B[k]['attractors'].keys():
-				if k2 in A[k]['attractors'].keys():
-					A[k]['attractors'][k2]['size'] += B[k]['attractors'][k2]['size']
-				else:
-					A[k]['attractors'][k2] = B[k]['attractors'][k2]
-		else:
-			A[k] = B[k]
-
-def normz_phenos(A,repeats):
-	for k in A.keys():
-		A[k]['size'] /= repeats
 
 
 def many_sequences(param_file):
@@ -110,9 +84,9 @@ def one_type_of_seq(params, cancer_seqs, seqType, runSeqType, pickled_seqs, all_
 				rd.shuffle(passenger_seq)
 				for j in range(len(passenger_seq)):
 					seq[passenger_seq[j]] = passengers[j]
-			elif seqType == 'random':
-				clause_mapping, node_mapping = parse.net(params)
-				nodes = node_mapping['num_to_name']
+			elif seqType == 'random': 
+				F, V = parse.get_logic(params)
+				nodes = V['#2name']
 				seq=[]
 				for m in range(len(cancer_seqs[0])):
 					seq+=[(nodes[rd.randint(1,math.floor(len(nodes)/2))],rd.choice([0,1]))] #note that nodes includes negative nodes
@@ -132,12 +106,12 @@ def sequence(params,seq,plotit=False):
 	#seq=[('APC',0),('Mdm2',1),('AMPK',1),('Ras',1),('FADD',0),('Dsh',1),('COX412',1),('AKT',1),('BAX',0),('p27',0),('p15',0),('PTEN',0),('Smad',0),('GSH',0),('p14',0),('PI3K',1),('p53',0),('E_cadh',1),('BAD',0),('VEGF',1)]
 
 	feats = []
-	num_inputs = len(params['phenos']['inputs'])
+	num_inputs = len(params['inputs'])
 	verbose=params['verbose']
 
 	if verbose:
 		print("\t\tStarting with no mutations")
-	params['phenos']['mutations'] = {}
+	params['mutations'] = {}
 	params['verbose']=False
 	attractors = input_set(plotpie=False,params=params)
 	feats += [features.calc_entropy(params,attractors,num_inputs)]
@@ -145,7 +119,7 @@ def sequence(params,seq,plotit=False):
 	for i in range(len(seq)):
 		if verbose:
 			print("\t\tStarting mutation #",i+1)
-		params['phenos']['mutations'][seq[i][0]] = seq[i][1]
+		params['mutations'][seq[i][0]] = seq[i][1]
 		params['verbose']=False
 		attractors = input_set(plotpie=False,params=params)
 		feats += [features.calc_entropy(params,attractors,num_inputs)]
@@ -173,7 +147,7 @@ def input_set(**kwargs):
 		sys.err("ERROR: must pass a param file or params!")
 	if params is None:
 		params = parse.params(param_file)
-	num_inputs = len(params['phenos']['inputs'])
+	num_inputs = len(params['inputs'])
 	ioPairs = {}
 
 	if plotpie==True:
@@ -191,16 +165,16 @@ def input_set(**kwargs):
 			print("\n~~~ Starting input set #",j,'~~~\n')
 		label=''
 		for i in range(num_inputs):
-			input_node = params['phenos']['inputs'][i]
-			params['phenos']['init'][input_node] = input_set[i]
+			input_node = params['inputs'][i]
+			params['init'][input_node] = input_set[i]
 			if i!=0:
 				label+='_'
 			label+=input_node +str(input_set[i])
-		attractors, phenos, node_mapping = main.find_attractors(params)
+		attractors, phenos, V = main.find_attractors(params)
 		add_ioPairs(ioPairs,attractors,input_set) 
 
 		if plotpie==True:
-			plot.pie(params,attractors, phenos, node_mapping,external_label=label)
+			plot.pie(params,attractors, phenos, V,external_label=label)
 		j+=1
 
 	normz_ioPairs(ioPairs, num_inputs)

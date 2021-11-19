@@ -158,7 +158,7 @@ def int2bool(x,lng):
 	return ''.join(reversed(bool_str))
 
 def bool2clause(bool_str, clause,input_nodes_rev, format_name):
-	# this is very specific to the syntax used to for the c program
+	# this is very specific to the syntax used for the c program
 	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
 	
 	added_lit = False
@@ -232,13 +232,50 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 	return reduced_fn
 
 
+def DNF_from_cell_collective_TT(folder, output_file):
+
+	format_name = 'bnet'
+	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
+	
+	with open(output_file,'w') as ofile:
+		pass # write it in case does not exist
+
+	for filename in os.listdir(folder):
+		if '.csv' in filename:
+			with open(folder + '/' + filename,'r') as file:
+
+				line = file.readline().replace(' ','')
+				inputs = line.split(',')
+				node = inputs[-1].strip()
+				inputs=inputs[:-1]
+				inputs_rev = {i:inputs[i] for i in range(len(inputs))}
+				clauses = []
+				while True:
+					line = file.readline()
+					if not line: #i.e eof
+						break
+					line = line.strip()
+					if line[-1] == '1': #only care about ON terms
+						line = line[:-1].replace(' ','')
+						line=line.replace(',','')
+						clauses += [int('0b'+line,2)]
+
+				if len(clauses) > 1:
+					reduced_fn = run_qm(clauses, len(inputs), format_name, inputs_rev)
+
+				with open(output_file,'a') as ofile:
+				   	ofile.write(node + node_fn_split + reduced_fn + '\n')
+
+
 if __name__ == "__main__":
 	if len(sys.argv) not in [3,4]:
-		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce]")
+		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce, TT]")
 	
 	if len(sys.argv) == 4: 
 		if sys.argv[3]=='reduce':
 			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=False)
+		if sys.argv[3]=='TT':
+			DNF_from_cell_collective_TT(sys.argv[1],sys.argv[2])
 		else:
 			sys.exit("Unrecognized 3rd arg. Usage: python3 reduce.py input_net_file output_net_file [reduce]")
 	else:

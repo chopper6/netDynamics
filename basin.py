@@ -2,13 +2,111 @@ import itertools, util, math, warnings, sys
 import lap
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
+# note that size of a phenotype or attract refers to its basin size
 
-def calc_basin_size(params, clause_mapping, node_mapping):
+class Attractor:
+	def __init__(self, params, V, attractor_id, period, avg, var):
+		self.id = attractor_id
+		self.size = 1
+		if params['update_rule'] == 'sync' and not params['PBN']['active']:
+			self.period = period
+		self.avg = avg
+		self.var = var
+		if params['use_phenos']:
+			self.map_to_pheno(params,V) 
+
+	def map_to_pheno(self, params, V):
+		outputs = [V['name2#'][params['outputs'][i]] for i in range(len(params['outputs']))]
+
+		if 'inputs' in params.keys():
+			inputs = [V['name2#'][params['inputs'][i]] for i in range(len(params['inputs']))]
+
+		self.phenotype = ''
+		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
+			assert(not params['PBN']['active']) # TODO: how to def input thresh?
+			for i in range(len(inputs)):
+				if self.avg[inputs[i]-1] > 0: 
+					# -1 since attractors don't include 0 always OFF node
+					self.phenotype +='1'
+				else:
+					self.phenotype +='0'	
+			self.phenotype +='|'
+		for i in range(len(outputs)): 
+			if self.avg[outputs[i]-1] > params['output_thresholds'][i]: 
+				# -1 since attractors don't include 0 always OFF node
+				self.phenotype +='1'
+			else:
+				self.phenotype +='0'		 
+
+
+class Phenotype:
+	def __init__(self, attractors, size):
+		self.attractors = attractors
+		self.size = size
+
+		
+class SteadyStates:
+	# collects sets of attractors and phenotypes
+
+	def __init__(self, params,V):
+		self.attractors = {} 
+		self.phenotypes = {}
+		self.params = params
+		self.V = V
+
+	def add(self, attractor_id, period, avg, var): # id should be unique to each attractor
+		if attractor_id not in self.attractors.keys():
+			self.attractors[attractor_id] = Attractor(self.params, self.V, attractor_id, period, avg, var)
+		else:
+			self.attractors[attractor_id].size += 1
+			if self.params['update_rule'] != 'sync' or self.params['PBN']['active']:
+				self.attractors[attractor_id].avg += avg
+				self.attractors[attractor_id].var += var
+
+
+	def add_attractors(self, result):
+		for i in range(len(result['state'])):
+			if self.params['update_rule'] != 'sync' or self.params['PBN']['active']:
+				finished=True
+				period=None
+			else:
+				finished = result['finished'][i]
+				period = result['period'][i]
+
+			attractor_id = format_id_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
+			self.add(attractor_id, period, result['avg'][i][1:], result['var'][i][1:]) #again skip 0th node for avg n var
+
+	def normalize_attractors(self, actual_num_samples):		
+		if self.params['update_rule'] in ['async','Gasync'] or self.params['PBN']['active']:
+			for s in self.attractors:
+				A = self.attractors[s] 
+				A.totalAvg = A.avg.copy() #TODO see if this causes err, if so, move to attrs
+				A.totalVar = A.var.copy() 
+				A.avg/=A.size
+				A.var/=A.size
+
+		for s in self.attractors:
+			self.attractors[s].size /= actual_num_samples
+
+
+	def build_phenos(self):
+		for k in self.attractors:
+			A = self.attractors[k]
+			if A.phenotype not in self.phenotypes.keys():
+				self.phenotypes[A.phenotype] = Phenotype({k:A},A.size)
+			else:
+				self.phenotypes[A.phenotype].size += A.size 
+				self.phenotypes[A.phenotype].attractors[k] = A
+
+
+#############################################################################################
+
+def calc_basin_size(params, clause_mapping, V):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
 
 	#num_nodes is not counting the negative copies
-	node_name_to_num = node_mapping['name_to_num']
-	node_num_to_name = node_mapping['num_to_name']
+	node_name_to_num = V['name2#']
+	node_num_to_name = V['#2name']
 
 	# cast into cupy:
 	nodes_to_clauses = cp.array(clause_mapping['nodes_to_clauses'])
@@ -19,7 +117,8 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 	if params['debug']:
 		assert(len(node_num_to_name)%2==0)
 
-	attractors = {} #size is later normalized sT sum(size)=1
+	steadyStates = SteadyStates(params, V) 
+
 	oscil_bin = [] #put all the samples that are unfinished oscillators
 	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
 	actual_num_samples = math.ceil(params['num_samples']/params['parallelism'])*params['parallelism']
@@ -32,7 +131,7 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 		if params['verbose']:
 			print("Starting fixed point search, using", actual_num_samples, "sample initial points.")
 		for i in range(int(actual_num_samples/params['parallelism'])):
-			x0 = get_init_sample(params, node_name_to_num, num_nodes)
+			x0 = get_init_sample(params, node_name_to_num, num_nodes, V)
 
 			# with fixed_points_only = True, will return finished only for fixed points
 			# and hopefully move oscillations past their transient phase
@@ -40,69 +139,66 @@ def calc_basin_size(params, clause_mapping, node_mapping):
 
 			cupy_to_numpy(params,result)
 			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
-			add_to_attractors(params, attractors, result) 
-			oscil_bin += list(result['state'][result['period']!=1])
+			steadyStates.add_attractors(result)
+			#oscil_bin += list(result['state'][result['period']!=1]) # del this line, added to oscil in run_oscil_extract() jp
 
 		# TRANSIENT OSCILS
 		# run until sure that sample is in the oscil
-		confirmed_oscils = sync_run_oscils(params, oscil_bin, attractors, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=True)
+		confirmed_oscils = sync_run_oscils(params, oscil_bin, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=True)
 
 		# CLASSIFYING OSCILS
 		# calculate period, avg on state, ect
 		if params['verbose'] and confirmed_oscils != []: 
 			print('Finished finding oscillations, now classifying them.')
-		sync_run_oscils(params, confirmed_oscils, attractors, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False)
-
+		sync_run_oscils(params, confirmed_oscils, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False)
 
 	elif params['update_rule'] in ['async','Gasync'] or params['PBN']['active']: 
 		for i in range(int(actual_num_samples/params['parallelism'])):
-			x0 = get_init_sample(params, node_name_to_num, num_nodes)
+			x0 = get_init_sample(params, node_name_to_num, num_nodes, V)
 
 			x_in_attractor = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
 			result = lap.categorize_attractor(params,x_in_attractor, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-
 			cupy_to_numpy(params,result)
-
-			add_to_attractors(params, attractors, result)
-
-		for A in attractors.keys():
-			
-			attractors[A]['totalAvg']=attractors[A]['avg'].copy()
-			attractors[A]['totalVar']=attractors[A]['var'].copy()
-			attractors[A]['avg']/=attractors[A]['size']
-			attractors[A]['var']/=attractors[A]['size']
+			steadyStates.add_attractors(result)
 
 	else:
 		sys.exit("ERROR: unrecognized parameter for 'update_rule'")
 
-
-
-	for s in attractors.keys():
-		attractors[s]['size'] /= actual_num_samples
+	steadyStates.normalize_attractors(actual_num_samples)
 
 	if params['use_phenos']:
-		map_to_phenos(params, attractors, node_name_to_num)
+		steadyStates.build_phenos()
 
-	if params['verbose']:
-		print('Finished with',len(attractors),'attractors.')
-
-	return attractors, attr2pheno(params, attractors)
+	return steadyStates
 
 
-def get_init_sample(params, node_name_to_num, num_nodes):
+def get_init_sample(params, node_name_to_num, num_nodes, V):
 	p = .5 #prob a given node is off at start
 	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
+
+	
+	if 'inputs' in params.keys():
+		k = len(params['inputs'])
+		actual_num_samples = math.floor(params['parallelism']/(2**k))*2**k
+		print('basin: actual num samples:', actual_num_samples)
+		input_indices = [V['name2#'][params['inputs'][i]] for i in range(k)]
+		input_sets = itertools.product([0,1],repeat=k)
+		i=0
+		for input_set in input_sets:
+			x0[i*actual_num_samples/(2**k):(i+1)*actual_num_samples/(2**k)][input_indices] = input_set
+			i+=1
+		assert(i==2**k)
+
 	x0[:,0] = 0 #0th node is the always OFF node
 	
-	if params['use_phenos']:
-		if 'init' in params['phenos'].keys():
-			for k in params['phenos']['init']:
-				node_indx = node_name_to_num[k]
-				x0[:,node_indx] = params['phenos']['init'][k]
+	if 'init' in params.keys():
+		for k in params['init']:
+			node_indx = node_name_to_num[k]
+			x0[:,node_indx] = params['init'][k]
 
 	return x0
 
-def sync_run_oscils(params, oscil_bin, attractors, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False):
+def sync_run_oscils(params, oscil_bin, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False):
 	if oscil_bin == [] or oscil_bin is None:
 		return
 	restart_counter=orig_num_oscils=len(oscil_bin)
@@ -121,7 +217,7 @@ def sync_run_oscils(params, oscil_bin, attractors, num_nodes,nodes_to_clauses, c
 		if transient:
 			confirmed_oscils += list(result['state'][result['finished']==True])
 		else:
-			add_to_attractors(params, attractors, result)
+			steadyStates.add_attractors(result)
 
 	params['steps_per_lap'] = orig_steps_per_lap
 	params['fraction_per_lap'] = orig_fraction_per_lap
@@ -131,66 +227,7 @@ def sync_run_oscils(params, oscil_bin, attractors, num_nodes,nodes_to_clauses, c
 		return confirmed_oscils
 
 
-def attr2pheno(params, attractors):
-	if not params['use_phenos']:
-		return None
-	phenos = {}
-	for k in attractors:
-		A = attractors[k]
-		if A['pheno'] not in phenos.keys():
-			phenos[A['pheno']] = {'attractors':{k:A},'size':A['size']}
-		else:
-			phenos[A['pheno']]['size'] += A['size']
-			phenos[A['pheno']]['attractors'][k] = A
-	return phenos
-
-
-def map_to_phenos(params, attractors, node_name_to_num):
-	# might be a cleaner place to put this
-	# want to return which phenos corresp to which attractors 
-
-	outputs = [node_name_to_num[params['phenos']['outputs'][i]] for i in range(len(params['phenos']['outputs']))]
-	for k in attractors.keys():
-		attractors[k]['pheno'] = ''
-		for i in range(len(outputs)):
-			if attractors[k]['avg'][outputs[i]-1] > params['phenos']['output_thresholds'][i]:
-				# -1 since attractors don't include 0 always OFF node
-				attractors[k]['pheno']+='1'
-			else:
-				attractors[k]['pheno']+='0'
-			# old version without thresh:
-			#attractors[k]['pheno']+=k[outputs[i]-1] # -1 since attractors don't include 0 always OFF node
-
-
-
-def add_to_attractors(params, attractors, result):
-	# only fps means only add the fixed points, i.e. where period = 1
-	for i in range(len(result['state'])):
-		if params['update_rule'] == 'sync' and not params['PBN']['active']:
-			if result['finished'][i]:
-				state = format_state_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
-				if state not in attractors.keys():
-					attractors[state] = {'state':state}
-					attractors[state]['size']=1
-					attractors[state]['period'] = result['period'][i] #again skip 0th node
-					for k in ['avg','var']:
-						attractors[state][k] = result[k][i][1:] #again skip 0th node
-				else:
-					attractors[state]['size']+=1
-		else:
-			state = format_state_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
-			if state not in attractors.keys():
-				attractors[state] = {'state':state}
-				attractors[state]['size']=1
-				attractors[state]['avg'] = result['avg'][i][1:] #again skip 0th node
-				attractors[state]['var'] = result['var'][i][1:] 
-			else:
-				attractors[state]['size']+=1
-				attractors[state]['avg'] += result['avg'][i][1:] 
-				attractors[state]['var'] += result['var'][i][1:] 
-
-
-def format_state_str(x):
+def format_id_str(x):
 	label=''
 	for ele in x:
 		if ele == True:

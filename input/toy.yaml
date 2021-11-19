@@ -1,10 +1,15 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
+net_file : 'input/toyNet.txt' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
+
+use_phenos : true # quick way to disable phenotypes and ignore pheno_file
+
 outputs : ['p1','p2']
-output_thresholds : [0,0] 
+output_thresholds : [0,0,0,0] 
 # will produce output phenotypes in terms of these
 
-init : {}
+inputs : ['n1']
+init : {'n2':0}
 # each sample begins with these states (x0) 
 
 

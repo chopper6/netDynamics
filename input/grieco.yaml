@@ -1,0 +1,19 @@
+# specifies which nodes are 'outputs' and determine the phenotype
+
+net_file : 'input/mapk.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
+
+use_phenos : true # quick way to disable phenotypes and ignore pheno_file
+
+outputs : ['Apoptosis','Proliferation','Growth_Arrest']
+output_thresholds : [0,0,0] 
+# will produce output phenotypes in terms of these
+
+inputs : ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
+init : {}
+# each sample begins with these states (x0) 
+
+
+mutations : {}
+# mutations alter the function of the node to always be off or on
+
+#pheno_color_map : {'000':0, '001':1,'010':2,'11':3,} #to ensure consistent coloring between images

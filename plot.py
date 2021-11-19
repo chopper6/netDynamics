@@ -15,26 +15,19 @@ CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy n
 COLORS = cm.Dark2([i for i in range(20)]) #cm.Set2([i for i in range(20)])
 #COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 
-def pie(params, attractors,phenos, node_mapping,external_label=None):
-	node_name_to_num = node_mapping['name_to_num']
-	node_num_to_name = node_mapping['num_to_name']
+def pie(params, steadyStates, V, external_label=None):
+	node_name_to_num = V['name2#']
+	node_num_to_name = V['#2name']
 	num_nodes = int(len(node_num_to_name)/2)
 	init_mpl(params)
 
-	if CUPY:
-		if params['use_phenos']:
-			labels = sorted(list(phenos.keys())) #just to make sure order is set, and always the same between runs
-			sizes = [phenos[labels[i]]['size'].get() for i in range(len(labels))]
-		else:
-			labels = list(attractors.keys()) #just to make sure order is set
-			sizes = [attractors[labels[i]]['size'].get() for i in range(len(labels))]
+	if params['use_phenos']:
+		basin_sizes = steadyStates.phenotypes
 	else:
-		if params['use_phenos']:
-			labels = sorted(list(phenos.keys())) #just to make sure order is set, and always the same between runs
-			sizes = [phenos[labels[i]]['size'] for i in range(len(labels))]
-		else:
-			labels = list(attractors.keys()) #just to make sure order is set
-			sizes = [attractors[labels[i]]['size'] for i in range(len(labels))]
+		basin_sizes = steadyStates.attractors
+
+	labels = list(basin_sizes.keys()) #just to make sure order is set
+	sizes = [basin_sizes[labels[i]].size for i in range(len(labels))]
 
 	# could prob do this chunk more succinctly
 	del_zeros, offset = [], 0
@@ -47,15 +40,13 @@ def pie(params, attractors,phenos, node_mapping,external_label=None):
 		offset += 1
 
 	if params['use_phenos']:
-
 		legend_title = ""
 		j=0
-		for i in range(len(params['phenos']['outputs'])):
+		for i in range(len(params['outputs'])):
 			if j>0:
 				legend_title +=', '
-			legend_title += params['phenos']['outputs'][i]
+			legend_title += params['outputs'][i]
 			j+=1
-
 	else:
 		legend_title = "Attractors ("
 		for i in range(1,num_nodes): #ie skip the 0th node, which is always OFF
@@ -67,12 +58,12 @@ def pie(params, attractors,phenos, node_mapping,external_label=None):
 
 	fig, ax = plt.subplots(figsize=(10, 6))
 
-	if params['use_phenos'] and 'pheno_color_map' in params['phenos'].keys():
+	if params['use_phenos'] and 'pheno_color_map' in params.keys():
 		label_map = []
-		l=len(params['phenos']['pheno_color_map']) 
+		l=len(params['pheno_color_map']) 
 		for label in labels:
-			if label in params['phenos']['pheno_color_map']:
-				label_map+= [params['phenos']['pheno_color_map'][label]]
+			if label in params['pheno_color_map']:
+				label_map+= [params['pheno_color_map'][label]]
 			else:
 				label_map+=[l]
 				l+=1
@@ -209,6 +200,33 @@ def getmax(feats,stat,noises,xlabels):
 		for group in xlabels:
 			ymax = max(ymax,max(feats[noise][group][stat]))
 	return ymax
+
+
+def control_exper_bar(params, stats):
+	# 1 bar plot with 1 cluster per stat
+	settings = list(stats.keys())
+	stat_keys = list(stats[settings[0]].keys())
+	width = 1/(2*len(settings))
+	label_locs = cp.arange(len(stat_keys))
+
+	fig, ax = plt.subplots(figsize=(10, 6))
+	i=0
+	for k in settings:
+		data = [stats[k][k2] for k2 in stat_keys]
+
+		locs = label_locs+(i - (len(settings)-1)/2)*width
+		alabel = ax.bar(locs, data, width, label=k,color=COLORS[i])
+		i+=1
+
+	ax.set_title('Mutability and Reversibility Metrics',fontsize=16)
+	ax.set_xticks(label_locs)
+	ax.set_xticklabels(stat_keys,fontsize=12)
+	ax.legend()
+
+	if params['savefig']:
+		plt.savefig(params['output_dir'] +'/barz.jpg') 	
+	else:
+		plt.show()
 
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers

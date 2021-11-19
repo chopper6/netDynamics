@@ -2,6 +2,9 @@ import main, parse, plot
 import sys, os, itertools
 from copy import deepcopy
 
+# TODO: may have to update this since classes overhaul
+# add XOR
+
 
 def variance_test(param_file):
 	# TODO: fix avg & var calc, organize io/visualize, test net generator
@@ -50,8 +53,8 @@ def calc_stats(params, reps, noise_str, loopType, gate, feats):
 		avg_str = 'totalAvg'
 
 	for r in range(reps):
-		attractors, phenos, node_mapping = main.find_attractors(params)
-		middle_node = node_mapping['name_to_num']['x1']
+		attractors, phenos, V = main.find_attractors(params)
+		middle_node = V['name2#']['x1']
 		avg_variance=0 # sum_nodes sum_As var_node_in_A  / #nodes #As
 		avg_avg = 0
 

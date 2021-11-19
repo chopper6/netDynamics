@@ -17,9 +17,12 @@ def step(params, x, num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_
 	# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
 	partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
 
-	for j in range(len(clauses_to_threads)): #TODO: parallelize this such that clauses_to_threads can be >> 1 efficiently
-		# partial truths must be reordered for their corresponding nodes
-		x_next = x_next + cp.matmul(partial_truths[:,j],threads_to_nodes[j])
+	#for j in range(len(clauses_to_threads)): 
+	#	# partial truths must be reordered for their corresponding nodes
+	#	#print(partial_truths[:,j].shape,threads_to_nodes[j].shape,cp.matmul(partial_truths[:,j],threads_to_nodes[j]).shape)
+	#	x_next = x_next + cp.matmul(partial_truths[:,j],threads_to_nodes[j])
+
+	x_next = cp.sum(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(bool)
 
 	# alternative with partial_truths also enclosed in for loop:
 	'''  note that these take IDENTICAL time, so likely unfolded by compiler anyway
@@ -27,15 +30,13 @@ def step(params, x, num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_
 		partial_truths = cp.any(clauses[:,clauses_to_threads[j]],axis=2) 
 		x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
 	'''
-	if not params['PBN']['active']:
-		return x_next
-	else:
+	if params['PBN']['active']:
 		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(bool,copy=False)
 		flip[:,0]=0 #always OFF nodes should still be off
 		#print(cp.sum((cp.logical_not(flip)*x_next | flip*cp.logical_not(x))[:,1])/100)
 		return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
 
-	return x
+	return x_next
 
 
 def transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, fixed_points_only=False):

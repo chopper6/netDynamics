@@ -2,15 +2,18 @@ import parse, util
 import itertools, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
+# TODO:
+# update parse.expanded_net() to the newer more minimal format
+
 def test(param_file):
-	A,n,N,node_mapping = parse.expanded_net(sys.argv[1])
+	A,n,N,V = parse.expanded_net(sys.argv[1])
 	ldoi_solns, negated = ldoi_bfs(A,n,N,pinning=1)
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
 			if ldoi_solns[i,j]:
-				soln_names += node_mapping['num_to_name'][j] + ', '
-		print("LDOI(",node_mapping['num_to_name'][i],') =',soln_names)#,"\tnegated = ",negated[i])
+				soln_names += V['#2name'][j] + ', '
+		print("LDOI(",V['#2name'][i],') =',soln_names)#,"\tnegated = ",negated[i])
 
 
 def ldoi_bfs(A,n,N,pinning=True):
