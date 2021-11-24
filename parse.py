@@ -346,7 +346,60 @@ def sequences(seq_file_pos, seq_file_neg):
 	return seqs
 
 
+
 def expanded_net(params, net_file):
+	# assumes that net_file is already in expanded form, to avoid calling qm every time
+	# use reduce.py ahead of time to do so
+	# net file should already be in DNF and include negative nodes
+
+	# still gotta clean this, lot of redundancies in it
+
+	assert(False) #this reqs that F and V are from expanded, not regular net
+	F, F_mapd, Adj, V = net(params)
+	A,n,N,V = build_exp_net(F,V)
+	return A,n,N,V
+
+
+def build_exp_net(F,V):	
+	num_clauses = 0
+	for node in F:
+		num_clauses += len(F[node])
+	n = len(F)-1 #rm that 0 shitter
+	N = num_clauses+n*2
+	A = cp.zeros((N,N)) #adj for expanded net instead
+
+	# building clauses_to_threadsex, i.e. the index for the function of each node
+	if n<256: 
+		index_dtype = cp.uint8
+	elif n<65536:
+		index_dtype = cp.uint16
+	else:
+		index_dtype = cp.uint32
+
+	composite_counter = 0
+
+	for node in F:
+		for clause in F[node]:
+			if node not in ['0','1']:
+				node_num = V['name2#'][node]
+				if len(clause)>1:
+					A[n*2+composite_counter,node_num]=1
+					for j in range(len(clause)):
+						literal_name = clause[j]
+						literal_node = V['name2#'][literal_name]
+						A[literal_node,n*2+composite_counter]=1
+					composite_counter+=1
+				else:
+					literal_name = clause[0]
+					literal_node = V['name2#'][literal_name]
+					
+					A[literal_node,node_num]=1
+
+	return A,n,N,V
+
+
+
+def expanded_net_old(params, net_file):
 	# assumes that net_file is already in expanded form, to avoid calling qm every time
 	# use reduce.py ahead of time to do so
 	# net file should already be in DNF and include negative nodes

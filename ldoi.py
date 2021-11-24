@@ -1,4 +1,5 @@
-import parse, util
+import parse, util, logic
+from copy import deepcopy
 import itertools, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
@@ -92,8 +93,10 @@ def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
 
 
 
-def ldoi_sizes_over_all_inputs(params,fixed_nodes=[]):		
-	A,n,N,V = parse.expanded_net(params, params['expanded_net']) #temp soln?
+def ldoi_sizes_over_all_inputs(params,F_orig,V_orig,fixed_nodes=[]):	
+	F,V = deepcopy(F_orig), deepcopy(V_orig)
+	logic.DNF_via_QuineMcCluskey_nofile(F,V, expanded=True)	
+	A,n,N,V = parse.build_exp_net(F,V)
 	
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
 	avg_num_ldoi_nodes = {k:0 for k in range(2*n)}

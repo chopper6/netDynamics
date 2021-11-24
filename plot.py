@@ -209,7 +209,7 @@ def control_exper_bar(params, stats):
 	stat_keys2 = list(stats[2][settings[0]].keys())
 	width = 1/(2*len(settings))
 	label_locs = cp.arange(len(stat_keys1)) 
-	fig, ax = plt.subplots(2,figsize=(10, 6))
+	fig, ax = plt.subplots(2,figsize=(10, 12))
 	i=0
 	for k in settings:
 		data = [stats[1][k][k2] for k2 in stat_keys1]
@@ -219,7 +219,7 @@ def control_exper_bar(params, stats):
 		i+=1
 	ax[0].set_title('Mutability and Reversibility Metrics',fontsize=16)
 	ax[0].set_xticks(label_locs)
-	ax[0].set_xticklabels(stat_keys1,fontsize=12, rotation = 45, ha="center")
+	ax[0].set_xticklabels(stat_keys1,fontsize=12, rotation = 15, ha="center")
 	ax[0].legend()
 
 	label_locs = cp.arange(len(stat_keys2)) 
@@ -228,9 +228,10 @@ def control_exper_bar(params, stats):
 		data = [stats[2][k][k2] for k2 in stat_keys2]
 		locs = label_locs+(i - (len(settings)-1)/2)*width
 		alabel = ax[1].bar(locs, data, width, label=k,color=COLORS[i])
+		i+=1
 	ax[1].set_title('(Topo)logical Network Features',fontsize=16)
 	ax[1].set_xticks(label_locs)
-	ax[1].set_xticklabels(stat_keys2,fontsize=12, rotation = 45, ha="center")
+	ax[1].set_xticklabels(stat_keys2,fontsize=12, rotation = 15, ha="center")
 	ax[1].legend()
 	fig.tight_layout()
 

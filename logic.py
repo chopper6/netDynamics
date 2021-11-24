@@ -3,6 +3,99 @@ import math
 from subprocess import call
 
 
+def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
+	# net file should be in DNF
+	# see README for format specifications
+
+	# if expanded is true, will explicitly build negative nodes
+	# such that nodes 1:n are regular and n:2n are negatives
+
+	# general approach: 
+	# python: parse file, call qm.exe as subprocess
+	# c (qm.exe): solve QuineMcCluskey, write to c2py.txt
+	# python: read from c2py.txt, write new net file, del c2py.txt
+	# c python, caveman approach work best
+
+	not_str = '!' #TEMP! TODO genz
+
+	if expanded:
+		negatives_bin = []
+
+	for node in F:
+		input_nodes = {}	# name -> num
+		input_nodes_rev = {}  # num -> name
+		unreduced_clauses = []
+
+		for clause in F[node]:
+			for lit in clause:
+				literal_name = V['#2name'][lit]
+				if not_str in literal_name:
+					literal_name_ = literal_name.replace(not_str,'')
+				else:
+					literal_name_ = literal_name
+				if literal_name not in input_nodes.keys():
+					input_nodes_rev[len(input_nodes)] = literal_name_
+					input_nodes[literal_name_] = len(input_nodes)
+			
+		for clause in F[node]: # go through again to build int min term representations of the clauses
+			expanded_clause = ['x' for i in range(len(input_nodes))]
+			clause_int=0
+			
+			for lit in clause: #build the int min term representation of the clause
+
+				literal_name = V['#2name'][lit]
+				if not_str in literal_name:
+					sign = '0'
+					literal_name = literal_name.replace(not_str,'')
+				else:
+					sign = '1'
+				expanded_clause[input_nodes[literal_name]]=sign
+
+			expanded_clauses = [''.join(expanded_clause)] #if a literal is not in a string, need to make two string with each poss value of that literal	
+			final_expanded_clauses = []
+			while expanded_clauses != []:
+				for j in range(len(input_nodes)):
+					for ec in expanded_clauses:
+						if 'x' not in ec:
+							final_expanded_clauses += [ec]
+							expanded_clauses.remove(ec)
+						elif ec[j]=='x':
+							expanded_clauses+= [ec[:j] + "1" + ec[j+1:]]
+							expanded_clauses+= [ec[:j] + "0" + ec[j+1:]]
+							expanded_clauses.remove(ec)
+
+			for ec in final_expanded_clauses:
+				unreduced_clauses += [int('0b'+ec,2)]
+
+		unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
+
+		if expanded:
+			neg_clauses = [i for i in range(2**len(input_nodes))]
+			for term in unreduced_clauses:
+				neg_clauses.remove(term)
+			negatives_bin += [{'clauses':neg_clauses,'node':node,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
+
+		if len(unreduced_clauses) != 1: # run qm and write reduced function back
+			F[node] = run_qm(unreduced_clauses, len(input_nodes),format_name,input_nodes_rev,return_f=True)
+
+
+	if expanded:
+		for neg_dict in negatives_bin:
+			if len(neg_dict['clauses']) == 1:
+				# qm.exe just returns blank, can't reduce anyway, so just put back original line
+				bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
+				reduced_fn = ''
+				Fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name,return_f=True)
+				F[not_str + neg_dict['node']] = Fn
+
+			else: # run qm and write reduced function back
+				F[not_str + neg_dict['node']] = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'],return_f=True)
+
+	os.remove('c2py.txt') #clean up
+
+
+
+
 def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 	# net file should be in DNF
 	# see README for format specifications
@@ -160,10 +253,12 @@ def int2bool(x,lng):
 		bool_str+='0'
 	return ''.join(reversed(bool_str))
 
-def bool2clause(bool_str, clause,input_nodes_rev, format_name):
+def bool2clause(bool_str, clause,input_nodes_rev, format_name,return_f=False):
+	# TODO: clean return_f nonsense
 	# this is very specific to the syntax used for the c program
 	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
 	
+	f= []
 	added_lit = False
 	for j in range(len(bool_str)):
 		finished_clauses = False
@@ -180,18 +275,24 @@ def bool2clause(bool_str, clause,input_nodes_rev, format_name):
 				clause += '1' #since not1 should be 0, ect 
 			else:
 				clause += not_str + input_nodes_rev[j]
+				f += [not_str + input_nodes_rev[j]]
 		elif bool_str[j] == '1':
 			clause += input_nodes_rev[j]
+			f += [input_nodes_rev[j]]
 		elif bool_str[j] == '-2':
 			finished_clauses = True
 			break
 		elif bool_str[j] != '-1': #note that -1 means don't include the clause
 			assert(0) #unrecognized digit
 	
+	if return_f:
+		return finished_clauses, clause, f
 	return finished_clauses, clause
 
 
-def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
+def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=False):
+	# TODO: sep fn from return_F -> reduced_fn string
+
 	# calls a c logic function, MUST build the exe first
 	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
 	devnull = open(os.devnull, 'w') #just to hide output of subprocess
@@ -202,6 +303,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 
 	call(cargs,stdout=devnull, stderr=devnull)
 
+	f = []
 	reduced_fn = ''
 	with open('c2py.txt','r') as c2py:
 		# result is 1 clause per line, comma sep for each input
@@ -222,8 +324,12 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 			if i!=0 and lits[0] != '-2':
 				reduced_fn += clause_split
 
-			finished_clauses, clause = bool2clause(lits, clause, input_nodes_rev, format_name)
-
+			if return_f: 
+				finished_clauses, clause, f = bool2clause(lits, clause, input_nodes_rev, format_name)
+				F += [f]
+			else:
+				finished_clauses, clause = bool2clause(lits, clause, input_nodes_rev, format_name)
+			
 			if not finished_clauses:
 				if len(strip_from_clause) > 0 and len(lits)>1:
 					clause += strip_from_clause[1]
@@ -232,6 +338,8 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 				break #once reach a clause with a -2, done
 			i+=1
 
+	if return_f:
+		return F
 	return reduced_fn
 
 
