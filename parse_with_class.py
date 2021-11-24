@@ -76,7 +76,7 @@ class Params:
     
 
 class Net:
-    def __init__(self, net_file, debug=True):
+    def __init__(self, net_file, debug=True, clause_bin_size=99999, parallelism=128):
         self.net_file = net_file
         # net file should be in DNF, see README for specifications
         self.debug = debug
@@ -96,6 +96,20 @@ class Net:
         
         self._read_net_file()
         self.V = {'#2name':self.node_num_to_name, 'name2#':self.node_name_to_num}
+                  
+        self.index_dtype = None
+        self._get_index_dtype()
+        
+        self.clause_bin_size = clause_bin_size
+        self.thread_dtype = self._get_thread_dtype(parallelism)
+        
+        self.nodes_to_clauses = None
+        self.nodes_clause = None
+        self._curr_clause = 0
+        self.A = None # ADJACENCY MATRIX, unsigned
+        self.clauses_to_threads = []
+        self.threads_to_nodes = []
+        self.clause_mapping = {}
     
     def _initialize(self):
         self.node_name_to_num['0']=0 # always OFF node is first
@@ -195,135 +209,126 @@ class Net:
     def apply_mutations(self, params):
         if 'mutations' in params:
             for f in self.F:
-                if f in self.params['mutations']:
+                if f in params['mutations']:
                     self.F[f] = [str(params['mutations'][f])] #should be '0' or '1' which refer to the always OFF and ON nodes
                 if params['debug']:
                     assert(self.F[f][0] in ['0','1'])
+                    
+    def get_clause_mapping(self):
+        if self.debug:
+            assert(self.n==len(self.V['#2name'])/2)
+                                 
+        # 0th clause is an always false clause
+        self.nodes_to_clauses = cp.zeros((self.num_clauses,self.max_literals),dtype=self.index_dtype) # the literals in each clause
+        self.nodes_clause = {i:[] for i in range(self.n)}
+        self._curr_clause = 0
+        
+        # ADJACENCY MATRIX, unsigned
+        self.A = cp.zeros((self.n,self.n),dtype=bool)
+        
+        # go thru F to parse the clauses
+        self.nodes_clause[0] += [self._curr_clause]
+        self.A[0,0]=1
+        self._curr_clause += 1
+        for node_num in range(1,self.n): #(1,n) due to the 0 node
+            self._process_clause_to_node_num(node_num)
+        
+        self._get_thread()
+        
+        self.clauses_to_threads = cp.array(self.clauses_to_threads, dtype=self.thread_dtype)
+        self.clause_mapping = {'nodes_to_clauses':self.nodes_to_clauses, 
+                               'clauses_to_threads':self.clauses_to_threads, 
+                               'threads_to_nodes':self.threads_to_nodes}
+        
     
-def get_clause_mapping(params, F, V): 
+    def _process_clause_to_node_num(self, node_num: "self.n > node_num >=2 only"):
+        node_name = self.node_num_to_name[node_num]
+        clauses = self.F[node_name]
+        for clause in clauses:
+            clause_fn = []
+            for literal_node in clause:
+                literal_node_num = self.node_name_to_num[literal_node]
+                clause_fn += [literal_node_num]
+                if literal_node_num >= self.n:#i.e. is a negative node
+                    self.A[node_num, literal_node_num-self.n] = 1
+                else:
+                    self.A[node_num, literal_node_num] = 1
+            for _ in range(len(clause), self.max_literals): # filling to make sq matrix
+                clause_fn += [literal_node_num]
+            
+            self.nodes_to_clauses[self._curr_clause] = clause_fn
+            self.nodes_clause[node_num] += [self._curr_clause]
+            self._curr_clause += 1
+        
+                                 
+    def _get_index_dtype(self):
+        if self.n<256: 
+            self.index_dtype = cp.uint8
+        elif self.n<65536:
+            self.index_dtype = cp.uint16
+        else:
+            self.index_dtype = cp.uint32
+    
+    @staticmethod
+    def _get_thread_dtype(parallelism):
+        if parallelism <256:
+            thread_dtype = cp.uint8
+        elif parallelism <65535:
+            thread_dtype = cp.uint16
+        else:
+            thread_dtype = cp.uint32
+        return thread_dtype
+            
+    def _get_thread(self):
+        m = min(self.clause_bin_size, self.max_clauses) #later make this a param, will be max clauses compressed per thread
+        
+        i = 0
+        while sum(len(self.nodes_clause[i2]) for i2 in range(self.n)) > 0:
+            # ie when have mapped all clauses
+            
+            # after each clauses_to_threads[i], need to add an index for where the new (compressed) clauses will go
+            this_set=[[] for _ in range(self.n)]
+            self.threads_to_nodes += [cp.zeros((self.n,self.n),dtype=bool)]
+            sorted_keys = sorted(self.nodes_clause, key=lambda k: len(self.nodes_clause[k]), reverse=True)
+            self.nodes_clause = {k:self.nodes_clause[k] for k in sorted_keys}
+            node_indx = 0
+            
+            for j in range(self.n):
+                take_from_node = sorted_keys[node_indx]
+                self.threads_to_nodes[i][j,take_from_node]=1
+                if sum([len(self.nodes_clause[i2]) for i2 in range(self.n)]) > 0:
+                    if len(self.nodes_clause[take_from_node]) >= m:
+                        this_set[j] = self.nodes_clause[take_from_node][:m]
+                        if len(self.nodes_clause[take_from_node]) == m:
+                            node_indx += 1
+                        del self.nodes_clause[take_from_node][:m]
+                    else:
+                        top = len(self.nodes_clause[take_from_node])
+                        this_set[j] = self.nodes_clause[take_from_node][:top]
+                        rem = m-(top)
+                        this_set[j] += [0 for _ in range(rem)] #use a false clause to make matrix square (assuming DNF)
+                        del self.nodes_clause[take_from_node][:top]
+                        node_indx += 1
+                else:#finished, just need to filll up the array
+                    this_set[j] = [0 for _ in range(len(this_set[j-1]))] #alt could copy this_set[j-1]
+            self.clauses_to_threads += [this_set]
+                    
+            
+            i += 1
+            if i > self.loop_limit:
+                sys.exit("ERROR: infinite loop likely in parse.net()")
+    
 
-	n = len(F)
-	if params['debug']:
-		assert(n==len(V['#2name'])/2)
+    
+    def catch_errs(self, params):
+        if params['debug']:
+            assert(len(self.V['name2#'])==len(self.V['#2name']))
+            assert(len(self.V['name2#'])%2==0) #since 1/2 should be the negative copies
+        
+        if 'mutations' in params.keys():
+            for k in params['mutations']:
+                assert(k in self.V['name2#'].keys())
 
-	# building clauses_to_threadsex, i.e. the index for the function of each node
-	if n<256: 
-		index_dtype = cp.uint8
-	elif n<65536:
-		index_dtype = cp.uint16
-	else:
-		index_dtype = cp.uint32
-
-	num_clauses, max_literals, max_clauses = 0,0,0
-	for node in F:
-		num_clauses += len(F[node])
-		max_clauses = max(max_clauses, len(F[node]))
-		for clause in F[node]:
-			max_literals = max(max_literals, len(clause))
-
-	node_num_to_name = V['#2name']
-	node_name_to_num = V['name2#']
-
-	# 0th clause is an always false clause
-	nodes_to_clauses = cp.zeros((num_clauses,max_literals),dtype=index_dtype) # the literals in each clause
-	nodes_clause = {i:[] for i in range(n)}
-	curr_clause = 0
-
-	# ADJACENCY MATRIX, unsigned
-	A = cp.zeros((n,n),dtype=bool)
-	
-	# go thru F to parse the clauses
-	nodes_clause[0] += [curr_clause]
-	A[0,0]=1
-	curr_clause += 1
-
-	for l in range(1,n): #(1,n) due to the 0 node
-		node_num=l 
-		node_name = node_num_to_name[l]
-		clauses = F[node_name]
-		for i in range(len(clauses)):
-			clause = clauses[i]
-			clause_fn = []
-			for j in range(len(clause)):
-				literal_node = node_name_to_num[clause[j]]
-				clause_fn += [literal_node]
-				if literal_node >= n: #i.e. is a negative node
-					A[node_num, literal_node-n] = 1
-				else:
-					A[node_num, literal_node] = 1
-			for j in range(len(clause), max_literals): # filling to make sq matrix
-				clause_fn += [literal_node]
-
-			nodes_to_clauses[curr_clause] = clause_fn
-			nodes_clause[node_num] += [curr_clause]
-			curr_clause += 1
-
-
-	# bluid clause index with which to compress the clauses -> nodes
-	#	nodes_to_clauses: computes which nodes are inputs (literals) of which clauses
-	#	clauses_to_threads: maps which clauses will be processed by which threads (and #threads = #nodes)
-	#	threads_to_nodes: maps which threads are functions of which nodes
-	clauses_to_threads = []
-	threads_to_nodes = [] 
-	m=min(params['clause_bin_size'],max_clauses) #later make this a param, will be max clauses compressed per thread
-
-	i=0
-	while sum([len(nodes_clause[i2]) for i2 in range(n)]) > 0:
-		# ie when have mapped all clauses
-
-		# after each clauses_to_threads[i], need to add an index for where the new (compressed) clauses will go
-		this_set=[[] for _ in range(n)]
-		threads_to_nodes += [cp.zeros((n,n),dtype=bool)]
-		sorted_keys = sorted(nodes_clause, key=lambda k: len(nodes_clause[k]), reverse=True)
-		nodes_clause = {k:nodes_clause[k] for k in sorted_keys}
-		node_indx = 0
-
-		for j in range(n):
-			take_from_node = sorted_keys[node_indx]
-			threads_to_nodes[i][j,take_from_node]=1
-			if sum([len(nodes_clause[i2]) for i2 in range(n)]) > 0:	
-				if len(nodes_clause[take_from_node]) >= m:
-					this_set[j] = nodes_clause[take_from_node][:m]
-					if len(nodes_clause[take_from_node]) == m:
-						node_indx += 1
-					del nodes_clause[take_from_node][:m]
-				else:
-					top = len(nodes_clause[take_from_node])
-					this_set[j] = nodes_clause[take_from_node][:top]
-					rem = m-(top)
-					this_set[j] += [0 for _ in range(rem)] #use a false clause to make matrix square (assuming DNF)
-					del nodes_clause[take_from_node][:top]
-					node_indx += 1
-			else: #finished, just need to filll up the array
-				this_set[j] = [0 for _ in range(len(this_set[j-1]))] #alt could copy this_set[j-1]
-
-		clauses_to_threads += [this_set]
-		
-		i+=1
-		if i>1000000:
-			sys.exit("ERROR: infinite loop likely in parse.net()")
-	
-	if params['parallelism']<256:
-		thread_dtype = cp.uint8
-	elif params['parallelism']<65535:
-		thread_dtype = cp.uint16
-	else:
-		thread_dtype = cp.uint32
-	clauses_to_threads = cp.array(clauses_to_threads,dtype=thread_dtype)
-
-	clause_mapping = {'nodes_to_clauses':nodes_to_clauses, 'clauses_to_threads':clauses_to_threads, 'threads_to_nodes':threads_to_nodes}
-	
-	catch_errs(params,  clause_mapping, V)
-	return clause_mapping, A
-
-def catch_errs(params, clause_mapping, V):
-	if params['debug']:
-		assert(len(V['name2#'])==len(V['#2name']))
-		assert(len(V['name2#'])%2==0) #since 1/2 should be the negative copies
-
-		if 'mutations' in params.keys():
-			for k in params['mutations']:
-				assert(k in V['name2#'].keys())
 
 
 def get_file_format(format_name):
