@@ -1,4 +1,4 @@
-import main, parse
+import main, parse, control
 import sys, os
 from timeit import default_timer as timer
 
@@ -20,7 +20,22 @@ def timetest(param_file, print_output=False):
 	print("\n\n\nAverage execution time = ", avg_time,"minutes.\n")
 	return avg_time
 
+def timetest_control(param_file, print_output=False):
+	params = parse.params(param_file) #for now parsing is not timed
+	#params['verbose'] = 0 # you really want to hear it every loop?
+	reps = 2
+	tstart = timer()
+	for r in range(reps):
+		control.randomize_experiment(param_file) 
+		print("\n\n~~~TIMING CODE: Finished rep ",r+1,'~~~\n')
+		tmid = timer()
+		print("so far at time=",round((tmid-tstart)/(60*reps),3),'min.\n\n\n')
+	tend = timer()
 
+	avg_time = round((tend-tstart)/(60*reps),3)
+
+	print("\n\n\nAverage execution time = ", avg_time,"minutes.\n")
+	return avg_time
 
 if __name__ == "__main__":
 	if len(sys.argv) != 3:
@@ -31,6 +46,8 @@ if __name__ == "__main__":
 		sys.exit("Parameter file must be yaml format")
 	
 	if sys.argv[2]=='time':
-		timetest(sys.argv[1], print_output=True)
+		timetest(sys.argv[1], print_output=True)	
+	if sys.argv[2]=='timeControl':
+		timetest_control(sys.argv[1], print_output=True)
 	else:
 		sys.exit("Unrecognized optimization_type (arguments 3).")

@@ -1,0 +1,19 @@
+# specifies which nodes are 'outputs' and determine the phenotype
+
+net_file : 'input/mammCC.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
+
+use_phenos : true # quick way to disable phenotypes and ignore pheno_file
+
+outputs : ['pRB']
+output_thresholds : [0] 
+# will produce output phenotypes in terms of these
+
+inputs : ['EGF']
+init : {}
+# each sample begins with these states (x0) 
+
+
+mutations : {}
+# mutations alter the function of the node to always be off or on
+
+pheno_color_map : {'0':0, '1':1} #to ensure consistent coloring between images

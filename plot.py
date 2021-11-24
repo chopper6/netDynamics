@@ -12,7 +12,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy n
 #TODO: pick better colors
 #cm_list = [40*(i+2) for i in range(8)]
 #rd.shuffle(cm_list)
-COLORS = cm.Dark2([i for i in range(20)]) #cm.Set2([i for i in range(20)])
+COLORS = cm.Set2([i for i in range(40)]) #cm.Dark2([i for i in range(20)]) #
 #COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 
 def pie(params, steadyStates, V, external_label=None):
@@ -204,29 +204,60 @@ def getmax(feats,stat,noises,xlabels):
 
 def control_exper_bar(params, stats):
 	# 1 bar plot with 1 cluster per stat
-	settings = list(stats.keys())
-	stat_keys = list(stats[settings[0]].keys())
+	settings = list(stats[1].keys())
+	stat_keys1 = list(stats[1][settings[0]].keys())
+	stat_keys2 = list(stats[2][settings[0]].keys())
 	width = 1/(2*len(settings))
-	label_locs = cp.arange(len(stat_keys))
-
-	fig, ax = plt.subplots(figsize=(10, 6))
+	label_locs = cp.arange(len(stat_keys1)) 
+	fig, ax = plt.subplots(2,figsize=(10, 6))
 	i=0
 	for k in settings:
-		data = [stats[k][k2] for k2 in stat_keys]
+		data = [stats[1][k][k2] for k2 in stat_keys1]
 
 		locs = label_locs+(i - (len(settings)-1)/2)*width
-		alabel = ax.bar(locs, data, width, label=k,color=COLORS[i])
+		alabel = ax[0].bar(locs, data, width, label=k,color=COLORS[i])
 		i+=1
+	ax[0].set_title('Mutability and Reversibility Metrics',fontsize=16)
+	ax[0].set_xticks(label_locs)
+	ax[0].set_xticklabels(stat_keys1,fontsize=12, rotation = 45, ha="center")
+	ax[0].legend()
 
-	ax.set_title('Mutability and Reversibility Metrics',fontsize=16)
-	ax.set_xticks(label_locs)
-	ax.set_xticklabels(stat_keys,fontsize=12)
-	ax.legend()
+	label_locs = cp.arange(len(stat_keys2)) 
+	i=0
+	for k in settings:
+		data = [stats[2][k][k2] for k2 in stat_keys2]
+		locs = label_locs+(i - (len(settings)-1)/2)*width
+		alabel = ax[1].bar(locs, data, width, label=k,color=COLORS[i])
+	ax[1].set_title('(Topo)logical Network Features',fontsize=16)
+	ax[1].set_xticks(label_locs)
+	ax[1].set_xticklabels(stat_keys2,fontsize=12, rotation = 45, ha="center")
+	ax[1].legend()
+	fig.tight_layout()
 
 	if params['savefig']:
-		plt.savefig(params['output_dir'] +'/barz.jpg') 	
+		plt.savefig(params['output_dir'] +'/barz_' +params['output_img']) 	
 	else:
 		plt.show()
+	plt.clf()
+	plt.close()
+
+
+def control_exper_scatter(params, node_stats, labels):
+
+	for k in labels.keys():
+		#fig, ax = plt.subplots(figsize=(10, 6))
+		n = len(node_stats[k])
+		x,y = [node_stats[k][i][0] for i in range(n)],[node_stats[k][i][1] for i in range(n)]
+		plt.scatter(x,y,alpha=.05)
+		plt.xlabel(labels[k][1])
+		plt.ylabel(labels[k][0])
+		if params['savefig']:
+			plt.savefig(params['output_dir'] +'/' + k + '_' +params['output_img']) 	
+		else:
+			plt.show()
+		plt.clf()
+		plt.close()
+
 
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers

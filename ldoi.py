@@ -3,20 +3,24 @@ import itertools, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # TODO:
-# update parse.expanded_net() to the newer more minimal format
+# check parse.expanded_net()
+# check pinning=False at end of ldoi_bfs()
+# clean name -> num and back transitions
 
 def test(param_file):
-	A,n,N,V = parse.expanded_net(sys.argv[1])
-	ldoi_solns, negated = ldoi_bfs(A,n,N,pinning=1)
+	params = parse.params(param_file)
+	A,n,N,V = parse.expanded_net(params, params['expanded_net'])
+	ldoi_solns, negated = ldoi_bfs(A,n,N,pinning=1,init=[V['name2#']['Akt1']])
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
 			if ldoi_solns[i,j]:
 				soln_names += V['#2name'][j] + ', '
-		print("LDOI(",V['#2name'][i],') =',soln_names)#,"\tnegated = ",negated[i])
+		if i == V['name2#']['ERa']:
+			print("LDOI(",V['#2name'][i],') =',soln_names)#,"\tnegated = ",negated[i])
 
 
-def ldoi_bfs(A,n,N,pinning=True):
+def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
 	# A should be adjacency matrix of Gexp
 	# and the corresponding Vexp to A should be ordered such that:
 	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
@@ -28,6 +32,9 @@ def ldoi_bfs(A,n,N,pinning=True):
 	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
 	negated = cp.zeros(N,dtype=bool) # if negated[i] then the complement of i is in the LDOI of i
 	D = cp.diag(cp.ones(N,dtype=bool))
+	if len(init) > 0:
+		init = cp.array(init)
+		D[:,init] = 1 
 	D[cp.arange(2*n,N)]=0 #don't care about source nodes for complement nodes
 	D_compl = D.copy()
 	D_compl[:2*n] = cp.roll(D_compl[:2*n],n,axis=0)
@@ -82,6 +89,60 @@ def ldoi_bfs(A,n,N,pinning=True):
 	if not pinning:
 		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
 	return visited[:2*n,:2*n], negated[:2*n] 
+
+
+
+def ldoi_sizes_over_all_inputs(params,fixed_nodes=[]):		
+	A,n,N,V = parse.expanded_net(params, params['expanded_net']) #temp soln?
+	
+	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
+	avg_num_ldoi_nodes = {k:0 for k in range(2*n)}
+	avg_num_ldoi_outputs = {k:0 for k in range(2*n)}
+	output_indices = [V['name2#'][params['outputs'][i]] for i in range(len(params['outputs']))]
+
+	ldoi_fixed = []
+	for pair in fixed_nodes:
+		indx = V['name2#'][pair[0]] 
+		if pair[1]==0:
+			indx += n # i.e. the node's complement
+		ldoi_fixed += [indx]
+
+
+	k = len(params['inputs'])
+	input_indices = [V['name2#'][params['inputs'][i]] for i in range(k)]
+	input_sets = itertools.product([0,1],repeat=k)
+	for input_set in input_sets:
+		ldoi_inpts = ldoi_fixed.copy()
+		for i in range(len(input_set)):
+			if input_set[i]==1:
+				ldoi_inpts += [input_indices[i]]
+			else:
+				ldoi_inpts += [input_indices[i] + n] #i.e. its complement
+
+		ldoi_solns, negated = ldoi_bfs(A,n,N,pinning=1,init=ldoi_inpts)
+		if CUPY:
+			ldoi_solns = ldoi_solns.get() #explicitly cast out of cupy
+
+		avg_sum_ldoi += cp.sum(ldoi_solns)/((2*n)**2) #normz by max sum poss
+		for i in range(2*n):
+			avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(2*n)
+			for o in output_indices:
+				if ldoi_solns[i,o]:
+					avg_num_ldoi_outputs[i] += 1 
+					avg_sum_ldoi_outputs += 1				
+				if ldoi_solns[i,o+n]:
+					avg_num_ldoi_outputs[i] += 1 
+					avg_sum_ldoi_outputs += 1
+			avg_num_ldoi_outputs[i] /= len(output_indices)
+		avg_sum_ldoi_outputs /= (len(output_indices)*2*n)
+
+	avg_sum_ldoi /= 2**k
+	avg_sum_ldoi_outputs /= 2**k
+	for i in range(2*n):
+		avg_num_ldoi_nodes[i] /= 2**k # normz
+		avg_num_ldoi_outputs[i] /= 2**k # normz
+
+	return {'total':avg_sum_ldoi,'total_onlyOuts':avg_sum_ldoi_outputs, 'node':avg_num_ldoi_nodes,'node_onlyOuts':avg_num_ldoi_outputs}
 
 
 if __name__ == "__main__":

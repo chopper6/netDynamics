@@ -27,7 +27,10 @@ def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
 			format_name = file.readline().replace('\n','')
 
 		with open(output_file,'w') as ofile:
-   			ofile.write(format_name + "\n")
+			if format_name=='bnet':
+				pass
+			else:
+   				ofile.write(format_name + "\n")
 
 		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
 
@@ -260,8 +263,8 @@ def DNF_from_cell_collective_TT(folder, output_file):
 						line=line.replace(',','')
 						clauses += [int('0b'+line,2)]
 
-				if len(clauses) > 1:
-					reduced_fn = run_qm(clauses, len(inputs), format_name, inputs_rev)
+				assert(clauses != []) # should not always be off
+				reduced_fn = run_qm(clauses, len(inputs), format_name, inputs_rev)
 
 				with open(output_file,'a') as ofile:
 				   	ofile.write(node + node_fn_split + reduced_fn + '\n')
@@ -277,6 +280,6 @@ if __name__ == "__main__":
 		if sys.argv[3]=='TT':
 			DNF_from_cell_collective_TT(sys.argv[1],sys.argv[2])
 		else:
-			sys.exit("Unrecognized 3rd arg. Usage: python3 reduce.py input_net_file output_net_file [reduce]")
+			sys.exit("Unrecognized 3rd arg. Usage: python3 logic.py input_net_file output_net_file [reduce]")
 	else:
 		DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)

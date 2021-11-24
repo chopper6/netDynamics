@@ -77,7 +77,7 @@ def get_logic(params):
 
 	F = {'0':[[0]]}
 
-	max_literals, max_clauses, num_clauses, n = 1, 1, 1,1 #all start at 1 due to the always OFF node (and always off clause)
+	n = 1 #start at 1 due to the always OFF node
 
 	if not os.path.isfile(net_file):
 		sys.exit("Can't find network file: " + str(net_file)) 
@@ -110,11 +110,8 @@ def get_logic(params):
 			n+=1
 
 			clauses = line[1].split(clause_split)
-			num_clauses += len(clauses)
-			max_clauses = max(max_clauses, len(clauses))
 			for clause in clauses:
 				this_clause=[]
-				max_literals = max(max_literals, len(clause.split(literal_split)))
 				for symbol in strip_from_clause:
 					clause = clause.replace(symbol,'')
 				literals = clause.split(literal_split)
@@ -349,7 +346,7 @@ def sequences(seq_file_pos, seq_file_neg):
 	return seqs
 
 
-def expanded_net(net_file):
+def expanded_net(params, net_file):
 	# assumes that net_file is already in expanded form, to avoid calling qm every time
 	# use reduce.py ahead of time to do so
 	# net file should already be in DNF and include negative nodes

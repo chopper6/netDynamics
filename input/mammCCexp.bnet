@@ -1,0 +1,40 @@
+EGF,	EGF
+ErbB1_3,	(ErbB1 & ErbB3)
+p27,	(!Akt1 & !CDK2 & !CDK4 & ERa & !cMYC)
+ErbB1_2,	(ErbB1 & ErbB2)
+IGF1R,	(!ErbB2_3 & Akt1) | (ERa & !ErbB2_3)
+ERa,	(Akt1) | (MEK1)
+p21,	(!Akt1 & !CDK4 & ERa & !cMYC)
+ErbB2_3,	(ErbB2 & ErbB3)
+Akt1,	(ErbB1) | (ErbB1_2) | (ErbB1_3) | (ErbB2_3) | (IGF1R)
+cMYC,	(Akt1) | (ERa) | (MEK1)
+CDK4,	(CycD1 & !p21 & !p27)
+CDK6,	CycD1
+CycD1,	(ERa & cMYC & Akt1) | (ERa & MEK1 & cMYC)
+CycE1,	cMYC
+CDK2,	(CycE1 & !p21 & !p27)
+MEK1,	(ErbB1) | (ErbB1_2) | (ErbB1_3) | (ErbB2_3) | (IGF1R)
+pRB,	(CDK4 & CDK6)
+ErbB3,	EGF
+ErbB2,	EGF
+ErbB1,	EGF
+!EGF,	!EGF
+!ErbB1_3,	(!ErbB1) | (!ErbB3)
+!p27,	(!ERa) | (cMYC) | (CDK4) | (CDK2) | (Akt1)
+!ErbB1_2,	(!ErbB1) | (!ErbB2)
+!IGF1R,	(!ERa & !Akt1) | (ErbB2_3)
+!ERa,	!MEK1 & !Akt1
+!p21,	(!ERa) | (cMYC) | (CDK4) | (Akt1)
+!ErbB2_3,	(!ErbB2) | (!ErbB3)
+!Akt1,	!IGF1R & !ErbB2_3 & !ErbB1_3 & !ErbB1_2 & !ErbB1
+!cMYC,	!MEK1 & !ERa & !Akt1
+!CDK4,	(!CycD1) | (p27) | (p21)
+!CDK6,	!CycD1
+!CycD1,	(!MEK1 & !Akt1) | (!ERa) | (!cMYC)
+!CycE1,	!cMYC
+!CDK2,	(!CycE1) | (p27) | (p21)
+!MEK1,	!IGF1R & !ErbB2_3 & !ErbB1_3 & !ErbB1_2 & !ErbB1
+!pRB,	(!CDK4) | (!CDK6)
+!ErbB3,	!EGF
+!ErbB2,	!EGF
+!ErbB1,	!EGF

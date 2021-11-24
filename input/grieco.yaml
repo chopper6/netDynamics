@@ -1,6 +1,6 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
-net_file : 'input/mapk.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
+net_file : 'input/grieco.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
 
 use_phenos : true # quick way to disable phenotypes and ignore pheno_file
 

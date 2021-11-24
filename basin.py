@@ -45,6 +45,8 @@ class Phenotype:
 	def __init__(self, attractors, size):
 		self.attractors = attractors
 		self.size = size
+		self.inputs = None 
+		self.outputs = None 
 
 		
 class SteadyStates:
@@ -97,9 +99,15 @@ class SteadyStates:
 			A = self.attractors[k]
 			if A.phenotype not in self.phenotypes.keys():
 				self.phenotypes[A.phenotype] = Phenotype({k:A},A.size)
+				if '|' in A.phenotype:
+					parts = A.phenotype.split('|')
+					inpts, outpts = parts[0],parts[1]
+					self.phenotypes[A.phenotype].inputs = inpts
+					self.phenotypes[A.phenotype].outputs = outpts 
 			else:
 				self.phenotypes[A.phenotype].size += A.size 
 				self.phenotypes[A.phenotype].attractors[k] = A
+
 
 
 #############################################################################################
@@ -187,7 +195,7 @@ def get_init_sample(params, node_name_to_num, num_nodes, V):
 		input_sets = itertools.product([0,1],repeat=k)
 		i=0
 		for input_set in input_sets:
-			x0[i*params['parallelism']/(2**k):(i+1)*params['parallelism']/(2**k)][input_indices] = cp.array(input_set)[:,cp.newaxis]
+			x0[int(i*params['parallelism']/(2**k)):int((i+1)*params['parallelism']/(2**k))][input_indices] = cp.array(input_set)[:,cp.newaxis]
 			i+=1
 		assert(i==2**k)
 
