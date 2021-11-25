@@ -37,10 +37,10 @@ from copy import deepcopy
 #	poss only match |o part for colors of pie chart
 
 def randomize_experiment(param_file):
-	reps = 4
+	reps = 2
 	num_swaps = 8
 	mut_dist_thresh, control_dist_thresh = .1,.1
-	dist_thresh=.5
+	dist_thresh=.2
 	net_stats, node_stats = {1:{},2:{}}, {}
 
 	params = parse.params(param_file)
@@ -48,8 +48,8 @@ def randomize_experiment(param_file):
 	n2=len(V['#2name'])-2 #inclds composite nodes but not 0 node
 
 	result = exhaustive(params, F, V, dist_thresh=dist_thresh)
-	net_stats[1]['vanilla'] = result['network_stats1']
-	net_stats[2]['vanilla'] = result['network_stats2']
+	net_stats[1]['original'] = result['network_stats1']
+	net_stats[2]['original'] = result['network_stats2']
 	node_stats = result['node_stats']
 	node_stat_labels = result['node_stat_labels']
 
@@ -265,8 +265,8 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 
 				solutions, control_mag_, mutated_ldoi_stats = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, [], control_mag, (M,b), max_control_size,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,[])
 				control_mag += control_mag_
-				mut_ldoi_total += mutated_ldoi_stats['total']
-				mut_ldoi_total_out += mutated_ldoi_stats['total_onlyOuts']
+				#mut_ldoi_total += mutated_ldoi_stats['total']
+				#mut_ldoi_total_out += mutated_ldoi_stats['total_onlyOuts']
 				#print(control_mag, control_mag_/(2*len(nodes)))
 
 			params['mutations'] = deepcopy(orig_mutated) #reset
@@ -281,9 +281,9 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 			mut_pts += [[mut_dist_sum/2,H_cond[M]]]
 
 	mutant_mag /= 2*len(nodes)
-	control_mag /= 2*len(nodes)#*len(mutators)
-	mut_ldoi_total /= len(mutators)
-	mut_ldoi_total_out /= len(mutators)
+	control_mag /= max(len(mutators),1)
+	#mut_ldoi_total /= len(mutators)
+	#mut_ldoi_total_out /= len(mutators)
 
 	for C in nodes:
 		if H_cond[C] is not None:
@@ -301,9 +301,9 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 			H_cond_avg += value 
 	H_cond_avg/= len(nodes)
 	n2=len(V['#2name'])-2
-	net_stats1 = {'%mutators':len(mutators)/n2,'mutant_dist':mutant_mag, 'control_per_mutant':len(solutions)/max(len(mutators)*(n2-1),1),'control_dist':control_mag}
-	net_stats2= {'ldoi_sum':ldoi_stats['total'],'ldoi_sum_outputs':ldoi_stats['total_onlyOuts'],'correlation':H_cond_avg,\
-	 'ldoi_mut_sum':mut_ldoi_total, 'ldoi_mut_sum_outputs':mut_ldoi_total_out}
+	net_stats1 = {'%mutators':len(mutators)/n2,'mutability':mutant_mag, '%controllers':len(solutions)/max(len(mutators)*(n2-1),1),'reversibility':control_mag}
+	net_stats2= {'|ldoi|':ldoi_stats['total'],'|ldoi_outputs|':ldoi_stats['total_onlyOuts'],'correlation':H_cond_avg}#,\
+	 #'|ldoi| mutated':mut_ldoi_total, '|ldoi_outputs| mutated':mut_ldoi_total_out}
 	
 	node_stats = {'mut_pts':mut_pts,'cnt_pts':cnt_pts,'ldoi_mut':ldoi_mut,'ldoi_out_mut':ldoi_out_mut,'ldoi_cnt':ldoi_cnt,'ldoi_out_cnt':ldoi_out_cnt}
 	
@@ -319,10 +319,12 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 
 def try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set, control_mag, mutator, depth,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats): 
 	if depth == 0:
-		return solutions, control_mag
+		return solutions, 0
+	
+	control_mag = 0 #so shouldn't pass as param, also not recursing w it properly
 
 	# WARNING: ldoi stats won't work with larger depth
-	ldoi_stats = ldoi.ldoi_sizes_over_all_inputs(params,F,V,fixed_nodes=[mutator])
+	#ldoi_stats = ldoi.ldoi_sizes_over_all_inputs(params,F,V,fixed_nodes=[mutator])
 
 	for C in nodes:
 		orig_mutations = deepcopy(params['mutations'])
@@ -336,23 +338,24 @@ def try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set, 
 				#print('\twith',C,b,'control dist =',control_dist)
 				#print([(k,phenosC[k]['size']) for k in phenosC])
 				cnt_scores[C] += [max(0,mut_dist-control_dist)]
-				if control_dist < mut_dist - dist_thresh: 
-					control_mag += mut_dist - control_dist 
+				control_mag += max(0,mut_dist-control_dist)
+				if control_dist < mut_dist - dist_thresh:  
 
 					solutions += [{'mutation':mutator,'control':control_set+[(C,b)]}]
 				else:
 					# recurse using this node as a control + another (until reach max_depth)
-					solutions, control_mag = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set+[(C,b)], control_mag, mutator, depth-1,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats) 
+					solutions, control_mag_ = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set+[(C,b)], control_mag, mutator, depth-1,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats) 
+
 
 				params['mutations'] = deepcopy(orig_mutations) # reset (in case orig mutator was tried as a control node)
 			
 				indx = V['name2#'][C]-1
 				if b==0:
 					indx += int(len(V['name2#'])/2)-1 # all this mf off by ones due to the mf 0 node
-				ldoi_cnt += [[max(0,1-control_dist/mut_dist),ldoi_stats['node'][indx]]]
-				ldoi_out_cnt += [[max(0,1-control_dist/mut_dist),ldoi_stats['node_onlyOuts'][indx]]]
+				#ldoi_cnt += [[max(0,1-control_dist/mut_dist),ldoi_stats['node'][indx]]]
+				#ldoi_out_cnt += [[max(0,1-control_dist/mut_dist),ldoi_stats['node_onlyOuts'][indx]]]
 
-	return solutions, control_mag/(2*len(nodes)), ldoi_stats
+	return solutions, control_mag/(2*len(nodes)-1), ldoi_stats
 
 
 def diff(P1, P2, norm=1):

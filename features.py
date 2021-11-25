@@ -88,22 +88,26 @@ def check_corr(params, V, phenos):
 	nodes.remove(0)
 	nodes.remove(n)
 	H = {V['#2name'][k]:0 for k in nodes}
+	num_inputs = len(params['inputs'])
 	for C in nodes:
 		C_offset = C-1 #the fucking 1 and 0 nodes
 		if C >n:
 			C_offset-=n
-		output_prs = {}
+		xy_prs, x_prs = {},{}
 		for l in phenos:
 			Pout = phenos[l].outputs
 			for k in phenos[l].attractors:
 				A = phenos[l].attractors[k]
 				if C<n and float(A.avg[C_offset]) > .9:
-					add_to_dict(output_prs,Pout,A.size)
+					add_to_dict(xy_prs,Pout+'1',A.size)
+					add_to_dict(x_prs,'1',A.size)
 				elif C>n and float(A.avg[C_offset]) < .1:
-					add_to_dict(output_prs,Pout,A.size)
-			assert(sum(output_prs.values()) < 1.001)
+					add_to_dict(xy_prs,Pout+'0',A.size)
+					add_to_dict(x_prs,'0',A.size)
+				# else presumed to oscil, unsure how to handle
+			assert(sum(xy_prs.values()) < 1.001)
 		
-		H[V['#2name'][C]] = entropy(output_prs)
+		H[V['#2name'][C]] = entropy(xy_prs) - entropy(x_prs) #/math.log2(3)
 
 	return H
 

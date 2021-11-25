@@ -17,6 +17,7 @@ def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
 	# c python, caveman approach work best
 
 	not_str = '!' #TEMP! TODO genz
+	format_name = 'bnet'
 
 	if expanded:
 		negatives_bin = []
@@ -28,22 +29,22 @@ def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
 
 		for clause in F[node]:
 			for lit in clause:
-				literal_name = V['#2name'][lit]
+				literal_name = str(lit)
 				if not_str in literal_name:
 					literal_name_ = literal_name.replace(not_str,'')
 				else:
 					literal_name_ = literal_name
-				if literal_name not in input_nodes.keys():
+				if literal_name_ not in input_nodes.keys():
 					input_nodes_rev[len(input_nodes)] = literal_name_
 					input_nodes[literal_name_] = len(input_nodes)
-			
+		
 		for clause in F[node]: # go through again to build int min term representations of the clauses
 			expanded_clause = ['x' for i in range(len(input_nodes))]
 			clause_int=0
 			
 			for lit in clause: #build the int min term representation of the clause
 
-				literal_name = V['#2name'][lit]
+				literal_name = str(lit)
 				if not_str in literal_name:
 					sign = '0'
 					literal_name = literal_name.replace(not_str,'')
@@ -76,17 +77,20 @@ def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
 			negatives_bin += [{'clauses':neg_clauses,'node':node,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
 
 		if len(unreduced_clauses) != 1: # run qm and write reduced function back
-			F[node] = run_qm(unreduced_clauses, len(input_nodes),format_name,input_nodes_rev,return_f=True)
+			F[node] = run_qm(unreduced_clauses, len(input_nodes),'bnet',input_nodes_rev,return_f=True)
+
 
 
 	if expanded:
 		for neg_dict in negatives_bin:
-			if len(neg_dict['clauses']) == 1:
+			if neg_dict['node'] == '0':
+				F['1'] = [['1']]
+			elif len(neg_dict['clauses']) == 1:
 				# qm.exe just returns blank, can't reduce anyway, so just put back original line
 				bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
 				reduced_fn = ''
 				Fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name,return_f=True)
-				F[not_str + neg_dict['node']] = Fn
+				F[not_str + neg_dict['node']] = [Fn[2]]
 
 			else: # run qm and write reduced function back
 				F[not_str + neg_dict['node']] = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'],return_f=True)
@@ -284,7 +288,7 @@ def bool2clause(bool_str, clause,input_nodes_rev, format_name,return_f=False):
 			break
 		elif bool_str[j] != '-1': #note that -1 means don't include the clause
 			assert(0) #unrecognized digit
-	
+
 	if return_f:
 		return finished_clauses, clause, f
 	return finished_clauses, clause
@@ -303,7 +307,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=
 
 	call(cargs,stdout=devnull, stderr=devnull)
 
-	f = []
+	Fn = []
 	reduced_fn = ''
 	with open('c2py.txt','r') as c2py:
 		# result is 1 clause per line, comma sep for each input
@@ -325,8 +329,9 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=
 				reduced_fn += clause_split
 
 			if return_f: 
-				finished_clauses, clause, f = bool2clause(lits, clause, input_nodes_rev, format_name)
-				F += [f]
+				finished_clauses, clause, f = bool2clause(lits, clause, input_nodes_rev, format_name,return_f=True)
+				if f!=[]:
+					Fn += [f]
 			else:
 				finished_clauses, clause = bool2clause(lits, clause, input_nodes_rev, format_name)
 			
@@ -339,7 +344,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=
 			i+=1
 
 	if return_f:
-		return F
+		return Fn
 	return reduced_fn
 
 

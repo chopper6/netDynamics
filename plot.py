@@ -12,7 +12,10 @@ CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy n
 #TODO: pick better colors
 #cm_list = [40*(i+2) for i in range(8)]
 #rd.shuffle(cm_list)
-COLORS = cm.Set2([i for i in range(40)]) #cm.Dark2([i for i in range(20)]) #
+top = cm.get_cmap('Set2',8)#([i for i in range(8)])
+bottom= cm.get_cmap('Dark2',8)#([i for iin range(8)]) 
+COLORS= cp.vstack((top(cp.linspace(0, 1, 8)),bottom(cp.linspace(0, 1, 8))))
+
 #COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 
 def pie(params, steadyStates, V, external_label=None):
@@ -219,8 +222,8 @@ def control_exper_bar(params, stats):
 		i+=1
 	ax[0].set_title('Mutability and Reversibility Metrics',fontsize=16)
 	ax[0].set_xticks(label_locs)
-	ax[0].set_xticklabels(stat_keys1,fontsize=12, rotation = 15, ha="center")
-	ax[0].legend()
+	ax[0].set_xticklabels(stat_keys1,fontsize=14, rotation = 15, ha="center")
+	ax[0].legend(prop={'size': 10})
 
 	label_locs = cp.arange(len(stat_keys2)) 
 	i=0
@@ -231,8 +234,8 @@ def control_exper_bar(params, stats):
 		i+=1
 	ax[1].set_title('(Topo)logical Network Features',fontsize=16)
 	ax[1].set_xticks(label_locs)
-	ax[1].set_xticklabels(stat_keys2,fontsize=12, rotation = 15, ha="center")
-	ax[1].legend()
+	ax[1].set_xticklabels(stat_keys2,fontsize=14, rotation = 15, ha="center")
+	ax[1].legend(prop={'size': 10})
 	fig.tight_layout()
 
 	if params['savefig']:
