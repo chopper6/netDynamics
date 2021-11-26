@@ -13,7 +13,7 @@ def main(param_file):
 	plot.pie(params, steadyStates, V)
 
 
-def find_attractors(params):
+def find_attractors(params): 
 	F, F_mapd, A, V  = parse.net(params)
 	steadyStates = basin.calc_basin_size(params,F_mapd,V)
 	# attractors is a dict {} indexed by the steady state string (or "oscillates")

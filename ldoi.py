@@ -1,4 +1,5 @@
 import parse, util, logic
+from net import Expanded_Net
 from copy import deepcopy
 import itertools, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
@@ -7,27 +8,34 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # check parse.expanded_net()
 # check pinning=False at end of ldoi_bfs()
 # clean name -> num and back transitions
+# clean and check ldoi_sizes_over_all_inputs
+
+# check pinning of ldoi_bfs
 
 def test(param_file):
 	params = parse.params(param_file)
-	A,n,N,V = parse.expanded_net(params, params['expanded_net'])
-	ldoi_solns, negated = ldoi_bfs(A,n,N,pinning=1,init=[V['name2#']['Akt1']])
+	G = Expanded_Net(params, params['expanded_net'])
+	ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=[G.nodeNum['Akt1']])
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
 			if ldoi_solns[i,j]:
-				soln_names += V['#2name'][j] + ', '
-		if i == V['name2#']['ERa']:
-			print("LDOI(",V['#2name'][i],') =',soln_names)#,"\tnegated = ",negated[i])
+				soln_names += G.nodeNum[j] + ', '
+		if i == G.nodeNum['ERa']:
+			print("LDOI(",G.nodeNum[i],') =',soln_names)#,"\tnegated = ",negated[i])
 
 
-def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
+def ldoi_bfs(G,pinning=True,init=[]):
 	# A should be adjacency matrix of Gexp
 	# and the corresponding Vexp to A should be ordered such that:
 	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
 
 	# pinning means that sources cannot drive their complement (they are fixed to be ON)
 	# without pinning the algorithm will run faster, and it is possible that ~A in LDOI(A)
+
+	N = G.n_exp
+	A = G.A_exp
+	A = cp.array(A, dtype=bool).copy()
 
 	X = cp.zeros((N,N),dtype=bool) # the current sent of nodes being considered
 	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
@@ -36,10 +44,9 @@ def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
 	if len(init) > 0:
 		init = cp.array(init)
 		D[:,init] = 1 
-	D[cp.arange(2*n,N)]=0 #don't care about source nodes for complement nodes
+	D[cp.arange(G.n_neg,N)]=0 #don't care about source nodes for complement nodes
 	D_compl = D.copy()
-	D_compl[:2*n] = cp.roll(D_compl[:2*n],n,axis=0)
-	A = cp.array(A, dtype=bool)
+	D_compl[:G.n_neg] = cp.roll(D_compl[:G.n_neg],G.n,axis=0)
 
 	max_count = max(cp.sum(A,axis=0))
 	if max_count<128: 
@@ -48,7 +55,7 @@ def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
 		index_dtype = cp.int16
 
 	num_to_activate = cp.sum(A,axis=0,dtype=index_dtype)
-	num_to_activate[:2*n] = 1 # non composite nodes are OR gates
+	num_to_activate[:G.n_neg] = 1 # non composite nodes are OR gates
 	counts = cp.tile(num_to_activate,N).reshape(N,N) # num input nodes needed to activate
 	zero = cp.zeros((N,N))
 
@@ -67,7 +74,7 @@ def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
 
 		if pinning:
 			visited_rolled = visited.copy()
-			visited_rolled[:2*n] = cp.roll(visited_rolled[:2*n],n,axis=0)
+			visited_rolled[:G.n_neg] = cp.roll(visited_rolled[:G.n_neg],n,axis=0)
 			memoX = cp.matmul((visited|D) & cp.logical_not(visited_rolled.T), visited) 
 			# if A has visited B, then add B's visited to A if ~A not in B's visited
 			# otherwise must cut all of B's contribution!
@@ -89,13 +96,15 @@ def ldoi_bfs(A,n,N,pinning=True, max_drivers=1,init=[]):
 
 	if not pinning:
 		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
-	return visited[:2*n,:2*n], negated[:2*n] 
+
+	return visited[:G.neg,:G.neg], negated[:G.neg] 
 
 
 
-def ldoi_sizes_over_all_inputs(params,F_orig,V_orig,fixed_nodes=[]):	
-	F,V = deepcopy(F_orig), deepcopy(V_orig)
-	logic.DNF_via_QuineMcCluskey_nofile(F,V, expanded=True)	
+def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
+	# takes regular G, then logic.py augments into expanded net
+	logic.DNF_via_QuineMcCluskey_nofile(G,expanded=True)
+	# TODO: left off here	
 	A,n,N,V = parse.build_exp_net(F,V)
 	
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0

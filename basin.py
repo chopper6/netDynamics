@@ -5,7 +5,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # note that size of a phenotype or attract refers to its basin size
 
 class Attractor:
-	def __init__(self, params, V, attractor_id, period, avg, var):
+	def __init__(self, params, nodeNum, attractor_id, period, avg, var):
 		self.id = attractor_id
 		self.size = 1
 		if params['update_rule'] == 'sync' and not params['PBN']['active']:
@@ -15,13 +15,13 @@ class Attractor:
 		self.totalAvg = avg #won't be normalized so is really a sum
 		self.totalVar = var 
 		if params['use_phenos']:
-			self.map_to_pheno(params,V) 
+			self.map_to_pheno(params,G) 
 
-	def map_to_pheno(self, params, V):
-		outputs = [V['name2#'][params['outputs'][i]] for i in range(len(params['outputs']))]
+	def map_to_pheno(self, params, G):
+		outputs = [nodeNum[params['outputs'][i]] for i in range(len(params['outputs']))]
 
 		if 'inputs' in params.keys():
-			inputs = [V['name2#'][params['inputs'][i]] for i in range(len(params['inputs']))]
+			inputs = [nodeNum[params['inputs'][i]] for i in range(len(params['inputs']))]
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
@@ -52,15 +52,15 @@ class Phenotype:
 class SteadyStates:
 	# collects sets of attractors and phenotypes
 
-	def __init__(self, params,V):
+	def __init__(self, params,nodeNum):
 		self.attractors = {} 
 		self.phenotypes = {}
 		self.params = params
-		self.V = V
+		self.nodeNum = nodeNum
 
 	def add(self, attractor_id, period, avg, var): # id should be unique to each attractor
 		if attractor_id not in self.attractors.keys():
-			self.attractors[attractor_id] = Attractor(self.params, self.V, attractor_id, period, avg, var)
+			self.attractors[attractor_id] = Attractor(self.params, self.nodeNum, attractor_id, period, avg, var)
 		else:
 			self.attractors[attractor_id].size += 1
 			if self.params['update_rule'] != 'sync' or self.params['PBN']['active']:
@@ -81,7 +81,7 @@ class SteadyStates:
 				attractor_id = format_id_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
 				self.add(attractor_id, period, result['avg'][i][1:], result['var'][i][1:]) #again skip 0th node for avg n var
 
-	def normalize_attractors(self, actual_num_samples):		
+	def normalize_attractors(self):		
 		if self.params['update_rule'] in ['async','Gasync'] or self.params['PBN']['active']:
 			for s in self.attractors:
 				A = self.attractors[s] 
@@ -91,7 +91,7 @@ class SteadyStates:
 				A.var/=A.size
 
 		for s in self.attractors:
-			self.attractors[s].size /= actual_num_samples
+			self.attractors[s].size /= self.params['num_samples']
 
 
 	def build_phenos(self):
@@ -112,72 +112,53 @@ class SteadyStates:
 
 #############################################################################################
 
-def calc_basin_size(params, clause_mapping, V):
+def calc_basin_size(params, G):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
-
-	#num_nodes is not counting the negative copies
-	node_name_to_num = V['name2#']
-	node_num_to_name = V['#2name']
-
-	# cast into cupy:
-	nodes_to_clauses = cp.array(clause_mapping['nodes_to_clauses'])
-	clauses_to_threads = cp.array(clause_mapping['clauses_to_threads']) 
-	threads_to_nodes = cp.array(clause_mapping['threads_to_nodes'])
-
-	num_nodes = int(len(node_num_to_name)/2) #i.e. excluding the negative copies
-	if params['debug']:
-		assert(len(node_num_to_name)%2==0)
 
 	steadyStates = SteadyStates(params, V) 
 
 	oscil_bin = [] #put all the samples that are unfinished oscillators
 	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
-	actual_num_samples = math.ceil(params['num_samples']/params['parallelism'])*params['parallelism']
-	if actual_num_samples != params['num_samples']:
-		print('WARNING: Due to parallelism, actual number of samples = ',actual_num_samples)
 	
 	if params['update_rule'] == 'sync' and not params['PBN']['active']:
 
 		# FIXED POINTS & EASY OSCILS
 		if params['verbose']:
-			print("Starting fixed point search, using", actual_num_samples, "sample initial points.")
-		for i in range(int(actual_num_samples/params['parallelism'])):
-			x0 = get_init_sample(params, node_name_to_num, num_nodes, V)
+			print("Starting fixed point search, using", params['num_samples'], "sample initial points.")
+		for i in range(int(params['num_samples']/params['parallelism'])):
+			x0 = get_init_sample(params, G)
 
 			# with fixed_points_only = True, will return finished only for fixed points
-			# and hopefully move oscillations past their transient phase
-			result = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, fixed_points_only=True)
-
+			# and help move oscillations past their transient phase
+			result = lap.transient(params,x0, G, fixed_points_only=True)
 			cupy_to_numpy(params,result)
 			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
 			steadyStates.add_attractors(result)
-			#oscil_bin += list(result['state'][result['period']!=1]) # del this line, added to oscil in run_oscil_extract() jp
 
 		# TRANSIENT OSCILS
 		# run until sure that sample is in the oscil
-		confirmed_oscils = sync_run_oscils(params, oscil_bin, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=True)
-
+		confirmed_oscils = sync_run_oscils(params, oscil_bin, steadyStates, G, transient=True)
 
 		# CLASSIFYING OSCILS
 		# calculate period, avg on state, ect
 		if params['verbose'] and confirmed_oscils != []: 
 			print('Finished finding oscillations, now classifying them.')
-		sync_run_oscils(params, confirmed_oscils, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False)
+		sync_run_oscils(params, confirmed_oscils, steadyStates, G, transient=False)
 
 
 	elif params['update_rule'] in ['async','Gasync'] or params['PBN']['active']: 
-		for i in range(int(actual_num_samples/params['parallelism'])):
-			x0 = get_init_sample(params, node_name_to_num, num_nodes, V)
+		for i in range(int(params['num_samples']/params['parallelism'])):
+			x0 = get_init_sample(params, G)
 
-			x_in_attractor = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
-			result = lap.categorize_attractor(params,x_in_attractor, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+			x_in_attractor = lap.transient(params,x0, G)
+			result = lap.categorize_attractor(params,x_in_attractor, G)
 			cupy_to_numpy(params,result)
 			steadyStates.add_attractors(result)
 
 	else:
 		sys.exit("ERROR: unrecognized parameter for 'update_rule'")
 
-	steadyStates.normalize_attractors(actual_num_samples)
+	steadyStates.normalize_attractors(params['num_samples'])
 
 	if params['use_phenos']:
 		steadyStates.build_phenos()
@@ -185,13 +166,13 @@ def calc_basin_size(params, clause_mapping, V):
 	return steadyStates
 
 
-def get_init_sample(params, node_name_to_num, num_nodes, V):
+def get_init_sample(params, G):
 	p = .5 #prob a given node is off at start
 	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
 	
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
-		input_indices = [V['name2#'][params['inputs'][i]] for i in range(k)]
+		input_indices = [G.nodeNum[params['inputs'][i]] for i in range(k)]
 		input_sets = itertools.product([0,1],repeat=k)
 		i=0
 		for input_set in input_sets:
@@ -208,7 +189,7 @@ def get_init_sample(params, node_name_to_num, num_nodes, V):
 
 	return x0
 
-def sync_run_oscils(params, oscil_bin, steadyStates, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, transient=False):
+def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 	if oscil_bin == [] or oscil_bin is None:
 		return
 	restart_counter=orig_num_oscils=len(oscil_bin)
@@ -218,9 +199,9 @@ def sync_run_oscils(params, oscil_bin, steadyStates, num_nodes,nodes_to_clauses,
 	while len(oscil_bin) > 0: 
 		x0, cutoff, restart_counter = run_oscil_init(params, oscil_bin, restart_counter, loop)
 		if transient:
-			result = lap.transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, fixed_points_only=False)
+			result = lap.transient(params,x0, G, fixed_points_only=False)
 		else:
-			result = lap.categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+			result = lap.categorize_attractor(params,x0, G)
 		cupy_to_numpy(params,result)
 		result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
 		

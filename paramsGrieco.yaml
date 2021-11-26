@@ -1,0 +1,36 @@
+# main parameter file
+# YAML is like JSON, but with more minimal syntax and allows comments
+# parse.py also adds support for scientific notation in the form: 10^8
+
+debug : true # adds various checks, may cause slow down
+verbose : true # prints out more info 
+print_lap : 10 # how many laps before another print statement. only if verbose 
+
+parallelism : 10^3 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+num_samples : 10^3 # number of initial states tested.
+steps_per_lap : 50 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+# note that 'steps_per_lap' is also the assumed transient period for async update methods
+update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
+# WARNING: async is not efficiently implemented, recommended only to compare with Gasync
+# Gasync = "generalized async" where a subset of nodes are sync updated each step 
+
+
+PBN : # probabilistic boolean network
+  active : 0
+  flip_pr : .05
+calc_var : 1 # will take 2x as long, adds a per-node variance stat to each attractor
+
+# implementation details
+steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
+fraction_per_lap : .9 # fraction of networks needed to satisfy stop condition to exit a lap
+clause_bin_size : 4 # number of clauses each threads merges at once
+
+# input
+model_file: 'input/grieco.yaml' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
+expanded_net: 'input/griecoExp.bnet'
+use_inputs_in_pheno: 0
+
+# output
+output_dir : 'output/'
+output_img : 'griecoM.png'
+savefig : 1 # as opposed to showing the image

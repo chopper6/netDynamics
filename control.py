@@ -39,15 +39,15 @@ from copy import deepcopy
 def randomize_experiment(param_file):
 	reps = 2
 	num_swaps = 8
-	mut_dist_thresh, control_dist_thresh = .1,.1
-	dist_thresh=.2
+	mut_dist_thresh, cnt_dist_thresh = .2,.2
 	net_stats, node_stats = {1:{},2:{}}, {}
 
 	params = parse.params(param_file)
+	params['save_fig'] = True 
 	F, V = parse.get_logic(params)
 	n2=len(V['#2name'])-2 #inclds composite nodes but not 0 node
 
-	result = exhaustive(params, F, V, dist_thresh=dist_thresh)
+	result = exhaustive(params, F, V, mut_dist_thresh=mut_dist_thresh, cnt_dist_thresh=cnt_dist_thresh)
 	net_stats[1]['original'] = result['network_stats1']
 	net_stats[2]['original'] = result['network_stats2']
 	node_stats = result['node_stats']
@@ -69,7 +69,7 @@ def randomize_experiment(param_file):
 		if params['debug']:
 			# check is degree preserving
 			assert(np.all(np.sum(A_copy,axis=0)== np.sum(A,axis=0)) and np.all(np.sum(A_copy,axis=1)== np.sum(A,axis=1)))
-		result = exhaustive(params, F_copy, V_copy, dist_thresh=dist_thresh)
+		result = exhaustive(params, F_copy, V_copy, mut_dist_thresh=mut_dist_thresh, cnt_dist_thresh=cnt_dist_thresh)
 		net_stats[1]['logicScramble_' + str(r)] = result['network_stats1']
 		net_stats[2]['logicScramble_' + str(r)] = result['network_stats2']
 		for k in node_stats:
@@ -82,7 +82,7 @@ def randomize_experiment(param_file):
 		if params['debug']:
 			# check is degree preserving
 			assert(np.all(np.sum(A_copy,axis=0)== np.sum(A,axis=0)) and np.all(np.sum(A_copy,axis=1)== np.sum(A,axis=1)))
-		result  = exhaustive(params, F_copy, V_copy, dist_thresh=dist_thresh)
+		result  = exhaustive(params, F_copy, V_copy, mut_dist_thresh=mut_dist_thresh, cnt_dist_thresh=cnt_dist_thresh)
 		net_stats[1]['edgeSwap_' + str(r)] = result['network_stats1']
 		net_stats[2]['edgeSwap_' + str(r)] = result['network_stats2']
 		for k in node_stats:
@@ -222,7 +222,7 @@ def get_rd_edge(A):
 
 ###############################################################################################################
 
-def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
+def exhaustive(params, F, V,max_control_size = 1, mut_dist_thresh=.2,cnt_dist_thresh=.2):
 
 	# assumes cannot alter pheno nodes, nor input nodes
 	# complexity is O(s*n^m+1*2^i) where s is the simulation time of a single input and i is the number of inputs, and m is the max control set size
@@ -259,11 +259,11 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 			mut_dist_sum += mut_dist
 			mutant_mag += mut_dist
 
-			if mut_dist  > dist_thresh:
+			if mut_dist  > mut_dist_thresh:
 				#print([(k,phenosM[k]['size']) for k in phenosM])
 				mutators += [(M,b)]
 
-				solutions, control_mag_, mutated_ldoi_stats = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, [], control_mag, (M,b), max_control_size,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,[])
+				solutions, control_mag_, mutated_ldoi_stats = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, [], control_mag, (M,b), max_control_size,cnt_dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,[])
 				control_mag += control_mag_
 				#mut_ldoi_total += mutated_ldoi_stats['total']
 				#mut_ldoi_total_out += mutated_ldoi_stats['total_onlyOuts']
@@ -293,7 +293,7 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 	print('\n#mutators=',len(mutators))
 	print('\n#solutions=',len(solutions))
 	print('\nmutation mag = ', mutant_mag, ', control mag = ', control_mag)
-	#print(solutions[:10])
+	print('\nall solutions:',solutions)
 
 	H_cond_avg = 0
 	for value in H_cond.values():
@@ -317,7 +317,7 @@ def exhaustive(params, F, V,max_control_size = 1, dist_thresh=.2):
 
 ####################################################################################################
 
-def try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set, control_mag, mutator, depth,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats): 
+def try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set, control_mag, mutator, depth,control_dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats): 
 	if depth == 0:
 		return solutions, 0
 	
@@ -339,12 +339,13 @@ def try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set, 
 				#print([(k,phenosC[k]['size']) for k in phenosC])
 				cnt_scores[C] += [max(0,mut_dist-control_dist)]
 				control_mag += max(0,mut_dist-control_dist)
-				if control_dist < mut_dist - dist_thresh:  
+				if control_dist < mut_dist - control_dist_thresh:  
+					print('\t',C,'=',b,'cnt_dist=',round(control_dist,3),'mut_dist=', round(mut_dist,3),'vs orig mutation',mutator[0],'=',mutator[1])
 
 					solutions += [{'mutation':mutator,'control':control_set+[(C,b)]}]
 				else:
 					# recurse using this node as a control + another (until reach max_depth)
-					solutions, control_mag_ = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set+[(C,b)], control_mag, mutator, depth-1,dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats) 
+					solutions, control_mag_ = try_and_fix(params,F, V, nodes, solutions, phenosWT, mut_dist, control_set+[(C,b)], control_mag, mutator, depth-1,control_dist_thresh,cnt_scores,ldoi_cnt, ldoi_out_cnt,ldoi_stats) 
 
 
 				params['mutations'] = deepcopy(orig_mutations) # reset (in case orig mutator was tried as a control node)
@@ -412,7 +413,7 @@ if __name__ == "__main__":
 	if sys.argv[2] == 'exh':
 		params = parse.params(sys.argv[1])
 		F, V = parse.get_logic(params)
-		exhaustive(params, F, V,dist_thresh=.2)
+		exhaustive(params, F, V,mut_dist_thresh=.1, cnt_dist_thresh=.1)
 	elif sys.argv[2] == 'rd':
 		randomize_experiment(sys.argv[1]) 
 	elif sys.argv[2] == 'tune':

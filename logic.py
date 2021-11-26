@@ -1,14 +1,19 @@
 import os, sys, parse
 import math
 from subprocess import call
+import #is that right? or just import net is enought
 
 
-def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
+# TODO: clean tf out of bool2clause and run_qm
+#	they should NOT write to file (although might be useful for the write to file fn in net.py)
+#	clean DNF_from_cell_collective_TT, although ok that it directly reads from folder then writes to file
+
+def DNF_via_QuineMcCluskey_nofile(G,expanded=False):
+	# exhaustively reduces the logic of a net G
+	# if expanded is true, will explicitly build negative nodes
+
 	# net file should be in DNF
 	# see README for format specifications
-
-	# if expanded is true, will explicitly build negative nodes
-	# such that nodes 1:n are regular and n:2n are negatives
 
 	# general approach: 
 	# python: parse file, call qm.exe as subprocess
@@ -16,38 +21,33 @@ def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
 	# python: read from c2py.txt, write new net file, del c2py.txt
 	# c python, caveman approach work best
 
-	not_str = '!' #TEMP! TODO genz
-	format_name = 'bnet'
-
 	if expanded:
 		negatives_bin = []
 
-	for node in F:
+	for node in G.nodes:
 		input_nodes = {}	# name -> num
 		input_nodes_rev = {}  # num -> name
 		unreduced_clauses = []
 
-		for clause in F[node]:
+		for clause in G.F[node]:
 			for lit in clause:
 				literal_name = str(lit)
-				if not_str in literal_name:
-					literal_name_ = literal_name.replace(not_str,'')
-				else:
-					literal_name_ = literal_name
-				if literal_name_ not in input_nodes.keys():
-					input_nodes_rev[len(input_nodes)] = literal_name_
-					input_nodes[literal_name_] = len(input_nodes)
+				if G.not_string in literal_name:
+					literal_name = literal_name.replace(G.not_str,'')
+				if literal_name not in input_nodes.keys():
+					input_nodes_rev[len(input_nodes)] = literal_name
+					input_nodes[literal_name] = len(input_nodes)
 		
-		for clause in F[node]: # go through again to build int min term representations of the clauses
+		for clause in G.F[node]: # go through again to build int min term representations of the clauses
 			expanded_clause = ['x' for i in range(len(input_nodes))]
 			clause_int=0
 			
 			for lit in clause: #build the int min term representation of the clause
 
 				literal_name = str(lit)
-				if not_str in literal_name:
+				if G.not_str in literal_name:
 					sign = '0'
-					literal_name = literal_name.replace(not_str,'')
+					literal_name = literal_name.replace(G.not_str,'')
 				else:
 					sign = '1'
 				expanded_clause[input_nodes[literal_name]]=sign
@@ -80,7 +80,6 @@ def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
 			F[node] = run_qm(unreduced_clauses, len(input_nodes),'bnet',input_nodes_rev,return_f=True)
 
 
-
 	if expanded:
 		for neg_dict in negatives_bin:
 			if neg_dict['node'] == '0':
@@ -90,161 +89,13 @@ def DNF_via_QuineMcCluskey_nofile(F,V, expanded=True):
 				bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
 				reduced_fn = ''
 				Fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name,return_f=True)
-				F[not_str + neg_dict['node']] = [Fn[2]]
+				F[G.not_string + neg_dict['node']] = [Fn[2]]
 
 			else: # run qm and write reduced function back
-				F[not_str + neg_dict['node']] = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'],return_f=True)
+				F[G.not_str + neg_dict['node']] = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'],return_f=True)
 
 	os.remove('c2py.txt') #clean up
 
-
-
-
-def DNF_via_QuineMcCluskey(net_file, output_file, expanded=False):
-	# net file should be in DNF
-	# see README for format specifications
-
-	# if expanded is true, will explicitly build negative nodes
-	# such that nodes 1:n are regular and n:2n are negatives
-
-	# general approach: 
-	# python: parse file, call qm.exe as subprocess
-	# c (qm.exe): solve QuineMcCluskey, write to c2py.txt
-	# python: read from c2py.txt, write new net file, del c2py.txt
-	# c python, caveman approach work best 
-
-	if not os.path.isfile(net_file):
-		sys.exit("Can't find network file: " + str(net_file)) 
-	
-	with open(net_file,'r') as file:
-		extension = net_file.split('.')
-		if extension[-1] == 'bnet':
-			format_name='bnet'
-		else:
-			format_name = file.readline().replace('\n','')
-
-		with open(output_file,'w') as ofile:
-			if format_name=='bnet':
-				pass
-			else:
-   				ofile.write(format_name + "\n")
-
-		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
-
-		if expanded:
-			negatives_bin = []
-
-		loop = 0
-		while True:
-			line = file.readline()
-			if not line: #i.e eof
-				break
-			lineCopy = line #in case just one literal will later just copy back
-			line = line.strip().split(node_fn_split)
-			node = line[0]
-
-			clauses = line[1].split(clause_split)
-
-			input_nodes = {}	# name -> num
-			input_nodes_rev = {}  # num -> name
-			unreduced_clauses = []
-
-			for i in range(len(clauses)): # go through once just to build input nodes
-
-				clause = clauses[i]
-				clause_int=0
-				for symbol in strip_from_clause:
-					clause = clause.replace(symbol,'')
-				literals = clauses[i].split(literal_split)
-				
-				for j in range(len(literals)): #build the int min term representation of the clause
-					literal_name = literals[j]
-					for symbol in strip_from_node + strip_from_clause:
-						literal_name = literal_name.replace(symbol,'')
-					if not_str in literal_name:
-						literal_name = literal_name.replace(not_str,'')
-					if literal_name not in input_nodes.keys():
-						input_nodes_rev[len(input_nodes)] = literal_name
-						input_nodes[literal_name] = len(input_nodes)
-				
-			for i in range(len(clauses)): # go through again to build int min term representations of the clauses
-				expanded_clause = ['x' for i in range(len(input_nodes))]
-				clause = clauses[i]
-				clause_int=0
-				for symbol in strip_from_clause:
-					clause = clause.replace(symbol,'')
-				literals = clauses[i].split(literal_split)
-				
-				for j in range(len(literals)): #build the int min term representation of the clause
-					literal_name = literals[j]
-					for symbol in strip_from_node + strip_from_clause:
-						literal_name = literal_name.replace(symbol,'')
-					if not_str in literal_name:
-						sign = '0'
-						literal_name = literal_name.replace(not_str,'')
-					else:
-						sign = '1'
-					expanded_clause[input_nodes[literal_name]]=sign
-
-				expanded_clauses = [''.join(expanded_clause)] #if a literal is not in a string, need to make two string with each poss value of that literal	
-				final_expanded_clauses = []
-				while expanded_clauses != []:
-					for j in range(len(input_nodes)):
-						for ec in expanded_clauses:
-							if 'x' not in ec:
-								final_expanded_clauses += [ec]
-								expanded_clauses.remove(ec)
-							elif ec[j]=='x':
-								expanded_clauses+= [ec[:j] + "1" + ec[j+1:]]
-								expanded_clauses+= [ec[:j] + "0" + ec[j+1:]]
-								expanded_clauses.remove(ec)
-
-				for ec in final_expanded_clauses:
-					unreduced_clauses += [int('0b'+ec,2)]
-
-			unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
-
-			if expanded:
-				neg_clauses = [i for i in range(2**len(input_nodes))]
-				for term in unreduced_clauses:
-					neg_clauses.remove(term)
-				negatives_bin += [{'clauses':neg_clauses,'node':node,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
-
-			if len(unreduced_clauses) == 1:
-				with open(output_file,'a') as ofile:
-					# qm.exe just returns blank, can't reduce anyway, so just put back original line
-					ofile.write(lineCopy.replace('\n','')+'\n') #ensure '\n' and no double \n
-
-			else: # run qm and write reduced function back
-				reduced_fn = run_qm(unreduced_clauses, len(input_nodes),format_name,input_nodes_rev)
-
-				with open(output_file,'a') as ofile:
-				   	ofile.write(node + node_fn_split + reduced_fn + '\n')
-			
-			if loop > 1000000:
-				sys.exit("Hit an infinite loop, unless net is monstrously huge") 
-			loop+=1
-
-		if expanded:
-			for neg_dict in negatives_bin:
-				if len(neg_dict['clauses']) == 1:
-					# qm.exe just returns blank, can't reduce anyway, so just put back original line
-					bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
-					reduced_fn = ''
-					finished_clauses, reduced_fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name)
-					if reduced_fn == not_str + '1':
-						reduced_fn = '0'
-					if reduced_fn == not_str + '0':
-						reduced_fn = '1'
-					with open(output_file,'a') as ofile:
-						ofile.write(not_str + neg_dict['node'] + node_fn_split + reduced_fn + '\n')
-
-				else: # run qm and write reduced function back
-					reduced_fn = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'])
-					with open(output_file,'a') as ofile:
-					   	ofile.write(not_str + neg_dict['node'] + node_fn_split + reduced_fn + '\n')
-
-	os.remove('c2py.txt') #clean up
 
 
 def int2bool(x,lng):

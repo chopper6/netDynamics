@@ -6,13 +6,17 @@
 import itertools, util, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
-def step(params, x, num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes):
-	X = cp.concatenate((x,cp.logical_not(x[:,:num_nodes])),axis=1)
+def step(params, x, G):
+	nodes_to_clauses = G.Fmapd['nodes_to_clauses']
+	clauses_to_threads = G.Fmapd['clauses_to_threads'] 
+	threads_to_nodes = G.Fmapd['threads_to_nodes']
+
+	X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
 	clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
 		
-	x_next = cp.zeros((num_nodes),dtype=bool)
+	x_next = cp.zeros((G.n),dtype=bool)
 
 	# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
 	partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
@@ -31,7 +35,7 @@ def step(params, x, num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_
 		x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
 	'''
 	if params['PBN']['active']:
-		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(bool,copy=False)
+		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(bool,copy=False)
 		flip[:,0]=0 #always OFF nodes should still be off
 		#print(cp.sum((cp.logical_not(flip)*x_next | flip*cp.logical_not(x))[:,1])/100)
 		return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
@@ -39,7 +43,7 @@ def step(params, x, num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_
 	return x_next
 
 
-def transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, fixed_points_only=False):
+def transient(params,x0, G, fixed_points_only=False):
 	# run network from an initial state 
 	# for sync: if fixed_points=True only return 'finished' for fixed points (and move oscils hopefully passed transient point)
 			# else fixed_points=False return if oscillated back to starting point 
@@ -50,7 +54,7 @@ def transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads
 
 	for i in range(params['steps_per_lap']):
 
-		x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		x_next = step(params, x, G)
 		
 		if params['update_rule']=='sync':
 			if not params['PBN']['active']:
@@ -64,13 +68,13 @@ def transient(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads
 			x = x_next
 		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
 			p=.5
-			which_nodes = cp.random.rand(params['parallelism'], num_nodes) > p
+			which_nodes = cp.random.rand(params['parallelism'], G.n) > p
 			x = which_nodes*x_next + (1-which_nodes)*x 
 		elif params['update_rule']=='async':
 			# WARNING: this is incredibly inefficient (uses an array to update a single element)
 			# only use to check against Gasync
-			which_nodes = cp.zeros((params['parallelism'], num_nodes), dtype=bool)
-			indx = [cp.arange(params['parallelism']), cp.random.randint(0, high=num_nodes, size=params['parallelism'])]
+			which_nodes = cp.zeros((params['parallelism'], G.n), dtype=bool)
+			indx = [cp.arange(params['parallelism']), cp.random.randint(0, high=G.n, size=params['parallelism'])]
 			which_nodes[indx]=1
 			x = which_nodes*x_next + (1-which_nodes)*x
 		else:
@@ -86,7 +90,7 @@ def exit_sync_transient(x, not_finished):
 	return {'finished':cp.logical_not(not_finished), 'state':x, 'avg':x, 'period':cp.logical_not(not_finished),'var':cp.zeros(x.shape)}
 		
 
-def categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, calculating_var=False,avg=None):
+def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	# assumes x0 is in the oscil
 	# will return a sorted ID for the oscil (max int representation) and the average activity of each node
 
@@ -101,10 +105,10 @@ def categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threa
 		period = cp.array([1 for _ in range(params['parallelism'])],dtype=int)
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
-	index_dtype, thread_dtype = get_dtypes(params, num_nodes)
+	index_dtype, thread_dtype = get_dtypes(params, G.n)
 	simple_ind = cp.array([i for i in range(params['parallelism'])],dtype=thread_dtype) 
 	larger = cp.zeros((params['parallelism']),dtype=cp.uint8)
-	diff = cp.zeros((params['parallelism'],num_nodes),dtype=cp.uint8)
+	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
 	avg_states = cp.array(x0,dtype=cp.float16)
@@ -113,7 +117,7 @@ def categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threa
 
 	for i in range(params['steps_per_lap']):
 
-		x_next = step(params, x,num_nodes, nodes_to_clauses, clauses_to_threads, threads_to_nodes)
+		x_next = step(params, x, G)
 		if params['update_rule']=='sync':
 			x = x_next
 			if not params['PBN']['active']:
@@ -124,14 +128,14 @@ def categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threa
 			which_nodes = cp.ones(x.shape)
 		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
 			p=.5
-			which_nodes = cp.random.rand(params['parallelism'], num_nodes) > p
+			which_nodes = cp.random.rand(params['parallelism'], G.n) > p
 			x = which_nodes*x_next + (1-which_nodes)*x 
 		elif params['update_rule']=='async':
 			# WARNING: this is incredibly inefficient (uses an array to update a single element)
 			# and in fact even more efficient, maybe due to the extra for loop?
 			# only use to check against Gasync
-			which_nodes = cp.zeros((params['parallelism'], num_nodes), dtype=bool)
-			indx = [cp.arange(params['parallelism']), cp.random.randint(0, high=num_nodes, size=params['parallelism'])]
+			which_nodes = cp.zeros((params['parallelism'], G.n), dtype=bool)
+			indx = [cp.arange(params['parallelism']), cp.random.randint(0, high=G.n, size=params['parallelism'])]
 			which_nodes[indx]=1
 			x = which_nodes*x_next + (1-which_nodes)*x
 		else:
@@ -154,7 +158,7 @@ def categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threa
 
 	# using num steps +1 since init state is also added to the avg
 	if params['update_rule'] == 'async':
-		expected_num_updates = (params['steps_per_lap']+1)/(num_nodes)
+		expected_num_updates = (params['steps_per_lap']+1)/(G.n)
 	elif params['update_rule'] == 'Gasync':
 		expected_num_updates = (params['steps_per_lap']+1)/2
 	else: #sync
@@ -175,7 +179,7 @@ def categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threa
 
 	if params['calc_var']:
 		# recursively call function to actually calculate it
-		return categorize_attractor(params,x0, num_nodes,nodes_to_clauses, clauses_to_threads, threads_to_nodes, calculating_var=True, avg=avg_states)
+		return categorize_attractor(params,x0, G.n,nodes_to_clauses, clauses_to_threads, threads_to_nodes, calculating_var=True, avg=avg_states)
 
 	if params['update_rule']=='sync' and not params['PBN']['active']:
 		return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)

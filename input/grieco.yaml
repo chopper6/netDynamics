@@ -5,7 +5,7 @@ net_file : 'input/grieco.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'
 use_phenos : true # quick way to disable phenotypes and ignore pheno_file
 
 outputs : ['Apoptosis','Proliferation','Growth_Arrest']
-output_thresholds : [0,0,0] 
+output_thresholds : [.1,.1,.1] 
 # will produce output phenotypes in terms of these
 
 inputs : ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
@@ -13,7 +13,7 @@ init : {}
 # each sample begins with these states (x0) 
 
 
-mutations : {}
+mutations : {'EGFR':1} #,'MAP3K1_3':0}
 # mutations alter the function of the node to always be off or on
 
-#pheno_color_map : {'000':0, '001':1,'010':2,'11':3,} #to ensure consistent coloring between images
+pheno_color_map : {'000':0, '001':1,'010':2,'100':3} #to ensure consistent coloring between images

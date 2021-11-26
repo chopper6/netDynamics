@@ -3,18 +3,7 @@ import sys, os, itertools, datetime, math, pickle
 import random as rd
 import numpy as np
 
-# CLEAn AND MERGE ALlT HIS
-# a lot of it is irrelv now, ex input-based sims \:
-
-def input_product_sim(params, F, V):
-	allPhenos={}
-	inpts = list(params['inputs'])
-	n = len(inpts)
-	for inpt_set in itertools.product([0,1],repeat=n):
-		for i in range(n):
-			params['init'][inpts[i]] = inpt_set[i]
-		steadyStates = main.find_attractors_prebuilt(params, F, V)
-	return allPhenos
+assert(0) # TODO: this is way outdated by now!
 
 
 def many_sequences(param_file):
@@ -25,7 +14,7 @@ def many_sequences(param_file):
 	k=2
 	##############################
 
-	cancer_seqs = parse.sequences('input/efSeq_pos.txt', 'input/efSeq_neg.txt')
+	cancer_seqs = parse_sequences('input/efSeq_pos.txt', 'input/efSeq_neg.txt')
 	params = parse.params(param_file)
 
 	seqTypes = ['cancerous','scrambled','random','scrambled_drivers','scrambled_passengers']
@@ -138,69 +127,7 @@ def sequence(params,seq,plotit=False):
 	return feats
 
 
-def input_set(**kwargs):
-	param_file = kwargs.get('param_file', None)
-	plotpie = kwargs.get('plotpie', False)
-	params = kwargs.get('params', None)
-
-	if param_file==None and params==None:
-		sys.err("ERROR: must pass a param file or params!")
-	if params is None:
-		params = parse.params(param_file)
-	num_inputs = len(params['inputs'])
-	ioPairs = {}
-
-	if plotpie==True:
-		params['output_dir'] = os.path.join(os.getcwd()+'/'+params['output_dir'], datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-		os.makedirs(params['output_dir'])
-
-		params['savefig'] = True # i assume you don't want an image popping up for every combination of inputs
-
-	input_sets = itertools.product([0,1], repeat=num_inputs) 
-	if params['verbose']:
-		print("\nRunning",2**num_inputs,'input combinations.')
-	j=1
-	for input_set in input_sets:
-		if params['verbose']:
-			print("\n~~~ Starting input set #",j,'~~~\n')
-		label=''
-		for i in range(num_inputs):
-			input_node = params['inputs'][i]
-			params['init'][input_node] = input_set[i]
-			if i!=0:
-				label+='_'
-			label+=input_node +str(input_set[i])
-		attractors, phenos, V = main.find_attractors(params)
-		add_ioPairs(ioPairs,attractors,input_set) 
-
-		if plotpie==True:
-			plot.pie(params,attractors, phenos, V,external_label=label)
-		j+=1
-
-	normz_ioPairs(ioPairs, num_inputs)
-	return ioPairs
-
-
 ############################################################################################################	
-
-def add_ioPairs(ioPairs,attractors,input_set):
-	for k in attractors.keys():
-		key = k + '|' + str(input_set) 
-		if key not in ioPairs.keys():
-			ioPairs[key] = attractors[k]
-			ioPairs[key]['input'] = str(input_set) 
-		else:
-			ioPairs[key]['size'] += attractors[k]['size']
-			if params['debug']:
-				for key2 in attractors[k].keys():
-					if key2 != 'size':
-						assert(ioPairs[key][key2] == attractors[k][key2])
-	return ioPairs
-
-
-def normz_ioPairs(ioPairs, num_inputs):
-	for k in ioPairs.keys():
-		ioPairs[k]['size'] /= 2**num_inputs
 
 
 
@@ -280,6 +207,76 @@ def kmeans_cluster(params, series,k=8):
 
 	return {'avgs':avgs, 'CIs':CIS,'cluster_labels':clusters}
 	
+
+def parse_sequences(seq_file_pos, seq_file_neg):
+	seqs = []
+	with open(seq_file_pos,'r') as file:
+		loop = 0
+		while True:
+			line = file.readline()
+			if not line: #i.e eof
+				break
+			if loop > 1000000:
+				sys.exit("Hit an infinite loop, unless file is monstrously huge") 
+
+			seq = []
+			was_tab=True
+			word=''
+			for c in line:
+				if c=='\n':
+					if word == '':
+						seq+=['']
+					else:
+						seq+=[(word,1)]
+					seqs+=[seq]
+					break
+				elif c=='\t':
+					if was_tab:
+						seq+=['']
+					else:
+						if word == '':
+							seq+=['']
+						else:
+							seq+=[(word,1)]
+					word=''
+				else:
+					was_tab=False
+					if c in ['\\','/','-']:
+						word+='_'
+					else:
+						word+=c
+			loop += 1
+	with open(seq_file_neg,'r') as file:
+		i = 0
+		while True:
+			line = file.readline()
+			if not line: #i.e eof
+				break
+			if i > 1000000:
+				sys.exit("Hit an infinite loop, unless file is monstrously huge") 
+			was_tab=True
+			word=''
+			j=0
+			for c in line:
+				if c=='\n':
+					if word != '':
+						assert(seqs[i][j]=='')
+						seqs[i][j]=(word,0)
+					break
+				elif c=='\t':
+					if not was_tab and word != '':
+						assert(seqs[i][j]=='')
+						seqs[i][j]=(word,0)
+					word=''
+					j+=1
+				else:
+					was_tab=False
+					if c in ['\\','/','-']:
+						word+='_'
+					else:
+						word+=c
+			i += 1
+	return seqs
 
 
 
