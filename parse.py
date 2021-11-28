@@ -2,7 +2,6 @@ import os, sys, yaml, util, math
 
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
-
 # TODO: test weird #samples and parallelism
 
 def params(param_file):
@@ -12,7 +11,8 @@ def params(param_file):
 		params = yaml.load(f,Loader=yaml.SafeLoader)
 
 	params_clean_start(params)
-	load_model_file(params)
+	if 'model_file' in params.keys():
+		params= load_model_file(params) #why does params have to be explicitly returned here?
 	params_clean_end(params)
 
 	return params
@@ -20,14 +20,14 @@ def params(param_file):
 
 def params_clean_start(params):
 	for k in params.keys():
-		param_pow(k)
+		param_pow(params, k)
 
 	params['parallelism'] = int(max(params['parallelism'],1)) #1 is actually sequential, i.e. run 1 at a time
 
 	CUPY, cp = util.import_cp_or_np(try_cupy=1) #test import
 	params['cupy'] = CUPY
 
-def params_clean_end(params)
+def params_clean_end(params):
 	actual_num_samples = math.ceil(params['num_samples']/params['parallelism'])*params['parallelism']
 	if actual_num_samples != params['num_samples']:
 		print('WARNING: Due to parallelism, actual number of samples = ',actual_num_samples)
@@ -55,13 +55,14 @@ def load_model_file(params):
 	params = {**model, **params} # in python3.9 can use params_model | params, but may require some people to update python
 
 	params_adjust_for_inputs(params)
+	return params
 
 def params_adjust_for_inputs(params):
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
 		actual_num_parallel = math.floor(params['parallelism']/(2**k))*2**k
 
-		if actual_num_samples>0:
+		if actual_num_parallel < 1:
 			sys.exit("\nERROR: inputs are run in parallel, so parallelism parameter must be >= # input combinations!\n")
 
 		if actual_num_parallel!=params['parallelism']:

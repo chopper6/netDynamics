@@ -27,9 +27,9 @@ class Net:
 		self.n = 0  # # regular nodes
 		self.n_neg = 0 # curr # regular nodes + # negative nodes
 
-		self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNum
+		self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNums
 		self.nodeNames = [] # num -> name
-		self.nodeNum = {} # name -> num
+		self.nodeNums = {} # name -> num
 
 		self.regularNodes = []
 		self.negativeNodes = []
@@ -41,7 +41,14 @@ class Net:
 		self.max_literals=0 # max literals per clause
 		self.max_clauses=0 # max clauses per node
 
+		self._complete = complete #i.e. including building Fmapd and A
+		self._negatives = negatives #i.e. negatives included in original net file
+
 		self._build_net(params, net_file)
+
+	def __str__(self):
+		# TODO: make this more complete
+		return "Net:\nF =" + str(self.F)
 
 	def _build_net(self, params, net_file):
 		# inits network, except for F_mapd (which maps the logic to an actual matrix execution)
@@ -69,7 +76,7 @@ class Net:
 				for symbol in strip_from_node:
 					node_name = node_name.replace(symbol,'')
 				if params['debug']:
-					assert(node_name not in node_name_to_num.keys())
+					assert(node_name not in self.nodeNames)
 				
 				self.add_node(node_name)
 
@@ -89,23 +96,23 @@ class Net:
 
 				loop += 1
 		
-		if not negatives:
+		if not self._negatives:
 			self.build_negative_nodes()
 
 		self.count_clauses_and_lits()
 
-		if complete:
+		if self._complete:
 			self.apply_mutations(params)
 			self.build_Fmapd_and_A(params)
 
 	
-	def add_node(self,nodeName,negative=False):
-		newNode = Node(nodeName,self.n_neg,isNegative=negative)
+	def add_node(self,nodeName,isNegative=False):
+		newNode = Node(nodeName,self.n_neg,isNegative=isNegative)
 		self.nodes += [newNode]
 		self.nodeNames += [nodeName]
-		self.nodeNum[nodeName] = self.n_neg
+		self.nodeNums[nodeName] = self.n_neg
 
-		if negative:
+		if isNegative:
 			self.negativeNodes += [newNode]
 			self.n_neg += 1
 			# note that F is not added, but would be in the case of the expanded net
@@ -118,7 +125,7 @@ class Net:
 	def build_negative_nodes(self):
 		# put the negative nodes as 2nd half of node array
 		for i in range(self.n):
-			self.add_node(self.not_string + self.nodeNames[i],negative=True)
+			self.add_node(self.not_string + self.nodeNames[i],isNegative=True)
 
 	def apply_mutations(self, params):
 		if 'mutations' in params.keys():
@@ -129,19 +136,21 @@ class Net:
 						assert(F[f][0] in ['0','1'])
 
 	def count_clauses_and_lits(self):
-		for node in self.nodeNames:
-			self.num_clauses += len(self.F[node])
-			self.max_clauses = max(self.max_clauses, len(self.F[node]))
-			for clause in self.F[node]:
-				self.max_literals = max(self.max_literals, len(clause))
+		for node in self.nodes:
+			if not node.isNegative:
+				self.num_clauses += len(self.F[node.name]) 
+				self.max_clauses = max(self.max_clauses, len(self.F[node.name]))
+				for clause in self.F[node.name]:
+					self.max_literals = max(self.max_literals, len(clause))
 
 	def build_Fmapd_and_A(self, params): 
 
 		n = self.n 
 
 		# building clauses_to_threads, i.e. the index for the function of each node
-		nodes_to_clauses = cp.zeros((self.num_clauses,self.max_literals),dtype=self._get_index_dtype(self.n)) # the literals in each clause
-		nodes_clause = {i:[] for i in range(self.n)}
+		#nodes_to_clauses = cp.zeros((self.num_clauses,self.max_literals),dtype=self._get_index_dtype(self.n)) # the literals in each clause
+		nodes_to_clauses = [[] for i in range(self.num_clauses)]
+		nodes_clause = {i:[] for i in range(n)}
 
 		# ADJACENCY MATRIX, unsigned
 		self.A = cp.zeros((n,n),dtype=bool)
@@ -153,7 +162,7 @@ class Net:
 				clause = clauses[j]
 				clause_fn = []
 				for k in range(len(clause)):
-					literal_node = self.nodeNum[clause[k]]
+					literal_node = self.nodeNums[clause[k]]
 					clause_fn += [literal_node]
 					if self.nodes[literal_node].isNegative: 
 						self.A[i, literal_node-n] = 1
@@ -162,10 +171,13 @@ class Net:
 				for k in range(len(clause), self.max_literals): # filling to make sq matrix
 					clause_fn += [literal_node]
 
-				nodes_to_clauses[curr_clause] = clause_fn
-				nodes_clause[node_num] += [curr_clause]
+				nodes_to_clauses[curr_clause] = clause_fn #should be node clause only?
+				nodes_clause[i] += [curr_clause]
 				curr_clause += 1
 
+		nodes_to_clauses = cp.array(nodes_to_clauses,dtype=self._get_index_dtype(self.n)) # the literals in each clause
+		assert(nodes_to_clauses.shape == (self.num_clauses,self.max_literals))
+		# TODO: fuck what to do about node_clauseses
 
 		# bluid clause index with which to compress the clauses -> nodes
 		#	nodes_to_clauses: computes which nodes are inputs (literals) of which clauses
@@ -225,16 +237,14 @@ class Net:
 		self.Fmapd = clause_mapping
 
 
-		def _get_index_dtype(self, max_n):
-			if max_n<256: 
-				return cp.uint8
-			elif max_n<65536:
-				return cp.uint16
-			else:
-				return cp.uint32
+	def _get_index_dtype(self, max_n):
+		if max_n<256: 
+			return cp.uint8
+		elif max_n<65536:
+			return cp.uint16
+		else:
+			return cp.uint32
 
-
-	######################### MISC ##################################
 	def _read_line(self,file,loop):
 		line = file.readline()
 		if loop > 1000000:
@@ -284,36 +294,37 @@ class Net:
 
 
 class Node:
-	def __init__(self,name,num,negative=False):
-		self.F = [] #its clauses organized as [clause1,clause2,...] where clause=[lit1,lit2,...]
+	def __init__(self,name,num,isNegative=False):
+		if not isNegative:
+			self.F = [] #its clauses organized as [clause1,clause2,...] where clause=[lit1,lit2,...]
 		self.name=name 
 		self.num=num 
-		self.isNegative = negative 
+		self.isNegative = isNegative 
 
 
 class Expanded_Net(Net):
-  def __init__(self, params, net_file):
-    super().__init__(params, net_file)
+	def __init__(self, params, net_file):
+		super().__init__(params, net_file)
 
-	# assumes that negative nodes are already in expanded form (i.e. have their logic)
-	# note that composite nodes aren't formally added, since only A_exp is actually used
-	
-	self.n_exp = self.n_neg
-	N = self.n_neg+self.num_clauses-self._num_non_and_clauses(F)
-	self.A_exp = cp.zeros((N,N)) #adj for expanded net 
+		# assumes that negative nodes are already in expanded form (i.e. have their logic)
+		# note that composite nodes aren't formally added, since only A_exp is actually used
+		
+		self.n_exp = self.n_neg
+		N = self.n_neg+self.num_clauses-self._num_non_and_clauses(F)
+		self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
-	for node in self.nodeNames:
-		for clause in self.F[node]:
-			if len(clause)>1: # make a composite node
-				self.A_exp[self.n_exp,self.nodeNum(node)]=1
-				for j in range(len(clause)):
-					self.A_exp[self.nodeNum(clause[j]),self.n_exp]=1
-				self.n_exp+=1
-			else:
-				self.A_exp[self.nodeNum(clause[0]),self.nodeNum(node)]=1
-	
-	if params['debug']:
-		assert(N==self.n_exp)
+		for node in self.nodeNames:
+			for clause in self.F[node]:
+				if len(clause)>1: # make a composite node
+					self.A_exp[self.n_exp,self.nodeNums(node)]=1
+					for j in range(len(clause)):
+						self.A_exp[self.nodeNums(clause[j]),self.n_exp]=1
+					self.n_exp+=1
+				else:
+					self.A_exp[self.nodeNums(clause[0]),self.nodeNums(node)]=1
+		
+		if params['debug']:
+			assert(N==self.n_exp)
 
 	def _num_non_and_clauses(self,F):
 		count=0

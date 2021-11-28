@@ -179,7 +179,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 
 	if params['calc_var']:
 		# recursively call function to actually calculate it
-		return categorize_attractor(params,x0, G.n,nodes_to_clauses, clauses_to_threads, threads_to_nodes, calculating_var=True, avg=avg_states)
+		return categorize_attractor(params,x0, G, calculating_var=True, avg=avg_states)
 
 	if params['update_rule']=='sync' and not params['PBN']['active']:
 		return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)

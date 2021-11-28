@@ -18,10 +18,10 @@ COLORS= cp.vstack((top(cp.linspace(0, 1, 8)),bottom(cp.linspace(0, 1, 8))))
 
 #COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 
-def pie(params, steadyStates, V, external_label=None):
-	node_name_to_num = V['name2#']
-	node_num_to_name = V['#2name']
-	num_nodes = int(len(node_num_to_name)/2)
+def pie(params, steadyStates, G, external_label=None):
+	node_name_to_num = G.nodeNames
+	node_num_to_name = G.nodeNums
+	num_nodes = G.n
 	init_mpl(params)
 
 	if params['use_phenos']:

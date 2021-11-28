@@ -1,30 +1,30 @@
 import sys, os
+from net import Net
 from copy import deepcopy
 import parse, basin, plot, features
 
+# TODO (as of 11/28)
+#	use_inputs_in_phenos appears to be broken
+#	continue to clear out any and all refs to the 'always off' node
+#	and double check that clause_mapping is squared off given correctly, given this
+
 def main(param_file):
 	params = parse.params(param_file)
-	steadyStates, V = find_attractors(params)
-	#feats = features.calc_entropy(params,attractors)
-	#print(feats)
-	#for k in steadyStates.attractors:
-	#	A = steadyStates.attractors[k]
-	#	print(A.id,A.size)
-	plot.pie(params, steadyStates, V)
+	G  = Net(params,params['net'])
+	steadyStates = find_steadyStates(params,G)
+	plot.pie(params, steadyStates,G)
 
+def find_steadyStates(params,G): 
+	G.build_Fmapd_and_A(params)
+	steadyStates = basin.calc_basin_size(params,G)
+	return steadyStates
+	# TODO: merge this and '_prebuilt' fn, likely by having copy & mutate as a fn in control instead
 
-def find_attractors(params): 
-	F, F_mapd, A, V  = parse.net(params)
-	steadyStates = basin.calc_basin_size(params,F_mapd,V)
-	# attractors is a dict {} indexed by the steady state string (or "oscillates")
-	#	each element of attractors[i] = {size:% of initial states, pheno:subset of label corresponding to output nodes}
-	return steadyStates, V
-
-def find_attractors_prebuilt(params, F_orig, V_orig):
-	F,V = deepcopy(F_orig), deepcopy(V_orig)
-	parse.apply_mutations(params,F) #TODO: this could be moved out...
-	F_mapd, A = parse.get_clause_mapping(params, F, V) 
-	steadyStates = basin.calc_basin_size(params,F_mapd,V)
+def find_steadyStates_prebuilt(params, G_orig):
+	G = deepcopy(G_orig)
+	G.apply_mutations(params) #TODO: this should be moved out...?
+	G.build_Fmapd_and_A(params) 
+	steadyStates = basin.calc_basin_size(params,G)
 	return steadyStates
 
 if __name__ == "__main__":

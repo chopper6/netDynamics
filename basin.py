@@ -5,7 +5,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # note that size of a phenotype or attract refers to its basin size
 
 class Attractor:
-	def __init__(self, params, nodeNum, attractor_id, period, avg, var):
+	def __init__(self, params, G, attractor_id, period, avg, var):
 		self.id = attractor_id
 		self.size = 1
 		if params['update_rule'] == 'sync' and not params['PBN']['active']:
@@ -18,10 +18,10 @@ class Attractor:
 			self.map_to_pheno(params,G) 
 
 	def map_to_pheno(self, params, G):
-		outputs = [nodeNum[params['outputs'][i]] for i in range(len(params['outputs']))]
+		outputs = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
 
 		if 'inputs' in params.keys():
-			inputs = [nodeNum[params['inputs'][i]] for i in range(len(params['inputs']))]
+			inputs = [G.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
@@ -52,15 +52,15 @@ class Phenotype:
 class SteadyStates:
 	# collects sets of attractors and phenotypes
 
-	def __init__(self, params,nodeNum):
+	def __init__(self, params,G):
 		self.attractors = {} 
 		self.phenotypes = {}
 		self.params = params
-		self.nodeNum = nodeNum
+		self.G = G
 
 	def add(self, attractor_id, period, avg, var): # id should be unique to each attractor
 		if attractor_id not in self.attractors.keys():
-			self.attractors[attractor_id] = Attractor(self.params, self.nodeNum, attractor_id, period, avg, var)
+			self.attractors[attractor_id] = Attractor(self.params, self.G, attractor_id, period, avg, var)
 		else:
 			self.attractors[attractor_id].size += 1
 			if self.params['update_rule'] != 'sync' or self.params['PBN']['active']:
@@ -115,7 +115,7 @@ class SteadyStates:
 def calc_basin_size(params, G):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
 
-	steadyStates = SteadyStates(params, V) 
+	steadyStates = SteadyStates(params, G) 
 
 	oscil_bin = [] #put all the samples that are unfinished oscillators
 	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
@@ -158,7 +158,7 @@ def calc_basin_size(params, G):
 	else:
 		sys.exit("ERROR: unrecognized parameter for 'update_rule'")
 
-	steadyStates.normalize_attractors(params['num_samples'])
+	steadyStates.normalize_attractors()
 
 	if params['use_phenos']:
 		steadyStates.build_phenos()
@@ -168,11 +168,11 @@ def calc_basin_size(params, G):
 
 def get_init_sample(params, G):
 	p = .5 #prob a given node is off at start
-	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],num_nodes), p=[p, 1-p]).astype(bool,copy=False)
+	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
 	
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
-		input_indices = [G.nodeNum[params['inputs'][i]] for i in range(k)]
+		input_indices = [G.nodeNums[params['inputs'][i]] for i in range(k)]
 		input_sets = itertools.product([0,1],repeat=k)
 		i=0
 		for input_set in input_sets:
@@ -180,8 +180,6 @@ def get_init_sample(params, G):
 			i+=1
 		assert(i==2**k)
 
-	x0[:,0] = 0 #0th node is the always OFF node
-	
 	if 'init' in params.keys():
 		for k in params['init']:
 			node_indx = node_name_to_num[k]

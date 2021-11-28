@@ -26,7 +26,7 @@ def check_corr(params, G, phenos):
 	num_inputs = len(params['inputs'])
 	for C in G.nodes:
 		indx = G.nodeNum[C]
-		C.isNegative:
+		if C.isNegative:
 			indx-=G.n
 		xy_prs, x_prs = {},{}
 		for l in phenos:

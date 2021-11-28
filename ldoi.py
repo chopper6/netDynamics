@@ -104,7 +104,7 @@ def ldoi_bfs(G,pinning=True,init=[]):
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	# takes regular G, then logic.py augments into expanded net
 	logic.DNF_via_QuineMcCluskey_nofile(G,expanded=True)
-	# TODO: left off here	
+	# TODO: left off here, need to go directly from Net -> ExpandedNet without a file
 	A,n,N,V = parse.build_exp_net(F,V)
 	
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0

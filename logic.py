@@ -1,8 +1,6 @@
 import os, sys, parse
 import math
 from subprocess import call
-import #is that right? or just import net is enought
-
 
 # TODO: clean tf out of bool2clause and run_qm
 #	they should NOT write to file (although might be useful for the write to file fn in net.py)
