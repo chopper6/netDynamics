@@ -6,6 +6,10 @@ from subprocess import call
 #	they should NOT write to file (although might be useful for the write to file fn in net.py)
 #	clean DNF_from_cell_collective_TT, although ok that it directly reads from folder then writes to file
 
+#	expanded is the wrong word for the net below! 
+#	should be that F of negative nodes is added to Net
+#		and this switch should be clear in net.py
+
 def DNF_via_QuineMcCluskey_nofile(G,expanded=False):
 	# exhaustively reduces the logic of a net G
 	# if expanded is true, will explicitly build negative nodes
