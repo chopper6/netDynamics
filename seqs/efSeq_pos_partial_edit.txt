@@ -1,0 +1,100 @@
+	Mdm2=1	AMPK=1	Ras=1		Dsh=1	COX412=1	AKT=1								PI3K=1		E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	COX412=1	AKT=1		Ras=1							PI3K=1	E_cadh=1			VEGF=1
+	Dsh=1	Ras=1		AMPK=1		COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1	
+	TSC1_TSC2=1			Dsh=1	COX412=1	AKT=1	Ras=1									PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1	Ras=1		Dsh=1		COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	Slug=1			Dsh=1	COX412=1	Ras=1		AKT=1							PI3K=1	E_cadh=1			VEGF=1
+		AMPK=1		Dsh=1	Ras=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1	
+		AMPK=1		Dsh=1	COX412=1	AKT=1	Ras=1									PI3K=1	E_cadh=1		VEGF=1
+	eEF2K=1	Ras=1					Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1			VEGF=1
+		AMPK=1	Ras=1		Dsh=1	COX412=1	AKT=1							PI3K=1			E_cadh=1		VEGF=1
+	VEGF=1			Dsh=1	COX412=1	AKT=1			Ras=1					PI3K=1		E_cadh=1			p70=1
+		Ras=1		AMPK=1			Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	p70=1			Ras=1			Dsh=1	COX412=1		AKT=1						PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	Ras=1		COX412=1	AKT=1						PI3K=1		E_cadh=1		VEGF=1	
+		AMPK=1		Dsh=1	Ras=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1		
+	PKC=1		Ras=1			Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	Ras=1	eEF2=1					Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	Ras=1	ERK		AMPK=1		Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1			VEGF=1
+	Max			Dsh=1	Ras=1	COX412=1	AKT=1								PI3K=1	E_cadh=1			VEGF=1
+	VEGF=1			Dsh=1	COX412=1	AKT=1	Ras=1								PI3K=1	E_cadh=1			p70=1
+	RTK	AMPK=1		Dsh=1	COX412=1	AKT=1				Ras=1					PI3K=1	E_cadh=1			VEGF=1
+	Slug=1			Dsh=1	COX412=1	AKT=1				Ras=1				PI3K=1			E_cadh=1		VEGF=1
+		Ras=1			AMPK=1		Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1		VEGF=1	
+		AMPK=1		Dsh=1	COX412=1	Ras=1			AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	beta-cat	AMPK=1		Dsh=1	COX412=1	AKT=1		Ras=1							PI3K=1	E_cadh=1			VEGF=1
+		Ras=1	AMPK=1		Dsh=1	COX412=1	AKT=1						PI3K=1		E_cadh=1			VEGF=1	
+	Dsh=1	AMPK=1		Ras=1	COX412=1		AKT=1						PI3K=1	E_cadh=1				VEGF=1	
+	Dsh=1	Ras=1	AMPK=1		COX412=1		AKT=1								PI3K=1	E_cadh=1		VEGF=1	
+		AMPK=1		Dsh=1	COX412=1	AKT=1			Ras=1						PI3K=1	E_cadh=1			VEGF=1
+		AMPK=1		Ras=1	Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1			VEGF=1
+	COX412=1			Ras=1	Dsh=1										PI3K=1	E_cadh=1		VEGF=1	
+	TSC1_TSC2=1			Dsh=1	COX412=1	AKT=1				Ras=1						PI3K=1	E_cadh=1		VEGF=1
+	RTK	Ras=1	AMPK=1			Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	COX412=1	Ras=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+	Ras=1	eEF2=1				Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Ras=1	Dsh=1	COX412=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1	Ras=1		Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1				VEGF=1
+	mTOR	AMPK=1		Dsh=1	COX412=1	AKT=1						Ras=1	PI3K=1	E_cadh=1					VEGF=1
+		Ras=1	AMPK=1		Dsh=1			COX412=1		AKT=1						PI3K=1	E_cadh=1		VEGF=1
+		Ras=1	AMPK=1			Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	LDHA	Ras=1					Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1			VEGF=1
+		AMPK=1		Dsh=1	COX412=1	Ras=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+	Miz-1			Dsh=1	COX412=1	AKT=1	Ras=1									PI3K=1	E_cadh=1		VEGF=1
+	FosJun			Dsh=1	COX412=1	AKT=1						Ras=1	PI3K=1	E_cadh=1					VEGF=1
+	MXI1		Ras=1		Dsh=1	COX412=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+	mTOR	AMPK=1		Ras=1			Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	COX412=1	Ras=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	COX412=1	AKT=1				Ras=1				PI3K=1		E_cadh=1			VEGF=1
+	PHDs	AMPK=1		Dsh=1	COX412=1	AKT=1	Ras=1						PI3K=1		E_cadh=1				VEGF=1
+	Ras=1			p70=1				Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1		VEGF=1
+		Ras=1		AMPK=1		Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	Bcl_2=1	Ras=1	AMPK=1			Dsh=1	COX412=1	AKT=1							PI3K=1		E_cadh=1		VEGF=1
+	FOXO			Ras=1			Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	RHEB			Ras=1	Dsh=1		COX412=1	AKT=1							PI3K=1		E_cadh=1		VEGF=1
+	Glut-1			Dsh=1	COX412=1	AKT=1		Ras=1								PI3K=1	E_cadh=1		VEGF=1
+	PHDs	AMPK=1		Ras=1	Dsh=1	COX412=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+	Ras=1	NF1			Dsh=1		COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	TAK1	Ras=1				Dsh=1		COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	ERK	AMPK=1		Ras=1		Dsh=1	COX412=1	AKT=1							PI3K=1		E_cadh=1		VEGF=1
+	Ras=1	RTK	AMPK=1			Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1			VEGF=1
+	p90	Ras=1		AMPK=1			Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1			VEGF=1
+	Ras=1	PDK1			Dsh=1	COX412=1			AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	MXI1			Dsh=1	COX412=1	AKT=1		Ras=1								PI3K=1	E_cadh=1		VEGF=1
+	NF1		Ras=1			Dsh=1		COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	Myc	AMPK=1		Dsh=1	COX412=1	AKT=1					Ras=1			PI3K=1	E_cadh=1				VEGF=1
+	Myc	AMPK=1		Ras=1		Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+		Ras=1		AMPK=1				Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1		VEGF=1
+	E_cadh=1	AMPK=1		Dsh=1	COX412=1	Ras=1	AKT=1								PI3K=1			VEGF=1	
+		AMPK=1	Dsh=1	COX412=1	AKT=1	Ras=1						PI3K=1		E_cadh=1				VEGF=1	
+	FosJun			Dsh=1	COX412=1	AKT=1	Ras=1									PI3K=1	E_cadh=1		VEGF=1
+	PHDs	AMPK=1		Ras=1	Dsh=1	COX412=1		AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	Bcl-XL	AMPK=1		Dsh=1	COX412=1	AKT=1			Ras=1					PI3K=1	E_cadh=1				VEGF=1
+	JNK	AMPK=1		Ras=1			Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Ras=1	Dsh=1	COX412=1			AKT=1					PI3K=1		E_cadh=1		VEGF=1	
+	TAK1		Ras=1			Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	E_cadh=1	AMPK=1		Ras=1	Dsh=1			COX412=1	AKT=1							PI3K=1		VEGF=1	
+	PKC=1	Ras=1				Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1				VEGF=1
+	IKK	Ras=1				Dsh=1	COX412=1	AKT=1						PI3K=1			E_cadh=1		VEGF=1
+	Bcl_2=1	AMPK=1		Dsh=1	Ras=1	COX412=1		AKT=1						PI3K=1	E_cadh=1				VEGF=1
+	Miz-1	Ras=1				Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1			VEGF=1
+		AMPK=1		Dsh=1	COX412=1	AKT=1				Ras=1				PI3K=1		E_cadh=1			VEGF=1
+		AMPK=1		Dsh=1	COX412=1	Ras=1			AKT=1					PI3K=1	E_cadh=1			VEGF=1	
+	AMPK=1			Dsh=1	Ras=1	COX412=1	AKT=1							PI3K=1	E_cadh=1				VEGF=1
+		AMPK=1	Ras=1		Dsh=1	COX412=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	COX412=1	Ras=1	AKT=1							PI3K=1		E_cadh=1			VEGF=1
+		AMPK=1	Ras=1		Dsh=1	COX412=1		AKT=1							PI3K=1	E_cadh=1			VEGF=1
+	Mdm2=1	AMPK=1	Ras=1			Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	Ras=1		WNT	AMPK=1			Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1
+	cdc20			Ras=1		Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+	Glut-1			Dsh=1	Ras=1		COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1	Ras=1		Dsh=1	COX412=1	AKT=1									PI3K=1	E_cadh=1		VEGF=1
+	MXI1			Dsh=1	COX412=1	AKT=1	Ras=1								PI3K=1	E_cadh=1			VEGF=1
+	Ras=1		Dsh=1	AMPK=1		COX412=1	AKT=1							PI3K=1	E_cadh=1			VEGF=1	
+	hTERT	AMPK=1		Dsh=1	COX412=1	AKT=1		Ras=1					PI3K=1			E_cadh=1			VEGF=1
+		AMPK=1	Ras=1			Dsh=1	COX412=1	AKT=1						PI3K=1	E_cadh=1			VEGF=1	
+	PKC=1			Dsh=1	COX412=1	AKT=1						PI3K=1	Ras=1	E_cadh=1					VEGF=1
+	Ras=1	ERK		AMPK=1		Dsh=1	COX412=1	AKT=1								PI3K=1	E_cadh=1		VEGF=1
+		AMPK=1		Dsh=1	COX412=1	Ras=1		AKT=1						PI3K=1		E_cadh=1		VEGF=1	
+		AMPK=1		Ras=1	Dsh=1		COX412=1	AKT=1					PI3K=1		E_cadh=1			VEGF=1	
+	RHEB	Ras=1					Dsh=1	COX412=1	AKT=1							PI3K=1	E_cadh=1		VEGF=1

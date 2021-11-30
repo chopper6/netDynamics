@@ -26,9 +26,9 @@ fraction_per_lap : .9 # fraction of networks needed to satisfy stop condition to
 clause_bin_size : 4 # number of clauses each threads merges at once
 
 # input
-model_file: 'input/mammCC.yaml' #'input/fumia.yaml', 'input/toy.yaml' if you don't want it, use null or turn use_phenos off
-expanded_net: 'input/mammCCexp.bnet'
-net: 'input/mammCC.bnet'
+setting_file: 'settings/mammCC.yaml'
+model_file: 'models/mammCC.bnet' #'input/fumia.yaml', 'input/toy.yaml' if you don't want it, use null or turn use_phenos off
+expanded_net: 'models/mammCCexp.bnet'
 use_inputs_in_pheno: 1
 
 # output

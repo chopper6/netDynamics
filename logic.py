@@ -1,4 +1,4 @@
-import os, sys, parse
+import os, sys, net
 import math
 from subprocess import call
 
@@ -10,7 +10,7 @@ from subprocess import call
 #	should be that F of negative nodes is added to Net
 #		and this switch should be clear in net.py
 
-def DNF_via_QuineMcCluskey_nofile(G,expanded=False):
+def DNF_via_QuineMcCluskey_nofile(params,G,expanded=False):
 	# exhaustively reduces the logic of a net G
 	# if expanded is true, will explicitly build negative nodes
 
@@ -31,73 +31,74 @@ def DNF_via_QuineMcCluskey_nofile(G,expanded=False):
 		input_nodes_rev = {}  # num -> name
 		unreduced_clauses = []
 
-		for clause in G.F[node]:
-			for lit in clause:
-				literal_name = str(lit)
-				if G.not_string in literal_name:
-					literal_name = literal_name.replace(G.not_str,'')
-				if literal_name not in input_nodes.keys():
-					input_nodes_rev[len(input_nodes)] = literal_name
-					input_nodes[literal_name] = len(input_nodes)
-		
-		for clause in G.F[node]: # go through again to build int min term representations of the clauses
-			expanded_clause = ['x' for i in range(len(input_nodes))]
-			clause_int=0
+		if not node.isNegative:
+			for clause in node.F:
+				for lit in clause:
+					literal_name = str(lit)
+					if G.not_string in literal_name:
+						literal_name = literal_name.replace(G.not_string,'')
+					if literal_name not in input_nodes.keys():
+						input_nodes_rev[len(input_nodes)] = literal_name
+						input_nodes[literal_name] = len(input_nodes)
 			
-			for lit in clause: #build the int min term representation of the clause
+			for clause in G.F[node.name]: # go through again to build int min term representations of the clauses
+				expanded_clause = ['x' for i in range(len(input_nodes))]
+				clause_int=0
+				
+				for lit in clause: #build the int min term representation of the clause
 
-				literal_name = str(lit)
-				if G.not_str in literal_name:
-					sign = '0'
-					literal_name = literal_name.replace(G.not_str,'')
-				else:
-					sign = '1'
-				expanded_clause[input_nodes[literal_name]]=sign
+					literal_name = str(lit)
+					if G.not_string in literal_name:
+						sign = '0'
+						literal_name = literal_name.replace(G.not_string,'')
+					else:
+						sign = '1'
+					expanded_clause[input_nodes[literal_name]]=sign
 
-			expanded_clauses = [''.join(expanded_clause)] #if a literal is not in a string, need to make two string with each poss value of that literal	
-			final_expanded_clauses = []
-			while expanded_clauses != []:
-				for j in range(len(input_nodes)):
-					for ec in expanded_clauses:
-						if 'x' not in ec:
-							final_expanded_clauses += [ec]
-							expanded_clauses.remove(ec)
-						elif ec[j]=='x':
-							expanded_clauses+= [ec[:j] + "1" + ec[j+1:]]
-							expanded_clauses+= [ec[:j] + "0" + ec[j+1:]]
-							expanded_clauses.remove(ec)
+				expanded_clauses = [''.join(expanded_clause)] #if a literal is not in a string, need to make two string with each poss value of that literal	
+				final_expanded_clauses = []
+				while expanded_clauses != []:
+					for j in range(len(input_nodes)):
+						for ec in expanded_clauses:
+							if 'x' not in ec:
+								final_expanded_clauses += [ec]
+								expanded_clauses.remove(ec)
+							elif ec[j]=='x':
+								expanded_clauses+= [ec[:j] + "1" + ec[j+1:]]
+								expanded_clauses+= [ec[:j] + "0" + ec[j+1:]]
+								expanded_clauses.remove(ec)
 
-			for ec in final_expanded_clauses:
-				unreduced_clauses += [int('0b'+ec,2)]
+				for ec in final_expanded_clauses:
+					unreduced_clauses += [int('0b'+ec,2)]
 
-		unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
+			unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
 
-		if expanded:
-			neg_clauses = [i for i in range(2**len(input_nodes))]
-			for term in unreduced_clauses:
-				neg_clauses.remove(term)
-			negatives_bin += [{'clauses':neg_clauses,'node':node,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
+			if expanded:
+				neg_clauses = [i for i in range(2**len(input_nodes))]
+				for term in unreduced_clauses:
+					neg_clauses.remove(term)
+				negatives_bin += [{'clauses':neg_clauses,'node':node.name,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
 
-		if len(unreduced_clauses) != 1: # run qm and write reduced function back
-			F[node] = run_qm(unreduced_clauses, len(input_nodes),'bnet',input_nodes_rev,return_f=True)
-
+			if len(unreduced_clauses) != 1: # run qm and write reduced function back
+				node.F = run_qm(unreduced_clauses, len(input_nodes),'bnet',input_nodes_rev,return_f=True)
 
 	if expanded:
 		for neg_dict in negatives_bin:
-			if neg_dict['node'] == '0':
-				F['1'] = [['1']]
-			elif len(neg_dict['clauses']) == 1:
+			this_node = G.nodes[G.nodeNums[G.not_string + neg_dict['node']]]
+
+			if len(neg_dict['clauses']) == 1:
 				# qm.exe just returns blank, can't reduce anyway, so just put back original line
 				bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
 				reduced_fn = ''
-				Fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], format_name,return_f=True)
-				F[G.not_string + neg_dict['node']] = [Fn[2]]
-
+				Fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], G.encoding,return_f=True)
+				this_node.F = [Fn[2]] 
+			
 			else: # run qm and write reduced function back
-				F[G.not_str + neg_dict['node']] = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], format_name, neg_dict['input_nodes_rev'],return_f=True)
+				this_node.F = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], G.encoding, neg_dict['input_nodes_rev'],return_f=True)
 
+			G.F[G.not_string + neg_dict['node']] = this_node.F
+			
 	os.remove('c2py.txt') #clean up
-
 
 
 def int2bool(x,lng):
@@ -113,7 +114,7 @@ def int2bool(x,lng):
 def bool2clause(bool_str, clause,input_nodes_rev, format_name,return_f=False):
 	# TODO: clean return_f nonsense
 	# this is very specific to the syntax used for the c program
-	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
+	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = net.get_file_format(format_name)
 	
 	f= []
 	added_lit = False
@@ -151,7 +152,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=
 	# TODO: sep fn from return_F -> reduced_fn string
 
 	# calls a c logic function, MUST build the exe first
-	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
+	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = net.get_file_format(format_name)
 	devnull = open(os.devnull, 'w') #just to hide output of subprocess
 
 	cargs = ["./logicSynth/qm.exe", str(num_inputs), str(len(unreduced_clauses))]
@@ -204,7 +205,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=
 def DNF_from_cell_collective_TT(folder, output_file):
 
 	format_name = 'bnet'
-	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = parse.get_file_format(format_name)
+	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = net.get_file_format(format_name)
 	
 	with open(output_file,'w') as ofile:
 		pass # write it in case does not exist

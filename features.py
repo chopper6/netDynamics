@@ -22,10 +22,10 @@ def check_corr(params, G, phenos):
 	# major issue is how to count entropy of oscils!
 	# tons of off by 1 due to that damn 0 nodes (C-1 ect)
 
-	H = {k:0 for k in G.nodes}
+	H = {k:0 for k in G.nodeNums}
 	num_inputs = len(params['inputs'])
 	for C in G.nodes:
-		indx = G.nodeNum[C]
+		indx = C.num
 		if C.isNegative:
 			indx-=G.n
 		xy_prs, x_prs = {},{}
@@ -33,18 +33,19 @@ def check_corr(params, G, phenos):
 			Pout = phenos[l].outputs
 			for k in phenos[l].attractors:
 				A = phenos[l].attractors[k]
-				if not C.isNegative and float(A.avg[G.n]) > .9:
+				if not C.isNegative and float(A.avg[indx]) > .9:
 					add_to_dict(xy_prs,Pout+'1',A.size)
 					add_to_dict(x_prs,'1',A.size)
-				elif C.isNegative and float(A.avg[G.n]) < .1:
+				elif C.isNegative and float(A.avg[indx]) < .1:
 					add_to_dict(xy_prs,Pout+'0',A.size)
 					add_to_dict(x_prs,'0',A.size)
 				# else presumed to oscil, unsure how to handle
 			assert(sum(xy_prs.values()) < 1.001)
 		
-		H[V['#2name'][C]] = entropy(xy_prs) - entropy(x_prs) #/math.log2(3)
+		H[C.name] = entropy(xy_prs) - entropy(x_prs) #/math.log2(3)
 
-	return H
+	H_avg = sum(H.values())/len(H)
+	return H, H_avg
 
 
 ################ BELOW HERE NEEDS TO BE UPDATED #############################

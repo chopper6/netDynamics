@@ -8,14 +8,14 @@ print_lap : 10 # how many laps before another print statement. only if verbose
 
 parallelism : 10^3 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
 num_samples : 10^3 # number of initial states tested. false to turn off (and use only max_laps instead)
-steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+steps_per_lap : 20 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
 update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
 PBN : # probabilistic boolean network
-  active : 0
+  active : 0 # PBN is only used if active=True
   flip_pr : .05
 calc_var : 1 # will take 2x as long, adds a per-node variance stat to each attractor
 
@@ -25,10 +25,12 @@ fraction_per_lap : .9 # fraction of networks needed to satisfy stop condition to
 clause_bin_size : 4 # number of clauses each threads merges at once
 
 # input
-model_file: 'input/grieco.yaml' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
-use_inputs_in_pheno: 1
+model_file: 'models/toy.bnet' #'input/fumia.yaml', 'input/toy.yaml' 
+setting_file: 'settings/toy.yaml'
+model_expanded: 'models/toyExp.bnet'
+use_inputs_in_pheno: 0
 
 # output
 output_dir : 'output/'
-output_img : 'basinSizes.png'
+output_img : 'toy.png'
 savefig : 0 # as opposed to showing the image

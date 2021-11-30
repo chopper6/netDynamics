@@ -1,0 +1,7 @@
+DNFsymbolic
+a	b
+b	-a
+c	c
+d	-d
+e	a&c
+f	b&d

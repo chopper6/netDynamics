@@ -1,4 +1,5 @@
-import os, sys, yaml, util, math
+import os, sys, yaml, util, math, logic
+from copy import deepcopy
 
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
@@ -15,36 +16,44 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # 	Net._build_net() and build_Fmap() are still messy af
 #	function that updates expanded net due to input or mutation holding it static? ldoi cover that case anyway tho
 
+
+
 class Net:
-	def __init__(self,params,net_file, complete=False, negatives=False):
+	def __init__(self,params,net_key='model_file',G=None, complete=False, negatives=False):
 		# complete will also apply any mutations in params and build Fmapd
 		# if negatives: assume the net file explicitly lists negatives and their functions
+		# net_key is passed if want to use a different file than the default, such as the expanded one
 
-		self.F= {} # logic function for each node
-		self.A=None # adjacency matrix, unsigned
-		self.Fmapd = None
+		# add an assert
+		if G is not None: # don't really like this solution...
+			self.__dict__ = G.__dict__
+		else:
 
-		self.n = 0  # # regular nodes
-		self.n_neg = 0 # curr # regular nodes + # negative nodes
+			self.F= {} # logic function for each node
+			self.A=None # adjacency matrix, unsigned
+			self.Fmapd = None
 
-		self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNums
-		self.nodeNames = [] # num -> name
-		self.nodeNums = {} # name -> num
+			self.n = 0  # # regular nodes
+			self.n_neg = 0 # curr # regular nodes + # negative nodes
 
-		self.regularNodes = []
-		self.negativeNodes = []
+			self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNums
+			self.nodeNames = [] # num -> name
+			self.nodeNums = {} # name -> num
 
-		self.encoding = None #encoding format used by the input file
-		self.not_string = None # called often enough that it is useful to store
-		
-		self.num_clauses=0 # total number of clauses
-		self.max_literals=0 # max literals per clause
-		self.max_clauses=0 # max clauses per node
+			self.regularNodes = []
+			self.negativeNodes = []
 
-		self._complete = complete #i.e. including building Fmapd and A
-		self._negatives = negatives #i.e. negatives included in original net file
+			self.encoding = None #encoding format used by the input file
+			self.not_string = None # called often enough that it is useful to store
+			
+			self.num_clauses=0 # total number of clauses
+			self.max_literals=0 # max literals per clause
+			self.max_clauses=0 # max clauses per node
 
-		self._build_net(params, net_file)
+			self._complete = complete #i.e. including building Fmapd and A
+			self._negatives = negatives #i.e. negatives included in original net file
+
+			self._build_net(params, params[net_key])
 
 	def __str__(self):
 		# TODO: make this more complete
@@ -60,7 +69,7 @@ class Net:
 		
 		with open(net_file,'r') as file:
 			format_name=self._get_encoding(net_file)
-			node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = self._get_file_format(format_name)
+			node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(format_name)
 
 			self.encoding = format_name
 			self.not_string = not_str 
@@ -131,9 +140,9 @@ class Net:
 		if 'mutations' in params.keys():
 			for node in self.nodeNames:
 				if node in params['mutations']:
-					F[node] = [str(params['mutations'][f])] #should be '0' or '1' which refer to the always OFF and ON nodes
+					self.F[node] = [str(params['mutations'][node])] #should be '0' or '1' which refer to the always OFF and ON nodes
 					if params['debug']:
-						assert(F[f][0] in ['0','1'])
+						assert(self.F[node][0] in ['0','1'])
 
 	def count_clauses_and_lits(self):
 		for node in self.nodes:
@@ -259,36 +268,6 @@ class Net:
 		else:
 			return file.readline().replace('\n','')
 
-	def _get_file_format(self,format_name):
-		recognized_formats = ['DNFwords','DNFsymbolic','bnet']
-
-		if format_name not in recognized_formats:
-			sys.exit("ERROR: first line of network file is the format, which must be one of" + str(recognized_formats))
-		
-		if format_name == 'DNFsymbolic':
-			node_fn_split = '\t'
-			clause_split = ' '
-			literal_split = '&'
-			not_str = '-'
-			strip_from_clause = []
-			strip_from_node = []
-		elif format_name == 'DNFwords':
-			node_fn_split = '*= '
-			clause_split = ' or '
-			literal_split = ' and '
-			not_str = 'not '
-			strip_from_clause = ['(',')']
-			strip_from_node = ['(',')']
-		elif format_name == 'bnet':
-			node_fn_split = ',\t'
-			clause_split = ' | '
-			literal_split = ' & '
-			not_str = '!'
-			strip_from_clause = ['(',')']
-			strip_from_node = []
-
-		return node_fn_split, clause_split, literal_split, not_str, strip_from_clause,strip_from_node
-
 
 
 
@@ -303,33 +282,80 @@ class Node:
 
 
 class Expanded_Net(Net):
-	def __init__(self, params, net_file):
-		super().__init__(params, net_file)
+	def __init__(self,params,G=None,net_key='model_expanded'):
+		if G is None:
+			build_from_file=True
+			complete, negatives = False, False
+		else:
+			build_from_file = False
+			complete, negatives = True, True
 
+		super().__init__(params,net_key=net_key,G=G, complete=complete, negatives=negatives)
 		# assumes that negative nodes are already in expanded form (i.e. have their logic)
 		# note that composite nodes aren't formally added, since only A_exp is actually used
-		
-		self.n_exp = self.n_neg
-		N = self.n_neg+self.num_clauses-self._num_non_and_clauses(F)
+
+		if not build_from_file: # instead build from a regular net, so add composite nodes, ect
+
+			self.n_exp = self.n_neg # will add this up during build_Aexp()
+			# build F for negative nodes
+			logic.DNF_via_QuineMcCluskey_nofile(params, G,expanded=True)
+			self.build_Aexp(params)
+
+
+	def build_Aexp(self,params):
+		N = self.n_neg+self._num_and_clauses(self.F)
 		self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
-		for node in self.nodeNames:
-			for clause in self.F[node]:
+		for node in self.nodes:
+			for clause in node.F:
 				if len(clause)>1: # make a composite node
-					self.A_exp[self.n_exp,self.nodeNums(node)]=1
+					self.A_exp[self.n_exp,node.num]=1
 					for j in range(len(clause)):
-						self.A_exp[self.nodeNums(clause[j]),self.n_exp]=1
+						self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
 					self.n_exp+=1
 				else:
-					self.A_exp[self.nodeNums(clause[0]),self.nodeNums(node)]=1
+					self.A_exp[self.nodeNums[clause[0]],node.num]=1
 		
 		if params['debug']:
 			assert(N==self.n_exp)
 
-	def _num_non_and_clauses(self,F):
+	def _num_and_clauses(self,F):
 		count=0
 		for node in F:
 			for clause in F[node]:
-				if len(clause)==1:
+				if len(clause)>1:
 					count+=1
 		return count
+
+
+
+def get_file_format(format_name):
+	recognized_formats = ['DNFwords','DNFsymbolic','bnet']
+
+	if format_name not in recognized_formats:
+		sys.exit("ERROR: first line of network file is the format, which must be one of" + str(recognized_formats))
+	
+	if format_name == 'DNFsymbolic':
+		node_fn_split = '\t'
+		clause_split = ' '
+		literal_split = '&'
+		not_str = '-'
+		strip_from_clause = []
+		strip_from_node = []
+	elif format_name == 'DNFwords':
+		node_fn_split = '*= '
+		clause_split = ' or '
+		literal_split = ' and '
+		not_str = 'not '
+		strip_from_clause = ['(',')']
+		strip_from_node = ['(',')']
+	elif format_name == 'bnet':
+		node_fn_split = ',\t'
+		clause_split = ' | '
+		literal_split = ' & '
+		not_str = '!'
+		strip_from_clause = ['(',')']
+		strip_from_node = []
+
+	return node_fn_split, clause_split, literal_split, not_str, strip_from_clause,strip_from_node
+

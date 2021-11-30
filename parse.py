@@ -2,21 +2,24 @@ import os, sys, yaml, util, math
 
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
-# TODO: test weird #samples and parallelism
 
 def params(param_file):
-	if not os.path.isfile(param_file):
-		sys.exit("Can't find parameter file: " + str(param_file)) 
+	check_file(param_file,'parameter')
 	with open(param_file,'r') as f:
 		params = yaml.load(f,Loader=yaml.SafeLoader)
 
 	params_clean_start(params)
-	if 'model_file' in params.keys():
-		params= load_model_file(params) #why does params have to be explicitly returned here?
+	if 'setting_file' in params.keys():
+		params= load_model_file(params) # apparently reassigning params within file does not update unless explicitly returned
 	params_clean_end(params)
 
 	return params
 
+def check_file(file_path,name):
+	if not os.path.isfile(file_path):
+		sys.exit("Can't find " + name + " file: " + file_path)
+	if os.path.splitext(file_path)[-1].lower() != '.yaml':
+		sys.exit(name + " file must be yaml format")
 
 def params_clean_start(params):
 	for k in params.keys():
@@ -41,12 +44,12 @@ def param_pow(params,k):
 		params[k] = int(parts[0])**int(parts[1])
 
 def load_model_file(params):
-	if not os.path.isfile(params['model_file']):
-		sys.exit("Can't find model_file: " + params['model_file'] + ', check path in parameter file.')
-	if os.path.splitext(params['model_file'])[-1].lower() != '.yaml':
-		sys.exit("model_file must be yaml format.")
+	if not os.path.isfile(params['setting_file']):
+		sys.exit("Can't find model_file: " + params['setting_file'] + ', check path in parameter file.')
+	if os.path.splitext(params['setting_file'])[-1].lower() != '.yaml':
+		sys.exit("'setting_file' must be yaml format.")
 	
-	with open(params['model_file'],'r') as f:
+	with open(params['setting_file'],'r') as f:
 		model = yaml.load(f,Loader=yaml.SafeLoader)
 
 	if params['debug']:

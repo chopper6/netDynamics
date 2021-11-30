@@ -5,24 +5,21 @@ import itertools, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # TODO:
-# check parse.expanded_net()
 # check pinning=False at end of ldoi_bfs()
-# clean name -> num and back transitions
 # clean and check ldoi_sizes_over_all_inputs
-
 # check pinning of ldoi_bfs
 
 def test(param_file):
 	params = parse.params(param_file)
-	G = Expanded_Net(params, params['expanded_net'])
-	ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=[G.nodeNum['Akt1']])
+	G = Expanded_Net(params, net_key='model_expanded')
+	ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=[G.nodeNums['Akt1']])
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
 			if ldoi_solns[i,j]:
-				soln_names += G.nodeNum[j] + ', '
-		if i == G.nodeNum['ERa']:
-			print("LDOI(",G.nodeNum[i],') =',soln_names)#,"\tnegated = ",negated[i])
+				soln_names += G.nodeNums[j] + ', '
+		if i == G.nodeNums['ERa']:
+			print("LDOI(",G.nodeNums[i],') =',soln_names)#,"\tnegated = ",negated[i])
 
 
 def ldoi_bfs(G,pinning=True,init=[]):
@@ -74,7 +71,7 @@ def ldoi_bfs(G,pinning=True,init=[]):
 
 		if pinning:
 			visited_rolled = visited.copy()
-			visited_rolled[:G.n_neg] = cp.roll(visited_rolled[:G.n_neg],n,axis=0)
+			visited_rolled[:G.n_neg] = cp.roll(visited_rolled[:G.n_neg],G.n,axis=0)
 			memoX = cp.matmul((visited|D) & cp.logical_not(visited_rolled.T), visited) 
 			# if A has visited B, then add B's visited to A if ~A not in B's visited
 			# otherwise must cut all of B's contribution!
@@ -97,31 +94,29 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	if not pinning:
 		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
 
-	return visited[:G.neg,:G.neg], negated[:G.neg] 
-
+	return visited[:G.n_neg,:G.n_neg], negated[:G.n_neg] 
 
 
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	# takes regular G, then logic.py augments into expanded net
-	logic.DNF_via_QuineMcCluskey_nofile(G,expanded=True)
-	# TODO: left off here, need to go directly from Net -> ExpandedNet without a file
-	A,n,N,V = parse.build_exp_net(F,V)
+	# fixed_nodes should be names
+	Gexp = Expanded_Net(params, G=G)
 	
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
-	avg_num_ldoi_nodes = {k:0 for k in range(2*n)}
-	avg_num_ldoi_outputs = {k:0 for k in range(2*n)}
-	output_indices = [V['name2#'][params['outputs'][i]] for i in range(len(params['outputs']))]
+	avg_num_ldoi_nodes = {k:0 for k in range(G.n_neg)}
+	avg_num_ldoi_outputs = {k:0 for k in range(G.n_neg)}
+	output_indices = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
 
 	ldoi_fixed = []
 	for pair in fixed_nodes:
-		indx = V['name2#'][pair[0]] 
+		indx = G.nodeNums[pair[0]] 
 		if pair[1]==0:
 			indx += n # i.e. the node's complement
 		ldoi_fixed += [indx]
 
 
 	k = len(params['inputs'])
-	input_indices = [V['name2#'][params['inputs'][i]] for i in range(k)]
+	input_indices = [G.nodeNums[params['inputs'][i]] for i in range(k)]
 	input_sets = itertools.product([0,1],repeat=k)
 	for input_set in input_sets:
 		ldoi_inpts = ldoi_fixed.copy()
@@ -129,33 +124,42 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 			if input_set[i]==1:
 				ldoi_inpts += [input_indices[i]]
 			else:
-				ldoi_inpts += [input_indices[i] + n] #i.e. its complement
+				ldoi_inpts += [input_indices[i] + G.n] #i.e. its complement
 
-		ldoi_solns, negated = ldoi_bfs(A,n,N,pinning=1,init=ldoi_inpts)
+		ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=ldoi_inpts)
 		if CUPY:
 			ldoi_solns = ldoi_solns.get() #explicitly cast out of cupy
 
-		avg_sum_ldoi += cp.sum(ldoi_solns)/((2*n)**2) #normz by max sum poss
-		for i in range(2*n):
-			avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(2*n)
+		avg_sum_ldoi += cp.sum(ldoi_solns)/((G.n_neg)**2) #normz by max sum poss
+		for i in range(G.n_neg):
+			avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(G.n_neg)
 			for o in output_indices:
 				if ldoi_solns[i,o]:
 					avg_num_ldoi_outputs[i] += 1 
 					avg_sum_ldoi_outputs += 1				
-				if ldoi_solns[i,o+n]:
+				if ldoi_solns[i,o+G.n]:
 					avg_num_ldoi_outputs[i] += 1 
 					avg_sum_ldoi_outputs += 1
 			avg_num_ldoi_outputs[i] /= len(output_indices)
-		avg_sum_ldoi_outputs /= (len(output_indices)*2*n)
+		avg_sum_ldoi_outputs /= (len(output_indices)*G.n_neg)
 
 	avg_sum_ldoi /= 2**k
 	avg_sum_ldoi_outputs /= 2**k
-	for i in range(2*n):
+	for i in range(G.n_neg):
 		avg_num_ldoi_nodes[i] /= 2**k # normz
 		avg_num_ldoi_outputs[i] /= 2**k # normz
 
 	return {'total':avg_sum_ldoi,'total_onlyOuts':avg_sum_ldoi_outputs, 'node':avg_num_ldoi_nodes,'node_onlyOuts':avg_num_ldoi_outputs}
 
 
+
+
 if __name__ == "__main__":
-	test(sys.argv[1])
+	if len(sys.argv) != 2:
+		sys.exit("Usage: python3 ldoi.py PARAMS.yaml")
+	if not os.path.isfile(sys.argv[1]):
+		sys.exit("Can't find parameter file: " + sys.argv[1])
+	if os.path.splitext(sys.argv[1])[-1].lower() != '.yaml':
+		sys.exit("Parameter file must be yaml format")
+	
+	main(sys.argv[1])

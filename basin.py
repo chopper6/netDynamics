@@ -4,6 +4,21 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 
 # note that size of a phenotype or attract refers to its basin size
 
+#########################################################################################################
+
+def main(param_file):
+	params = parse.params(param_file)
+	G = Net(params)
+	steadyStates = find_steadyStates(params,G)
+	plot.pie(params, steadyStates,G)
+
+def find_steadyStates(params,G): 
+	G.build_Fmapd_and_A(params)
+	steadyStates = calc_basin_size(params,G)
+	return steadyStates
+
+#########################################################################################################
+
 class Attractor:
 	def __init__(self, params, G, attractor_id, period, avg, var):
 		self.id = attractor_id
@@ -27,15 +42,13 @@ class Attractor:
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
 			assert(not params['PBN']['active']) # TODO: how to def input thresh?
 			for i in range(len(inputs)):
-				if self.avg[inputs[i]-1] > 0: 
-					# -1 since attractors don't include 0 always OFF node
+				if self.avg[inputs[i]] > 0: 
 					self.phenotype +='1'
 				else:
 					self.phenotype +='0'	
 			self.phenotype +='|'
 		for i in range(len(outputs)): 
-			if self.avg[outputs[i]-1] > params['output_thresholds'][i]: 
-				# -1 since attractors don't include 0 always OFF node
+			if self.avg[outputs[i]] > params['output_thresholds'][i]: 
 				self.phenotype +='1'
 			else:
 				self.phenotype +='0'		 
@@ -78,8 +91,8 @@ class SteadyStates:
 				period = result['period'][i]
 
 			if finished:
-				attractor_id = format_id_str(result['state'][i][1:]) #skip 0th node, which is the always OFF node
-				self.add(attractor_id, period, result['avg'][i][1:], result['var'][i][1:]) #again skip 0th node for avg n var
+				attractor_id = format_id_str(result['state'][i]) 
+				self.add(attractor_id, period, result['avg'][i], result['var'][i]) 
 
 	def normalize_attractors(self):		
 		if self.params['update_rule'] in ['async','Gasync'] or self.params['PBN']['active']:
@@ -109,8 +122,7 @@ class SteadyStates:
 				self.phenotypes[A.phenotype].attractors[k] = A
 
 
-
-#############################################################################################
+##########################################################################################################
 
 def calc_basin_size(params, G):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
@@ -247,9 +259,6 @@ def run_oscil_init(params, oscil_bin, restart_counter, loop):
 	x0 = oscil_bin[:params['parallelism']]
 	del oscil_bin[:params['parallelism']]
 
-	if params['debug']:
-		assert(cp.all(cp.logical_not(cp.array(x0)[:,0]))) #always OFF node should still be off after running awhile
-
 	return x0, cutoff, restart_counter
 
 def run_oscils_extract(params, result, oscil_bin, cutoff, loop):
@@ -272,3 +281,13 @@ def cupy_to_numpy(params,result):
 	if params['cupy']:
 		for k in result.keys():
 			result[k]=result[k].get()
+
+
+##################################################################################
+
+
+if __name__ == "__main__":
+	if len(sys.argv) not in [2]:
+		sys.exit("Usage: python3 basin.py PARAMS.yaml")
+	
+	main(sys.argv[1])
