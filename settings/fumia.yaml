@@ -1,10 +1,9 @@
 # model file species WHAT to simulate
 
-net_file : 'input/fumia.txt' 
 use_phenos : true # grouup attractors into phenotypes, as specified by the outputs below
 
 outputs : ['Apop','Prolif','Quiesc']
-output_thresholds : [0,0,0] 
+output_thresholds : [.2,.2,.2] 
 # fraction of an attractor with output active must be > threshold for that attractor to be in a phenotype with that output active
 # fumia tends to be robust to choice of output thresholds
 

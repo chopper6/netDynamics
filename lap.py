@@ -10,7 +10,6 @@ def step(params, x, G):
 	nodes_to_clauses = G.Fmapd['nodes_to_clauses']
 	clauses_to_threads = G.Fmapd['clauses_to_threads'] 
 	threads_to_nodes = G.Fmapd['threads_to_nodes']
-
 	X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
@@ -20,7 +19,6 @@ def step(params, x, G):
 
 	# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
 	partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
-
 	#for j in range(len(clauses_to_threads)): 
 	#	# partial truths must be reordered for their corresponding nodes
 	#	#print(partial_truths[:,j].shape,threads_to_nodes[j].shape,cp.matmul(partial_truths[:,j],threads_to_nodes[j]).shape)
@@ -34,7 +32,7 @@ def step(params, x, G):
 		partial_truths = cp.any(clauses[:,clauses_to_threads[j]],axis=2) 
 		x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
 	'''
-	if params['PBN']['active']:
+	if util.istrue(params,['PBN','active']):
 		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(bool,copy=False)
 		flip[:,0]=0 #always OFF nodes should still be off
 		#print(cp.sum((cp.logical_not(flip)*x_next | flip*cp.logical_not(x))[:,1])/100)
@@ -49,7 +47,7 @@ def transient(params,x0, G, fixed_points_only=False):
 			# else fixed_points=False return if oscillated back to starting point 
 	x = cp.array(x0,dtype=bool).copy()
 	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
-	if params['update_rule']=='sync' and  not params['PBN']['active']:
+	if params['update_rule']=='sync' and  not util.istrue(params,['PBN','active']):
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
 	for i in range(params['steps_per_lap']):
@@ -57,7 +55,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		x_next = step(params, x, G)
 		
 		if params['update_rule']=='sync':
-			if not params['PBN']['active']:
+			if not util.istrue(params,['PBN','active']):
 				if fixed_points_only:
 					not_finished = not_finished & cp.any(cp.logical_xor(x_next,x),axis=1)
 				else:
@@ -80,7 +78,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		else:
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
-	if params['update_rule']=='sync' and not params['PBN']['active']:
+	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
 		return exit_sync_transient(x, not_finished)
 	#else:
 	return x
@@ -101,7 +99,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
 
-	if params['update_rule'] == 'sync' and not params['PBN']['active']:
+	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
 		period = cp.array([1 for _ in range(params['parallelism'])],dtype=int)
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
@@ -120,7 +118,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		x_next = step(params, x, G)
 		if params['update_rule']=='sync':
 			x = x_next
-			if not params['PBN']['active']:
+			if not util.istrue(params,['PBN','active']):
 				not_match = cp.any(cp.logical_xor(x,x0),axis=1)
 				period += not_match*not_finished 
 				not_finished = cp.logical_and(not_finished, not_match) 
@@ -152,7 +150,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
 		
-		if params['update_rule']=='sync' and not params['PBN']['active'] and not params['calc_var']:
+		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not util.istrue(params,'calc_var'):
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
 				return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)
 
@@ -172,16 +170,16 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	if calculating_var:
 		var_states = var_states/(expected_num_updates-1) # -1 for unbiased estim
 		assert(expected_num_updates>1) #otherwise variance cannot be well estimated! (if async steps_per_lap should be >> #nodes)
-		if params['update_rule']=='sync' and not params['PBN']['active']:
+		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
 			return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states,variance=var_states)
 		#else
 		return {'state':ids, 'avg':avg_states, 'var': var_states }	
 
-	if params['calc_var']:
+	if util.istrue(params,'calc_var'):
 		# recursively call function to actually calculate it
 		return categorize_attractor(params,x0, G, calculating_var=True, avg=avg_states)
 
-	if params['update_rule']=='sync' and not params['PBN']['active']:
+	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
 		return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)
 	#else:
 	return {'state':ids, 'avg':avg_states}

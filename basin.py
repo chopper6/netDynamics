@@ -1,5 +1,6 @@
-import itertools, util, math, warnings, sys
-import lap
+import itertools, util, math, sys
+import lap, parse, plot
+from net import Net
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # note that size of a phenotype or attract refers to its basin size
@@ -23,13 +24,13 @@ class Attractor:
 	def __init__(self, params, G, attractor_id, period, avg, var):
 		self.id = attractor_id
 		self.size = 1
-		if params['update_rule'] == 'sync' and not params['PBN']['active']:
+		if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
 			self.period = period
 		self.avg = avg
 		self.var = var
 		self.totalAvg = avg #won't be normalized so is really a sum
 		self.totalVar = var 
-		if params['use_phenos']:
+		if util.istrue(params,'use_phenos'):
 			self.map_to_pheno(params,G) 
 
 	def map_to_pheno(self, params, G):
@@ -40,7 +41,7 @@ class Attractor:
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
-			assert(not params['PBN']['active']) # TODO: how to def input thresh?
+			assert(not util.istrue(params,['PBN','active'])) # TODO: how to def input thresh?
 			for i in range(len(inputs)):
 				if self.avg[inputs[i]] > 0: 
 					self.phenotype +='1'
@@ -61,6 +62,9 @@ class Phenotype:
 		self.inputs = None 
 		self.outputs = None 
 
+	def __str__(self):
+		return str(self.size)
+
 		
 class SteadyStates:
 	# collects sets of attractors and phenotypes
@@ -71,19 +75,20 @@ class SteadyStates:
 		self.params = params
 		self.G = G
 
-	def add(self, attractor_id, period, avg, var): # id should be unique to each attractor
+	def add(self, attractor_id, period, avg, var=None): # id should be unique to each attractor
 		if attractor_id not in self.attractors.keys():
 			self.attractors[attractor_id] = Attractor(self.params, self.G, attractor_id, period, avg, var)
 		else:
 			self.attractors[attractor_id].size += 1
-			if self.params['update_rule'] != 'sync' or self.params['PBN']['active']:
+			if self.params['update_rule'] != 'sync' or util.istrue(self.params,['PBN','active']):
 				self.attractors[attractor_id].avg += avg
-				self.attractors[attractor_id].var += var
+				if var is not None:
+					self.attractors[attractor_id].var += var
 
 
 	def add_attractors(self, result):
 		for i in range(len(result['state'])):
-			if self.params['update_rule'] != 'sync' or self.params['PBN']['active']:
+			if self.params['update_rule'] != 'sync' or util.istrue(self.params,['PBN','active']):
 				finished=True
 				period=None
 			else:
@@ -92,16 +97,21 @@ class SteadyStates:
 
 			if finished:
 				attractor_id = format_id_str(result['state'][i]) 
-				self.add(attractor_id, period, result['avg'][i], result['var'][i]) 
+				# TODO: clean up how var is handled
+				if 'var' in result.keys():
+					self.add(attractor_id, period, result['avg'][i], result['var'][i]) 
+				else:
+					self.add(attractor_id, period, result['avg'][i])
 
 	def normalize_attractors(self):		
-		if self.params['update_rule'] in ['async','Gasync'] or self.params['PBN']['active']:
+		if self.params['update_rule'] in ['async','Gasync'] or util.istrue(self.params,['PBN','active']):
 			for s in self.attractors:
 				A = self.attractors[s] 
 				A.totalAvg = A.avg.copy() #TODO see if this causes err, if so, move to attrs
-				A.totalVar = A.var.copy() 
 				A.avg/=A.size
-				A.var/=A.size
+				if util.istrue(self.params,'calc_var'):
+					A.totalVar = A.var.copy() 
+					A.var/=A.size
 
 		for s in self.attractors:
 			self.attractors[s].size /= self.params['num_samples']
@@ -132,14 +142,13 @@ def calc_basin_size(params, G):
 	oscil_bin = [] #put all the samples that are unfinished oscillators
 	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
 	
-	if params['update_rule'] == 'sync' and not params['PBN']['active']:
+	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
 
 		# FIXED POINTS & EASY OSCILS
 		if params['verbose']:
 			print("Starting fixed point search, using", params['num_samples'], "sample initial points.")
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			x0 = get_init_sample(params, G)
-
 			# with fixed_points_only = True, will return finished only for fixed points
 			# and help move oscillations past their transient phase
 			result = lap.transient(params,x0, G, fixed_points_only=True)
@@ -155,10 +164,11 @@ def calc_basin_size(params, G):
 		# calculate period, avg on state, ect
 		if params['verbose'] and confirmed_oscils != []: 
 			print('Finished finding oscillations, now classifying them.')
+
 		sync_run_oscils(params, confirmed_oscils, steadyStates, G, transient=False)
 
 
-	elif params['update_rule'] in ['async','Gasync'] or params['PBN']['active']: 
+	elif params['update_rule'] in ['async','Gasync'] or util.istrue(params,['PBN','active']): 
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			x0 = get_init_sample(params, G)
 
@@ -172,7 +182,7 @@ def calc_basin_size(params, G):
 
 	steadyStates.normalize_attractors()
 
-	if params['use_phenos']:
+	if util.istrue(params,'use_phenos'):
 		steadyStates.build_phenos()
 
 	return steadyStates
@@ -188,13 +198,13 @@ def get_init_sample(params, G):
 		input_sets = itertools.product([0,1],repeat=k)
 		i=0
 		for input_set in input_sets:
-			x0[int(i*params['parallelism']/(2**k)):int((i+1)*params['parallelism']/(2**k))][input_indices] = cp.array(input_set)[:,cp.newaxis]
+			x0[int(i*params['parallelism']/(2**k)):int((i+1)*params['parallelism']/(2**k)),input_indices] = cp.array(input_set)
 			i+=1
 		assert(i==2**k)
 
 	if 'init' in params.keys():
 		for k in params['init']:
-			node_indx = node_name_to_num[k]
+			node_indx = G.nodeNums[k]
 			x0[:,node_indx] = params['init'][k]
 
 	return x0
@@ -206,7 +216,7 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 	orig_steps_per_lap, orig_fraction_per_lap = params['steps_per_lap'], params['fraction_per_lap']	
 	loop=0
 	confirmed_oscils = [] #only used for transient
-	while len(oscil_bin) > 0: 
+	while len(oscil_bin) > 0:
 		x0, cutoff, restart_counter = run_oscil_init(params, oscil_bin, restart_counter, loop)
 		if transient:
 			result = lap.transient(params,x0, G, fixed_points_only=False)

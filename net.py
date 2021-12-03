@@ -5,7 +5,10 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
 
 # TODO:
-#	add a write_to_file function, just using F and the format
+#	Net: add a write_to_file(self), just using F and the format
+#			read_from_file(self,file), as one init option
+#			build_from_G(self,G), as another init option 
+#				why not just deepcopy then, and then expand to expanded?
 #	add explicit debug function for net construction
 #		check that certain objs same, certain diff
 #		ex that G.F[name] = G.nodes[G.nodeNames[name]].F
@@ -24,42 +27,45 @@ class Net:
 		# if negatives: assume the net file explicitly lists negatives and their functions
 		# net_key is passed if want to use a different file than the default, such as the expanded one
 
-		# add an assert
+		# will first try and build with an existing Net G
+		# then try load from file using net_key
+		# otherwise just makes an empty Net
+
+		self.F= {} # logic function for each node
+		self.A=None # adjacency matrix, unsigned
+		self.Fmapd = None
+
+		self.n = 0  # # regular nodes
+		self.n_neg = 0 # curr # regular nodes + # negative nodes
+
+		self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNums
+		self.nodeNames = [] # num -> name
+		self.nodeNums = {} # name -> num
+
+		self.regularNodes = []
+		self.negativeNodes = []
+
+		self.encoding = None #encoding format used by the input file
+		self.not_string = None # called often enough that it is useful to store
+		
+		self.num_clauses=0 # total number of clauses
+		self.max_literals=0 # max literals per clause
+		self.max_clauses=0 # max clauses per node
+
+		self._complete = complete #i.e. including building Fmapd and A
+		self._negatives = negatives #i.e. negatives included in original net file
+
 		if G is not None: # don't really like this solution...
 			self.__dict__ = G.__dict__
-		else:
+		elif net_key is not None:
+			self._read_from_file(params, params[net_key])
 
-			self.F= {} # logic function for each node
-			self.A=None # adjacency matrix, unsigned
-			self.Fmapd = None
-
-			self.n = 0  # # regular nodes
-			self.n_neg = 0 # curr # regular nodes + # negative nodes
-
-			self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNums
-			self.nodeNames = [] # num -> name
-			self.nodeNums = {} # name -> num
-
-			self.regularNodes = []
-			self.negativeNodes = []
-
-			self.encoding = None #encoding format used by the input file
-			self.not_string = None # called often enough that it is useful to store
-			
-			self.num_clauses=0 # total number of clauses
-			self.max_literals=0 # max literals per clause
-			self.max_clauses=0 # max clauses per node
-
-			self._complete = complete #i.e. including building Fmapd and A
-			self._negatives = negatives #i.e. negatives included in original net file
-
-			self._build_net(params, params[net_key])
 
 	def __str__(self):
 		# TODO: make this more complete
 		return "Net:\nF =" + str(self.F)
 
-	def _build_net(self, params, net_file):
+	def _read_from_file(self, params, net_file):
 		# inits network, except for F_mapd (which maps the logic to an actual matrix execution)
 		
 		# net file should be in DNF, see README for specifications
@@ -68,7 +74,7 @@ class Net:
 			sys.exit("Can't find network file: " + str(net_file)) 
 		
 		with open(net_file,'r') as file:
-			format_name=self._get_encoding(net_file)
+			format_name=self._get_encoding(file,net_file)
 			node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(format_name)
 
 			self.encoding = format_name
@@ -87,6 +93,7 @@ class Net:
 				if params['debug']:
 					assert(node_name not in self.nodeNames)
 				
+				assert(node_name not in ['0','1']) # these are reserved for constant off and on
 				self.add_node(node_name)
 
 				clauses = line[1].split(clause_split)
@@ -103,6 +110,12 @@ class Net:
 					
 					self.nodes[-1].F += [this_clause]
 
+				# if function is 0 or 1 set to a self-loop and an init call
+				if self.F[node_name] in [[['0']],[['1']]]:
+					if 'init' not in params.keys():
+						params['init'] = {}
+					params['init'][node_name] = int(self.F[node_name][0][0])
+					self.reset_F_selfLoop(node_name)
 				loop += 1
 		
 		if not self._negatives:
@@ -127,7 +140,7 @@ class Net:
 			# note that F is not added, but would be in the case of the expanded net
 		else:
 			self.regularNodes += [newNode]
-			self.F[nodeName] = newNode.F
+			self.F[nodeName] = newNode.F 
 			self.n += 1
 			self.n_neg += 1
 
@@ -140,9 +153,20 @@ class Net:
 		if 'mutations' in params.keys():
 			for node in self.nodeNames:
 				if node in params['mutations']:
-					self.F[node] = [str(params['mutations'][node])] #should be '0' or '1' which refer to the always OFF and ON nodes
+					lng = len(self.F[node])
+					self.reset_F_selfLoop(node)
+					params['init'][node] = int(params['mutations'][node])
 					if params['debug']:
-						assert(self.F[node][0] in ['0','1'])
+						assert(params['init'][node] in [0,1]) # for PBN may allow floats
+
+	def reset_F(self,nodeName,new_fn):
+		self.F[nodeName].clear() # cannot reassign since that would decouple node.F & self.F[node]
+		self.F[nodeName] += new_fn	
+
+	def reset_F_selfLoop(self,nodeName):
+		# maintains lng of F
+		lng = len(self.F[nodeName])	
+		self.reset_F(nodeName,[[nodeName] for _ in range(lng)])
 
 	def count_clauses_and_lits(self):
 		for node in self.nodes:
@@ -180,13 +204,14 @@ class Net:
 				for k in range(len(clause), self.max_literals): # filling to make sq matrix
 					clause_fn += [literal_node]
 
-				nodes_to_clauses[curr_clause] = clause_fn #should be node clause only?
+				nodes_to_clauses[curr_clause] = clause_fn
 				nodes_clause[i] += [curr_clause]
 				curr_clause += 1
 
 		nodes_to_clauses = cp.array(nodes_to_clauses,dtype=self._get_index_dtype(self.n)) # the literals in each clause
-		assert(nodes_to_clauses.shape == (self.num_clauses,self.max_literals))
-		# TODO: fuck what to do about node_clauseses
+		
+		if self.num_clauses>0:
+			assert(nodes_to_clauses.shape == (self.num_clauses,self.max_literals))
 
 		# bluid clause index with which to compress the clauses -> nodes
 		#	nodes_to_clauses: computes which nodes are inputs (literals) of which clauses
@@ -194,11 +219,11 @@ class Net:
 		#	threads_to_nodes: maps which threads are functions of which nodes
 		clauses_to_threads = []
 		threads_to_nodes = [] 
-		m=min(params['clause_bin_size'],self.max_clauses) #later make this a param, will be max clauses compressed per thread
+		m=min(params['clause_bin_size'],self.max_clauses) 
 
 		i=0
 		while sum([len(nodes_clause[i2]) for i2 in range(n)]) > 0:
-			# ie when have mapped all clauses
+			# ie exit when have mapped all clauses
 
 			# after each clauses_to_threads[i], need to add an index for where the new (compressed) clauses will go
 			this_set=[[] for _ in range(n)]
@@ -220,14 +245,14 @@ class Net:
 						top = len(nodes_clause[take_from_node])
 						this_set[j] = nodes_clause[take_from_node][:top]
 						rem = m-(top)
-						this_set[j] += [0 for _ in range(rem)] #use a false clause to make matrix square (assuming DNF)
+						for k in range(rem):
+							this_set[j] += [this_set[j][-1]] #use a copy of prev clause to make matrix square (assuming DNF)
 						del nodes_clause[take_from_node][:top]
 						node_indx += 1
 				else: #finished, just need to filll up the array
-					this_set[j] = [0 for _ in range(len(this_set[j-1]))] #alt could copy this_set[j-1]
+					this_set[j] = this_set[j-1]
 
-			clauses_to_threads += [this_set]
-			
+			clauses_to_threads += [this_set]	
 			i+=1
 			if i>1000000:
 				sys.exit("ERROR: infinite loop likely in parse.net()")
@@ -243,6 +268,7 @@ class Net:
 		# nodes_to_clauses already converted
 		clause_mapping = {'nodes_to_clauses':nodes_to_clauses, 'clauses_to_threads':clauses_to_threads, 'threads_to_nodes':threads_to_nodes}
 		
+		#print('nodes->clauses\n',nodes_to_clauses,'\n\nclauses->threads\n',clauses_to_threads,'\n\nthreads->nodes\n',threads_to_nodes)
 		self.Fmapd = clause_mapping
 
 
@@ -261,7 +287,7 @@ class Net:
 		return line
 
 
-	def _get_encoding(self,net_file):
+	def _get_encoding(self,file,net_file):
 		extension = net_file.split('.')
 		if extension[-1] == 'bnet':
 			return 'bnet'

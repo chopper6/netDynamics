@@ -24,12 +24,13 @@ def pie(params, steadyStates, G, external_label=None):
 	num_nodes = G.n
 	init_mpl(params)
 
-	if params['use_phenos']:
+	if util.istrue(params,'use_phenos'):
 		basin_sizes = steadyStates.phenotypes
 	else:
 		basin_sizes = steadyStates.attractors
 
-	labels = list(basin_sizes.keys()) #just to make sure order is set
+	labels = sorted(list(basin_sizes.keys())) #just to make sure order is set
+
 	sizes = [basin_sizes[labels[i]].size for i in range(len(labels))]
 
 	# could prob do this chunk more succinctly
@@ -41,9 +42,17 @@ def pie(params, steadyStates, G, external_label=None):
 		del sizes[i-offset]
 		del labels[i-offset]
 		offset += 1
-
-	if params['use_phenos']:
+	
+	if util.istrue(params,'use_phenos'):
 		legend_title = ""
+		j=0
+		if params['use_inputs_in_pheno']:
+			for i in range(len(params['inputs'])):
+				if j>0:
+					legend_title +=', '
+				legend_title += params['inputs'][i]
+				j+=1	
+			legend_title += ' | '
 		j=0
 		for i in range(len(params['outputs'])):
 			if j>0:
@@ -55,16 +64,19 @@ def pie(params, steadyStates, G, external_label=None):
 		for i in range(1,num_nodes): #ie skip the 0th node, which is always OFF
 			if i!=1:
 				legend_title +=','
-			legend_title += node_num_to_name[i]
+			legend_title += G.nodeNames[i]
 		legend_title += ")"
 
 
 	fig, ax = plt.subplots(figsize=(10, 6))
 
-	if params['use_phenos'] and 'pheno_color_map' in params.keys():
+	if util.istrue(params,'use_phenos') and 'pheno_color_map' in params.keys():
 		label_map = []
 		l=len(params['pheno_color_map']) 
 		for label in labels:
+			if '|' in label: # only use the outputs for the label!
+				parts = label.split("|") 
+				label = parts[1] 
 			if label in params['pheno_color_map']:
 				label_map+= [params['pheno_color_map'][label]]
 			else:
@@ -93,11 +105,12 @@ def pie(params, steadyStates, G, external_label=None):
 			color_ind+=1
 	'''
 
-	lgd = ax.legend(wedges, labels, fontsize=12)#,title="Attractors", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-	lgd.set_title(legend_title,prop={'size':14})
-	#plt.setp(autotexts, size=8, weight="bold")
+	if 'fig_legend' not in params.keys() or params['fig_legend']:
+		lgd = ax.legend(wedges, labels, fontsize=12)#,title="Attractors", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
+		lgd.set_title(legend_title,prop={'size':12})
+		#plt.setp(autotexts, size=8, weight="bold")
 
-	if params['use_phenos']:
+	if util.istrue(params,'use_phenos'):
 		name='Phenotypes'
 	else:
 		name='Attractors'

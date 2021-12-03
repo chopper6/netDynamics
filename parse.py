@@ -8,10 +8,9 @@ def params(param_file):
 	with open(param_file,'r') as f:
 		params = yaml.load(f,Loader=yaml.SafeLoader)
 
-	params_clean_start(params)
+	params_clean(params)
 	if 'setting_file' in params.keys():
 		params= load_model_file(params) # apparently reassigning params within file does not update unless explicitly returned
-	params_clean_end(params)
 
 	return params
 
@@ -21,7 +20,7 @@ def check_file(file_path,name):
 	if os.path.splitext(file_path)[-1].lower() != '.yaml':
 		sys.exit(name + " file must be yaml format")
 
-def params_clean_start(params):
+def params_clean(params):
 	for k in params.keys():
 		param_pow(params, k)
 
@@ -29,12 +28,6 @@ def params_clean_start(params):
 
 	CUPY, cp = util.import_cp_or_np(try_cupy=1) #test import
 	params['cupy'] = CUPY
-
-def params_clean_end(params):
-	actual_num_samples = math.ceil(params['num_samples']/params['parallelism'])*params['parallelism']
-	if actual_num_samples != params['num_samples']:
-		print('WARNING: Due to parallelism, actual number of samples = ',actual_num_samples)
-		params['num_samples'] = actual_num_samples
 
 
 def param_pow(params,k):
@@ -63,19 +56,21 @@ def load_model_file(params):
 def params_adjust_for_inputs(params):
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
-		actual_num_parallel = math.floor(params['parallelism']/(2**k))*2**k
+		actual_num_parallel = round(params['parallelism']/(2**k))*2**k
 
 		if actual_num_parallel < 1:
-			sys.exit("\nERROR: inputs are run in parallel, so parallelism parameter must be >= # input combinations!\n")
+			sys.exit("\nERROR: parallelism parameter must be >= # input combinations, since inputs are run in parallel!\n")
 
 		if actual_num_parallel!=params['parallelism']:
-			params['num_samples'] = params['num_samples']*actual_num_parallel/params['parallelism']
-			params['parallelism']=actual_num_samples
-			print("\nWARNING: only", str(actual_num_samples),"used to maintain even ratio of input samples on each parallel iteration.\n")
+			print("\nWARNING: parallelism set to",actual_num_parallel,' for balanced input samples on each parallel iteration.')
+			params['parallelism']=actual_num_parallel
 
-			params['num_samples'] = params['parallelism'] = actual_num_samples
+		actual_num_samples = round(params['num_samples']/params['parallelism'])*params['parallelism']
 
-
+		if params['num_samples'] != actual_num_samples:
+			print("WARNING: num_samples set to", actual_num_samples,"for full parallelism each iteration.\n")
+			params['num_samples'] = actual_num_samples
+	
 
 if __name__ == "__main__": # just for debugging purposes
 	print("Debugging parse.py")

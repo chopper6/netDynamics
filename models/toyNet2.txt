@@ -1,4 +1,5 @@
 DNFsymbolic
 x1	-x2
 x2	-x1
-x3	x1 x2
+p1	x1 x2
+p2	x1&x2

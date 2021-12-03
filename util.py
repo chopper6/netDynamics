@@ -5,6 +5,22 @@ TURN_CUPY_OFF_OVERRIDE = 0 #turns off CUPY for everything
 if (TURN_CUPY_OFF_OVERRIDE):
 	warnings.warn("Cupy is off, see util.py")
 
+
+
+def istrue(d,keys):
+	# searches if dictionary d[key0][key1]...[keyn] is True
+	if isinstance(keys, list):
+		curr_dict = d 
+		for k in keys:
+			if not k in curr_dict.keys():
+				return False
+			else:
+				curr_dict = curr_dict[k]
+		return curr_dict
+	else: # assume there is only 1 key then
+		return keys in d and d[keys]
+
+
 def import_cp_or_np(try_cupy = True, np_warnings = False):
 	if try_cupy and not TURN_CUPY_OFF_OVERRIDE:
 		try:

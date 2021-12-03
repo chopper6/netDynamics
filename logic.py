@@ -239,14 +239,17 @@ def DNF_from_cell_collective_TT(folder, output_file):
 
 if __name__ == "__main__":
 	if len(sys.argv) not in [3,4]:
-		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce, TT]")
+		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce, tt, exp]")
 	
 	if len(sys.argv) == 4: 
+		# TODO: need to return regular DNF quineMcC!
 		if sys.argv[3]=='reduce':
 			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=False)
-		if sys.argv[3]=='TT':
+		if sys.argv[3]=='exp':
+			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)
+		if sys.argv[3]=='tt':
 			DNF_from_cell_collective_TT(sys.argv[1],sys.argv[2])
 		else:
-			sys.exit("Unrecognized 3rd arg. Usage: python3 logic.py input_net_file output_net_file [reduce]")
+			sys.exit("Unrecognized 3rd arg. Usage: python3 logic.py input_net_file output_net_file [reduce, tt, exp]")
 	else:
 		DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)

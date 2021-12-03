@@ -1,8 +1,0 @@
-# specifies which nodes are 'outputs' and determine the phenotype
-# specify good and bad phenotypes
-# currently, good and bad phenos are not used
-
-# these parameters will be loaded into params['phenos']
-# for instance params['phenos']['outputs']
-
-outputs : [a,b,c,d]
