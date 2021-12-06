@@ -8,12 +8,12 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.5, 	# minimum distance threshold to be considered a mutant 
+	'mut_thresh':.8, 	# minimum distance threshold to be considered a mutant 
 	'cnt_thresh':.5, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1, 
-	'max_control_size':1,
-	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
-	'verbose':True 		# toggle how much is printed to the console
+	'max_control_size':2,
+	'norm':'max',			# the norm used to measure distance. Use an integer or 'max'
+	'verbose':False		# toggle how much is printed to the console
 }
 
 # should_check() if not generalized beyond mutator/control sizes of 2. 
@@ -43,7 +43,7 @@ class Perturbations:
 			s+= '\n' + str(k) + ' reversed by ' 
 			i=0
 			for soln in self.solutions[k]['controllers']:
-				s+='\n\t'+ str(soln) + '\t from a distance of ' + str(self.solutions[k]['mut_dist']) + ' to ' +str(self.solutions[k]['cnt_dists'][i])
+				s+='\n\t'+ str(soln) + '\t from a distance of ' + str(round(self.solutions[k]['mut_dist'],3)) + ' to ' +str(round(self.solutions[k]['cnt_dists'][i]))
 				i+=1
 		return s
 
@@ -125,7 +125,8 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max
 	print("\nSearching for controllers...")
 	for mutator in perturbs.mutators:
 		params_orig = deepcopy(params)
-		print('Trying to fix:',mutator['mutants'],'from dist',mutator['dist'])
+		if CONTROL_PARAMS['verbose']:
+			print('Trying to fix:',mutator['mutants'],'from dist',mutator['dist'])
 		for mutant in mutator['mutants']:
 			params['mutations'][mutant[0]] = mutant[1]
 		attempt_control(params,G, perturbs, metrics, mutator, [], max_control_size)
