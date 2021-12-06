@@ -8,9 +8,9 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.9, 	# minimum distance threshold to be considered a mutant 
+	'mut_thresh':.5, 	# minimum distance threshold to be considered a mutant 
 	'cnt_thresh':.5, 	# min distance less than the mutation distance to be considered a controller
-	'max_mutator_size':2, 
+	'max_mutator_size':1, 
 	'max_control_size':1,
 	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
 	'verbose':True 		# toggle how much is printed to the console
@@ -179,11 +179,12 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 					curr_mutators += [(M,b)]
 					go_further += [{'curr_mutators':deepcopy(curr_mutators),'mut_dist':mut_dist,'params':deepcopy(params)}]
 	
-	for ele in go_further:
-		if CONTROL_PARAMS['verbose']:
-			print('Recursing search for mutators with',ele['curr_mutators'])
-		attempt_mutate(ele['params'], G, perturbs, metrics, ele['curr_mutators'], ele['mut_dist'], depth-1,verbose=False)
-		# recurse attempt mutate at 1 lower depth
+	if depth>1:
+		for ele in go_further:
+			if CONTROL_PARAMS['verbose']:
+				print('Recursing search for mutators with',ele['curr_mutators'])
+			attempt_mutate(ele['params'], G, perturbs, metrics, ele['curr_mutators'], ele['mut_dist'], depth-1,verbose=False)
+			# recurse attempt mutate at 1 lower depth
 
 
 def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, depth):
@@ -229,10 +230,11 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 	if metrics is not None:
 		metrics.reversibility +=  reversibility/(2*len(perturbs.filtered_nodes)-1) # -1 since will not use the orig mutation for control (but will try flipping it)
 
-	for ele in go_further:
-		if CONTROL_PARAMS['verbose']:
-			print("Recursing control search with",ele['control_set'])
-		attempt_control(ele['params'],G, perturbs, metrics, mutator,ele['control_set'], depth-1)
+	if depth>1:
+		for ele in go_further:
+			if CONTROL_PARAMS['verbose']:
+				print("Recursing control search with",ele['control_set'])
+			attempt_control(ele['params'],G, perturbs, metrics, mutator,ele['control_set'], depth-1)
 
 
 def should_check(nodeName, b, curr_group, prev_groups, mutants=False):
