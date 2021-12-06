@@ -1,7 +1,7 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
 outputs : ['Apoptosis','Proliferation','Growth_Arrest']
-output_thresholds : [.3,.5,.5] 
+output_thresholds : [.3,.3,.3] 
 # will produce output phenotypes in terms of these
 
 inputs : ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
