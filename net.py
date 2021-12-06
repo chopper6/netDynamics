@@ -22,8 +22,8 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 
 
 class Net:
-	def __init__(self,params,net_key='model_file',G=None, complete=False, negatives=False):
-		# complete will also apply any mutations in params and build Fmapd
+	def __init__(self,params,net_key='model_file',G=None, complete=True, negatives=False):
+		# complete will also apply any mutations in params and build Fmapd [TODO rename complete]
 		# if negatives: assume the net file explicitly lists negatives and their functions
 		# net_key is passed if want to use a different file than the default, such as the expanded one
 

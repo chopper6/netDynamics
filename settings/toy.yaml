@@ -12,7 +12,7 @@ inputs : ['x1','x2']
 init : {}
 # each sample begins with these states (x0) 
 
-mutations : {}
+mutations : {'v1':0}
 # mutations alter the function of the node to always be off or on
 
 pheno_color_map : {'00':0, '01':1,'10':2,'11':3} #to ensure consistent coloring between images

@@ -28,5 +28,5 @@ use_inputs_in_pheno: 0
 
 # output
 output_dir : 'output/'
-output_img : 'fumia_Gasync.png'
+output_img : 'fumia.png'
 savefig : 1 # as opposed to showing the image
