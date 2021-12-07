@@ -9,11 +9,11 @@ from net import Net
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
 	'mut_thresh':.8, 	# minimum distance threshold to be considered a mutant 
-	'cnt_thresh':.5, 	# min distance less than the mutation distance to be considered a controller
+	'cnt_thresh':.4, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1, 
-	'max_control_size':2,
-	'norm':'max',			# the norm used to measure distance. Use an integer or 'max'
-	'verbose':False		# toggle how much is printed to the console
+	'max_control_size':1,
+	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
+	'verbose':True	# toggle how much is printed to the console
 }
 
 # should_check() if not generalized beyond mutator/control sizes of 2. 
@@ -316,7 +316,7 @@ if __name__ == "__main__":
 		sys.exit("Usage: python3 control.py PARAMS.yaml")# [exh | tune]")
 	params = parse.params(sys.argv[1])
 	G = Net(params,complete=False)
-	exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
+	perturbs = exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
 	print('\n using these control params:',CONTROL_PARAMS)
 	'''
 	if sys.argv[2] == 'tune':

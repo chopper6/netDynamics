@@ -9,7 +9,7 @@ init : {}
 # each sample begins with these states (x0) 
 
 
-mutations : {'EGFR':1,'PTEN':0}
+mutations : {}
 # mutations alter the function of the node to always be off or on
 
 pheno_color_map : {'000':3, '001':0,'010':2,'100':1} #to ensure consistent coloring between images
