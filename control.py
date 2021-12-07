@@ -8,11 +8,11 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.8, 	# minimum distance threshold to be considered a mutant 
+	'mut_thresh':.6, 	# minimum distance threshold to be considered a mutant 
 	'cnt_thresh':.4, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1, 
 	'max_control_size':1,
-	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
+	'norm':4,			# the norm used to measure distance. Use an integer or 'max'
 	'verbose':True	# toggle how much is printed to the console
 }
 
@@ -21,7 +21,9 @@ CONTROL_PARAMS = {
 
 class Perturbations:
 	def __init__(self, params, G,phenosWT,mut_thresh, cnt_thresh,max_control_size,norm):
-		self.mutators, self.solutions, self.controllers = [],{},[]
+		self.mutators, self.solutions, self.controllers,self.irreversible = [],{},[],[]
+		# irreversible are mutators without a solution
+
 		self.mut_thresh = mut_thresh
 		self.mut_greedy_thresh = 0 #mut_thresh/10 # can greedily reduce recursion by setting this > 0
 		self.cnt_thresh = cnt_thresh 
@@ -38,13 +40,19 @@ class Perturbations:
 			self.norm = float(norm)
 
 	def __str__(self):
-		s= '\n# of mutators = ' + str(len(self.mutators)) + '\n# of controllers = ' + str(len(self.controllers)) + '\nAll solutions:' 
+		s= '\n# of mutators = ' + str(len(self.mutators))
+		s+= '\n# of controllers = ' + str(len(self.controllers)) 
+		s+= '\n# irreversible mutators = ' + str(len(self.irreversible))
+		s+= '\nIrreversible mutators: ' + str(self.irreversible)
+		s+= '\n\nAll solutions:' 
 		for k in self.solutions.keys():
-			s+= '\n' + str(k) + ' reversed by ' 
+			s+= '\n' + str(k) + ' at dist ' + str(round(self.solutions[k]['mut_dist'],3)) + ' reversed by ' 
 			i=0
 			for soln in self.solutions[k]['controllers']:
-				s+='\n\t'+ str(soln) + '\t from a distance of ' + str(round(self.solutions[k]['mut_dist'],3)) + ' to ' +str(round(self.solutions[k]['cnt_dists'][i]))
+				s+='\n\t'+ str(soln) + '\tto dist ' +str(round(self.solutions[k]['cnt_dists'][i],3))
 				i+=1
+
+
 		return s
 
 	def add_solution(self,mutator,solution,cnt_dist):
@@ -59,6 +67,13 @@ class Perturbations:
 			self.solutions[mutants]['mut_dist'] = mutator['dist']
 			self.solutions[mutants]['cnt_dists'] = [cnt_dist]
 		self.num_solutions += 1
+
+	def calc_irrev_mutators(self):
+
+		for mutator in self.mutators:
+			mutants = str(mutator['mutants'])
+			if mutants not in self.solutions.keys():
+				self.irreversible += [mutants]
 
 class NetMetrics:
 	def __init__(self, params, phenosWT,G):
@@ -99,6 +114,8 @@ class NetMetrics:
 	
 def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max_control_size = 1, measure=False):
 
+	if 'mutations' in params.keys() and len(params['mutations'])!=0:
+		print('WARNING: control search starts with existing mutations! Check the settings file.\n')
 	assert('setting_file' in params.keys()) # this control module is based on phenotypes, so a setting file is mandatory
 
 	# complexity is roughly O(s*n^m+1) where s = simulation time, n=#nodes, m=max control set size
@@ -126,11 +143,14 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max
 	for mutator in perturbs.mutators:
 		params_orig = deepcopy(params)
 		if CONTROL_PARAMS['verbose']:
-			print('Trying to fix:',mutator['mutants'],'from dist',mutator['dist'])
+			print('Trying to fix:',mutator['mutants'],'from dist',round(mutator['dist'],3))
 		for mutant in mutator['mutants']:
 			params['mutations'][mutant[0]] = mutant[1]
 		attempt_control(params,G, perturbs, metrics, mutator, [], max_control_size)
 		params = params_orig
+
+	perturbs.calc_irrev_mutators()
+
 	if measure:
 		metrics.finalize(perturbs)
 		print(metrics)
@@ -218,6 +238,8 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 				reversibility += max(0,mut_dist-cnt_dist)
 				if cnt_dist < mut_dist - perturbs.cnt_thresh: 
 					phenosW = perturbs.phenosWT
+					if CONTROL_PARAMS['verbose']:
+						print("\tControl with",control_set+[(C,b)],'reduces to dist',round(cnt_dist,3))
 					perturbs.add_solution(mutator,control_set+[(C,b)],cnt_dist)
 					if (C,b) not in perturbs.controllers:
 						perturbs.controllers +=[(C,b)]
@@ -271,9 +293,7 @@ def diff(P1, P2, num_inputs, norm=1):
 	P1_basins, P2_basins = np.array(P1_basins), np.array(P2_basins)
 
 	N = 2**num_inputs
-	if False: # TODO temp
-		normz_factor=2
-	elif norm in ['inf','max',np.inf]:
+	if norm in ['inf','max',np.inf]:
 		norm = np.inf 
 		normz_factor=1/N # this is 1/ max_poss
 	else:
@@ -283,7 +303,6 @@ def diff(P1, P2, num_inputs, norm=1):
 	if not (result >= -.01 and result <= 1.01): # may not hold for norms that are norm max or 1, not sure how to normalize them
 		print("\nWARNING: difference =",result,", not in [0,1]!") # this really should not occur! If it does, check if an issue of accuracy
 		#print("P1 basins:",P1_basins,"\nP2_bsins:",P2_basins,'\n\n')
-	#print('\ndist=',result,'\nfrom',P1_basins,'\tvs',P2_basins)
 	return result
 
 

@@ -264,7 +264,7 @@ class Net:
 		else:
 			thread_dtype = cp.uint32
 		clauses_to_threads = cp.array(clauses_to_threads,dtype=thread_dtype)
-		threads_to_nodes = cp.array(threads_to_nodes,dtype=thread_dtype)
+		threads_to_nodes = cp.array(threads_to_nodes,dtype=bool)
 		# nodes_to_clauses already converted
 		clause_mapping = {'nodes_to_clauses':nodes_to_clauses, 'clauses_to_threads':clauses_to_threads, 'threads_to_nodes':threads_to_nodes}
 		

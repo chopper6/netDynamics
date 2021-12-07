@@ -11,6 +11,7 @@ def main(param_file):
 	params = parse.params(param_file)
 	G = Net(params)
 	steadyStates = find_steadyStates(params,G)
+	#print('basin.main: phenos=',steadyStates.phenos_str())
 	plot.pie(params, steadyStates,G)
 
 def find_steadyStates(params,G): 
@@ -74,6 +75,14 @@ class SteadyStates:
 		self.phenotypes = {}
 		self.params = params
 		self.G = G
+
+	def phenos_str(self):
+		s=''
+		for k in self.phenotypes:
+			if s!='':
+				s+=', '
+			s+=k+':'+str(self.phenotypes[k].size)
+		return s
 
 	def add(self, attractor_id, period, avg, var=None): # id should be unique to each attractor
 		if attractor_id not in self.attractors.keys():
