@@ -86,13 +86,21 @@ def transient(params,x0, G, fixed_points_only=False):
 
 def exit_sync_transient(x, not_finished):
 	return {'finished':cp.logical_not(not_finished), 'state':x, 'avg':x, 'period':cp.logical_not(not_finished),'var':cp.zeros(x.shape)}
-		
+
+def debug_print_outputs(params,G,x,target=[0,0,1,0]):
+	k = len(params['inputs'])
+	inpt = [G.nodeNums[params['inputs'][i]] for i in range(k)]
+	k2 = len(params['outputs'])
+	outpt = [G.nodeNums[params['outputs'][i]] for i in range(k2)]
+	for row in x:
+		if cp.all(cp.logical_not(row[inpt]-cp.array(target))):
+			print(target,'->',row[outpt].astype(int))
 
 def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	# assumes x0 is in the oscil
 	# will return a sorted ID for the oscil (max int representation) and the average activity of each node
 
-	# calculating_var is a recursive flag, just for when this module calls itself again (in order to calc_var, if param['calc_var'])
+	# calculating_var is a recursive flag, just for when this function calls itself again (in order to calc_var, if param['calc_var'])
 	#	and avg is only passed by this function recursively (not from other modules)
 
 	x = cp.array(x0,dtype=bool).copy()
@@ -109,7 +117,8 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
-	avg_states = cp.array(x0,dtype=cp.float16)
+	#avg_states = cp.array(x0,dtype=cp.float16)
+	avg_states = cp.zeros(x0.shape,dtype=cp.float16)
 	if calculating_var:
 		var_states = cp.array(x0,dtype=cp.float16)
 
@@ -123,7 +132,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 				period += not_match*not_finished 
 				not_finished = cp.logical_and(not_finished, not_match) 
 
-			which_nodes = cp.ones(x.shape)
+			which_nodes = cp.ones(x.shape)*not_finished[:,cp.newaxis]
 		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
 			p=.5
 			which_nodes = cp.random.rand(params['parallelism'], G.n) > p
@@ -149,7 +158,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		larger = diff[[simple_ind,first_diff_col]] #note that numpy/cupy handles this as taking all elements indexed at [simple_ind[i],first_diff_col[i]]   
 		
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
-		
+
 		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not util.istrue(params,'calc_var'):
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
 				return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)

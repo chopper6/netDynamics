@@ -19,6 +19,15 @@ def find_steadyStates(params,G):
 	steadyStates = calc_basin_size(params,G)
 	return steadyStates
 
+def debug_print(params,G,steadyStates):
+	k2 = len(params['outputs'])
+	outpt = cp.array([G.nodeNums[params['outputs'][i]] for i in range(k2)])
+	for k in steadyStates.attractors:
+		A =  steadyStates.attractors[k]
+		if A.phenotype == '0010|010':
+			print('010 found: ',A.size, A.period,A.avg[outpt])
+		if A.phenotype == '0010|000':
+			print('000 found: ',A.size, A.period,A.avg[outpt])
 #########################################################################################################
 
 class Attractor:
@@ -42,7 +51,7 @@ class Attractor:
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
-			assert(not util.istrue(params,['PBN','active'])) # TODO: how to def input thresh?
+			assert(not util.istrue(params,['PBN','active'])) # TODO: how to def input thresh? or non stoch inputs
 			for i in range(len(inputs)):
 				if self.avg[inputs[i]] > 0: 
 					self.phenotype +='1'
@@ -58,7 +67,7 @@ class Attractor:
 
 class Phenotype:
 	def __init__(self, attractors, size):
-		self.attractors = attractors
+		self.attractors = attractors # {}
 		self.size = size
 		self.inputs = None 
 		self.outputs = None 
@@ -106,6 +115,7 @@ class SteadyStates:
 
 			if finished:
 				attractor_id = format_id_str(result['state'][i]) 
+		 
 				# TODO: clean up how var is handled
 				if 'var' in result.keys():
 					self.add(attractor_id, period, result['avg'][i], result['var'][i]) 
@@ -169,6 +179,7 @@ def calc_basin_size(params, G):
 		# run until sure that sample is in the oscil
 		confirmed_oscils = sync_run_oscils(params, oscil_bin, steadyStates, G, transient=True)
 
+
 		# CLASSIFYING OSCILS
 		# calculate period, avg on state, ect
 		if params['verbose'] and confirmed_oscils != []: 
@@ -231,7 +242,7 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 			result = lap.transient(params,x0, G, fixed_points_only=False)
 		else:
 			result = lap.categorize_attractor(params,x0, G)
-		cupy_to_numpy(params,result)
+		#cupy_to_numpy(params,result)
 		result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
 		
 		if transient:
