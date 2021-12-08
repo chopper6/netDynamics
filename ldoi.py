@@ -162,4 +162,4 @@ if __name__ == "__main__":
 	if os.path.splitext(sys.argv[1])[-1].lower() != '.yaml':
 		sys.exit("Parameter file must be yaml format")
 	
-	main(sys.argv[1])
+	print('aint nothin here no more')

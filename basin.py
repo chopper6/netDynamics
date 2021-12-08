@@ -212,6 +212,11 @@ def get_init_sample(params, G):
 	p = .5 #prob a given node is off at start
 	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
 	
+	if 'init' in params.keys():
+		for k in params['init']:
+			node_indx = G.nodeNums[k]
+			x0[:,node_indx] = params['init'][k]
+
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
 		input_indices = [G.nodeNums[params['inputs'][i]] for i in range(k)]
@@ -221,11 +226,6 @@ def get_init_sample(params, G):
 			x0[int(i*params['parallelism']/(2**k)):int((i+1)*params['parallelism']/(2**k)),input_indices] = cp.array(input_set)
 			i+=1
 		assert(i==2**k)
-
-	if 'init' in params.keys():
-		for k in params['init']:
-			node_indx = G.nodeNums[k]
-			x0[:,node_indx] = params['init'][k]
 
 	return x0
 
@@ -242,7 +242,7 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 			result = lap.transient(params,x0, G, fixed_points_only=False)
 		else:
 			result = lap.categorize_attractor(params,x0, G)
-		#cupy_to_numpy(params,result)
+		cupy_to_numpy(params,result)
 		result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
 		
 		if transient:

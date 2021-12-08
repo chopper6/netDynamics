@@ -117,8 +117,8 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
-	#avg_states = cp.array(x0,dtype=cp.float16)
-	avg_states = cp.zeros(x0.shape,dtype=cp.float16)
+	avg_states = cp.array(x0,dtype=cp.float16)
+	#avg_states = cp.zeros(x0.shape,dtype=cp.float16)
 	if calculating_var:
 		var_states = cp.array(x0,dtype=cp.float16)
 

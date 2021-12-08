@@ -8,11 +8,11 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.6, 	# minimum distance threshold to be considered a mutant 
+	'mut_thresh':.9, 	# minimum distance threshold to be considered a mutant 
 	'cnt_thresh':.4, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1, 
 	'max_control_size':1,
-	'norm':4,			# the norm used to measure distance. Use an integer or 'max'
+	'norm':'max',			# the norm used to measure distance. Use an integer or 'max'
 	'verbose':True	# toggle how much is printed to the console
 }
 
@@ -27,7 +27,10 @@ class Perturbations:
 		self.mut_thresh = mut_thresh
 		self.mut_greedy_thresh = 0 #mut_thresh/10 # can greedily reduce recursion by setting this > 0
 		self.cnt_thresh = cnt_thresh 
-		self.filtered_nodes = [node.name for node in G.regularNodes if node.name not in params['outputs'] and node.name not in params['inputs']]
+		self.filtered_nodes = [node.name for node in G.regularNodes if node.name not in params['outputs'] and node.name not in params['inputs'] and node.name not in params['init'].keys()]
+		
+		#print("WARNING rm temp debug in control")
+		#self.filtered_nodes = ['Bcl_2','p53']
 
 		self.num_solutions=0
 		self.phenosWT = phenosWT
@@ -115,7 +118,7 @@ class NetMetrics:
 def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max_control_size = 1, measure=False):
 
 	if 'mutations' in params.keys() and len(params['mutations'])!=0:
-		print('WARNING: control search starts with existing mutations! Check the settings file.\n')
+		print('WARNING: control search starts with existing mutations! Double check the settings file.\n')
 	assert('setting_file' in params.keys()) # this control module is based on phenotypes, so a setting file is mandatory
 
 	# complexity is roughly O(s*n^m+1) where s = simulation time, n=#nodes, m=max control set size
@@ -146,7 +149,7 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max
 			print('Trying to fix:',mutator['mutants'],'from dist',round(mutator['dist'],3))
 		for mutant in mutator['mutants']:
 			params['mutations'][mutant[0]] = mutant[1]
-		attempt_control(params,G, perturbs, metrics, mutator, [], max_control_size)
+		attempt_control(params,deepcopy(G), perturbs, metrics, mutator, [], max_control_size)
 		params = params_orig
 
 	perturbs.calc_irrev_mutators()
@@ -160,8 +163,8 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max
 	return perturbs
 
 
-def mutate_and_sim(params, G_orig):
-	G = deepcopy(G_orig)
+def mutate_and_sim(params_orig, G_orig):
+	G, params = deepcopy(G_orig), deepcopy(params_orig)
 	G.apply_mutations(params) 
 	steadyStates = basin.find_steadyStates(params, G)
 	return steadyStates
@@ -186,6 +189,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 				params['mutations'] = deepcopy(orig_mutations)
 				params['mutations'][M] = b
 				phenosM = mutate_and_sim(params, G).phenotypes
+
 				mut_dist = diff(perturbs.phenosWT,phenosM,perturbs.num_inputs,norm=perturbs.norm)
 				if metrics is not None:
 					metrics.fragility += mut_dist # TODO: this should only be for highest depth. ANd btw rename depth if it counts down
@@ -231,7 +235,7 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 				prev_groups= perturbs.solutions[str(mutator['mutants'])]['controllers']
 			if should_check(C, b, control_set, prev_groups):
 				params['mutations'][C] = b
-				phenosC = mutate_and_sim(params, G).phenotypes
+				phenosC = mutate_and_sim(params,G).phenotypes
 
 				#change = 1-diff(phenosWT,phenosC)/mut_dist
 				cnt_dist = diff(perturbs.phenosWT,phenosC,perturbs.num_inputs,norm=perturbs.norm)
@@ -302,7 +306,7 @@ def diff(P1, P2, num_inputs, norm=1):
 	result/=normz_factor
 	if not (result >= -.01 and result <= 1.01): # may not hold for norms that are norm max or 1, not sure how to normalize them
 		print("\nWARNING: difference =",result,", not in [0,1]!") # this really should not occur! If it does, check if an issue of accuracy
-		#print("P1 basins:",P1_basins,"\nP2_bsins:",P2_basins,'\n\n')
+		print("P1 basins:",P1_basins,"\nP2_bsins:",P2_basins,'\n\n')
 	return result
 
 
