@@ -1,9 +1,7 @@
 # model file species WHAT to simulate
 
-use_phenos : true # grouup attractors into phenotypes, as specified by the outputs below
-
 outputs : ['Apop','Prolif','Quiesc']
-output_thresholds : [.2,.2,.2] 
+output_thresholds : [0,0,0] 
 # fraction of an attractor with output active must be > threshold for that attractor to be in a phenotype with that output active
 # fumia tends to be robust to choice of output thresholds
 
@@ -20,7 +18,7 @@ mutations : {}
 # for example: {'APC':0,'Ras':1,'Smad':0,'PTEN':0,'p53':0}
 
 
-pheno_color_map : {'100':1,'010':0,'001':2} #to ensure consistent coloring between images
+pheno_color_map : {'100':1,'010':0,'001':2,'000':3} #to ensure consistent coloring between images
 
 # from fumia paper:
 # cell phenotypes: apoptotic, characterized by active caspases; 

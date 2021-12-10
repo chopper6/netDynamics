@@ -79,6 +79,8 @@ def transient(params,x0, G, fixed_points_only=False):
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
 	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
+		#debug_print_outputs(params,G,x)
+		#assert(0)
 		return exit_sync_transient(x, not_finished)
 	#else:
 	return x
@@ -87,14 +89,19 @@ def transient(params,x0, G, fixed_points_only=False):
 def exit_sync_transient(x, not_finished):
 	return {'finished':cp.logical_not(not_finished), 'state':x, 'avg':x, 'period':cp.logical_not(not_finished),'var':cp.zeros(x.shape)}
 
-def debug_print_outputs(params,G,x,target=[0,0,1,0]):
+def debug_print_outputs(params,G,x,target=None):
 	k = len(params['inputs'])
 	inpt = [G.nodeNums[params['inputs'][i]] for i in range(k)]
 	k2 = len(params['outputs'])
 	outpt = [G.nodeNums[params['outputs'][i]] for i in range(k2)]
-	for row in x:
-		if cp.all(cp.logical_not(row[inpt]-cp.array(target))):
-			print(target,'->',row[outpt].astype(int))
+	if target is not None:
+		for row in x:
+			if cp.all(cp.logical_not(row[inpt]-cp.array(target))):
+				print(target,'->',row[outpt].astype(int))
+	else: 
+		for row in x:
+			print(row[inpt].astype(int),'->',row[outpt].astype(int))
+
 
 def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	# assumes x0 is in the oscil
@@ -123,7 +130,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		var_states = cp.array(x0,dtype=cp.float16)
 
 	for i in range(params['steps_per_lap']):
-
+		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
 		x_next = step(params, x, G)
 		if params['update_rule']=='sync':
 			x = x_next

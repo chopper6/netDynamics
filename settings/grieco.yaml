@@ -1,15 +1,14 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
 outputs : ['Apoptosis','Proliferation','Growth_Arrest']
-output_thresholds : [.3,.3,.3] 
+output_thresholds : [.1,.1,.1] 
 # will produce output phenotypes in terms of these
 
 inputs : ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
 init : {}
 # each sample begins with these states (x0) 
 
-
 mutations : {}
 # mutations alter the function of the node to always be off or on
 
-pheno_color_map : {'000':3, '001':0,'010':2,'100':1} #to ensure consistent coloring between images
+pheno_color_map : {'000':3, '001':2,'010':0,'100':1} #to ensure consistent coloring between images

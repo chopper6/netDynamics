@@ -59,7 +59,7 @@ class Attractor:
 					self.phenotype +='0'	
 			self.phenotype +='|'
 		for i in range(len(outputs)): 
-			if self.avg[outputs[i]] > params['output_thresholds'][i]: 
+			if float(self.avg[outputs[i]]) > params['output_thresholds'][i]: 
 				self.phenotype +='1'
 			else:
 				self.phenotype +='0'		 
@@ -127,7 +127,7 @@ class SteadyStates:
 			for s in self.attractors:
 				A = self.attractors[s] 
 				A.totalAvg = A.avg.copy() #TODO see if this causes err, if so, move to attrs
-				A.avg/=A.size
+				A.avg/=A.size 
 				if util.istrue(self.params,'calc_var'):
 					A.totalVar = A.var.copy() 
 					A.var/=A.size

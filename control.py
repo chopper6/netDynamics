@@ -9,7 +9,7 @@ from net import Net
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
 	'mut_thresh':.9, 	# minimum distance threshold to be considered a mutant 
-	'cnt_thresh':.4, 	# min distance less than the mutation distance to be considered a controller
+	'cnt_thresh':.8, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1, 
 	'max_control_size':1,
 	'norm':'max',			# the norm used to measure distance. Use an integer or 'max'

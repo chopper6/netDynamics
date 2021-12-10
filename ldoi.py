@@ -94,8 +94,25 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	if not pinning:
 		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
 
+	# TEMP:
+	if False:
+		inputs=[num_to_node(G,init[i].get()) for i in range(len(init))]
+		print('\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nfor inputs ',inputs,'LDOI is:')
+		for i in range(G.n_neg):
+			vtd = []
+			for j in range(G.n_neg):
+				if visited[i][j]==1:
+					vtd+=[num_to_node(G,j)]
+			print("LDOI of",num_to_node(G,i),': ',vtd)
+
 	return visited[:G.n_neg,:G.n_neg], negated[:G.n_neg] 
 
+def num_to_node(G,num):
+	# this should be in G itself
+	if num > G.n:
+		return 'not' + G.nodeNames[num-G.n]
+	else:
+		return G.nodeNames[num]
 
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	# takes regular G, then logic.py augments into expanded net
