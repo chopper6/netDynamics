@@ -2,13 +2,12 @@ import os, sys, yaml, util, math
 
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
-
-def params(param_file):
+def load(param_file):
 	check_file(param_file,'parameter')
 	with open(param_file,'r') as f:
 		params = yaml.load(f,Loader=yaml.SafeLoader)
 
-	params_clean(params)
+	clean(params)
 	if 'setting_file' in params.keys():
 		params= load_model_file(params) # apparently reassigning params within file does not update unless explicitly returned
 
@@ -20,7 +19,7 @@ def check_file(file_path,name):
 	if os.path.splitext(file_path)[-1].lower() != '.yaml':
 		sys.exit(name + " file must be yaml format")
 
-def params_clean(params):
+def clean(params):
 	for k in params.keys():
 		param_pow(params, k)
 
@@ -50,10 +49,10 @@ def load_model_file(params):
 		assert(len(shared_items)==0) #should not have overlaping keys between params and model files
 	params = {**model, **params} # in python3.9 can use params_model | params, but may require some people to update python
 
-	params_adjust_for_inputs(params)
+	adjust_for_inputs(params)
 	return params
 
-def params_adjust_for_inputs(params):
+def adjust_for_inputs(params):
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
 		actual_num_parallel = round(params['parallelism']/(2**k))*2**k

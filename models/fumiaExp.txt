@@ -1,6 +1,4 @@
 DNFwords
-1*= (1)
-0*= (0)
 Mutagen*= (Mutagen)
 Nutrients*= (Nutrients)
 GFs*= (GFs)

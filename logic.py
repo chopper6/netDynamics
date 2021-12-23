@@ -1,29 +1,21 @@
-import os, sys, net
-import math
-from subprocess import call
+import os, sys, math
+import net
+from subprocess import run
 
-# TODO: clean tf out of bool2clause and run_qm
-#	they should NOT write to file (although might be useful for the write to file fn in net.py)
-#	clean DNF_from_cell_collective_TT, although ok that it directly reads from folder then writes to file
 
-#	expanded is the wrong word for the net below! 
-#	should be that F of negative nodes is added to Net
-#		and this switch should be clear in net.py
-
-def DNF_via_QuineMcCluskey_nofile(params,G,expanded=False):
+def DNF_via_QuineMcCluskey(G,parity=False):
 	# exhaustively reduces the logic of a net G
-	# if expanded is true, will explicitly build negative nodes
+	# if parity is true, will explicitly build negative nodes
 
-	# net file should be in DNF
-	# see README for format specifications
+	# takes a network object G
 
 	# general approach: 
 	# python: parse file, call qm.exe as subprocess
 	# c (qm.exe): solve QuineMcCluskey, write to c2py.txt
 	# python: read from c2py.txt, write new net file, del c2py.txt
 	# c python, caveman approach work best
-
-	if expanded:
+	
+	if parity:
 		negatives_bin = []
 
 	for node in G.nodes:
@@ -31,74 +23,71 @@ def DNF_via_QuineMcCluskey_nofile(params,G,expanded=False):
 		input_nodes_rev = {}  # num -> name
 		unreduced_clauses = []
 
-		if not node.isNegative:
-			for clause in node.F:
-				for lit in clause:
-					literal_name = str(lit)
-					if G.not_string in literal_name:
-						literal_name = literal_name.replace(G.not_string,'')
-					if literal_name not in input_nodes.keys():
-						input_nodes_rev[len(input_nodes)] = literal_name
-						input_nodes[literal_name] = len(input_nodes)
+		for clause in node.F():
+			for lit in clause:
+				literal_name = str(lit)
+				if G.not_string in literal_name:
+					literal_name = literal_name.replace(G.not_string,'')
+				if literal_name not in input_nodes.keys():
+					input_nodes_rev[len(input_nodes)] = literal_name
+					input_nodes[literal_name] = len(input_nodes)
+		
+		for clause in node.F(): # go through again to build int min term representations of the clauses
+			expanded_clause = ['x' for i in range(len(input_nodes))]
+			clause_int=0
 			
-			for clause in G.F[node.name]: # go through again to build int min term representations of the clauses
-				expanded_clause = ['x' for i in range(len(input_nodes))]
-				clause_int=0
-				
-				for lit in clause: #build the int min term representation of the clause
+			for lit in clause: #build the int min term representation of the clause
 
-					literal_name = str(lit)
-					if G.not_string in literal_name:
-						sign = '0'
-						literal_name = literal_name.replace(G.not_string,'')
-					else:
-						sign = '1'
-					expanded_clause[input_nodes[literal_name]]=sign
+				literal_name = str(lit)
+				if G.not_string in literal_name:
+					sign = '0'
+					literal_name = literal_name.replace(G.not_string,'')
+				else:
+					sign = '1'
+				expanded_clause[input_nodes[literal_name]]=sign
 
-				expanded_clauses = [''.join(expanded_clause)] #if a literal is not in a string, need to make two string with each poss value of that literal	
-				final_expanded_clauses = []
-				while expanded_clauses != []:
-					for j in range(len(input_nodes)):
-						for ec in expanded_clauses:
-							if 'x' not in ec:
-								final_expanded_clauses += [ec]
-								expanded_clauses.remove(ec)
-							elif ec[j]=='x':
-								expanded_clauses+= [ec[:j] + "1" + ec[j+1:]]
-								expanded_clauses+= [ec[:j] + "0" + ec[j+1:]]
-								expanded_clauses.remove(ec)
+			expanded_clauses = [''.join(expanded_clause)] #if a literal is not in a string, need to make two string with each poss value of that literal	
+			final_expanded_clauses = []
+			while expanded_clauses != []:
+				for j in range(len(input_nodes)):
+					for ec in expanded_clauses:
+						if 'x' not in ec:
+							final_expanded_clauses += [ec]
+							expanded_clauses.remove(ec)
+						elif ec[j]=='x':
+							expanded_clauses+= [ec[:j] + "1" + ec[j+1:]]
+							expanded_clauses+= [ec[:j] + "0" + ec[j+1:]]
+							expanded_clauses.remove(ec)
 
-				for ec in final_expanded_clauses:
-					unreduced_clauses += [int('0b'+ec,2)]
+			for ec in final_expanded_clauses:
+				unreduced_clauses += [int('0b'+ec,2)]
 
-			unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
+		unreduced_clauses = list(set(unreduced_clauses)) #remove duplicates
 
-			if expanded:
-				neg_clauses = [i for i in range(2**len(input_nodes))]
-				for term in unreduced_clauses:
-					neg_clauses.remove(term)
-				negatives_bin += [{'clauses':neg_clauses,'node':node.name,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
+		if parity:
+			neg_clauses = [i for i in range(2**len(input_nodes))]
+			for term in unreduced_clauses:
+				neg_clauses.remove(term)
+			negNodeName = G.not_string + node.name
+			negatives_bin += [{'clauses':neg_clauses,'node':negNodeName,'num_inputs':len(input_nodes),'input_nodes_rev':input_nodes_rev}]
 
-			if len(unreduced_clauses) != 1: # run qm and write reduced function back
-				node.F = run_qm(unreduced_clauses, len(input_nodes),'bnet',input_nodes_rev,return_f=True)
+		if len(unreduced_clauses) != 1: # run qm and write reduced function back
+			fn = run_qm(unreduced_clauses, len(input_nodes),G.encoding,input_nodes_rev)
+			node.setF(fn)
 
-	if expanded:
+	if parity:
 		for neg_dict in negatives_bin:
-			this_node = G.nodes[G.nodeNums[G.not_string + neg_dict['node']]]
+			node = G.nodesByName(neg_dict['node'])
 
 			if len(neg_dict['clauses']) == 1:
 				# qm.exe just returns blank, can't reduce anyway, so just put back original line
 				bool_str = int2bool(int(neg_dict['clauses'][0]), neg_dict['num_inputs'])
-				reduced_fn = ''
-				Fn = bool2clause(bool_str, reduced_fn, neg_dict['input_nodes_rev'], G.encoding,return_f=True)
-				this_node.F = [Fn[2]] 
+				finished_clauses, clause = bool2clause(bool_str, neg_dict['input_nodes_rev'], G.encoding)
+				node.setF([clause]) 
 			
 			else: # run qm and write reduced function back
-				this_node.F = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], G.encoding, neg_dict['input_nodes_rev'],return_f=True)
-
-			G.F[G.not_string + neg_dict['node']] = this_node.F
-			
-	os.remove('c2py.txt') #clean up
+				fn = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], G.encoding, neg_dict['input_nodes_rev'])
+				node.setF(fn)
 
 
 def int2bool(x,lng):
@@ -111,58 +100,58 @@ def int2bool(x,lng):
 		bool_str+='0'
 	return ''.join(reversed(bool_str))
 
-def bool2clause(bool_str, clause,input_nodes_rev, format_name,return_f=False):
-	# TODO: clean return_f nonsense
+
+def bool2clause(bool_str, input_nodes_rev, format_name):
 	# this is very specific to the syntax used for the c program
 	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = net.get_file_format(format_name)
 	
-	f= []
-	added_lit = False
+	clause = []
+
 	for j in range(len(bool_str)):
 		finished_clauses = False
-		if bool_str[j] in ['0','1']:
-			if added_lit:
-				clause += literal_split
-			else:
-				added_lit = True
 
 		if bool_str[j] == '0':
-			if input_nodes_rev[j]=='1':
-				clause += '0' # not 1 = 0
-			elif input_nodes_rev[j]=='0':
-				clause += '1' #since not1 should be 0, ect 
-			else:
-				clause += not_str + input_nodes_rev[j]
-				f += [not_str + input_nodes_rev[j]]
+			clause += [not_str + input_nodes_rev[j]]
 		elif bool_str[j] == '1':
-			clause += input_nodes_rev[j]
-			f += [input_nodes_rev[j]]
+			clause += [input_nodes_rev[j]]
 		elif bool_str[j] == '-2':
 			finished_clauses = True
 			break
 		elif bool_str[j] != '-1': #note that -1 means don't include the clause
 			assert(0) #unrecognized digit
 
-	if return_f:
-		return finished_clauses, clause, f
 	return finished_clauses, clause
 
 
-def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=False):
-	# TODO: sep fn from return_F -> reduced_fn string
+
+
+def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
+	# return function of a single node: fn = [reduced_clause1, reduced_clause2,...] where reduced_clause = [lit1,lit2,...]
 
 	# calls a c logic function, MUST build the exe first
+	
+	# the following two files hold output from calling the c file qm.exe
+	with open('./logicSynth/qm_stdout.log','w') as c2py:
+		pass 
+	with open('./logicSynth/qm_stderr.log','w') as c2py:
+		pass 
+
+	# this is only used internally and will be deleted at the end
+	with open('c2py.txt','w') as c2py: 
+		pass 
+
 	node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = net.get_file_format(format_name)
-	devnull = open(os.devnull, 'w') #just to hide output of subprocess
+	devnull = open(os.devnull, 'w') #just to hide output of subprocess 
 
 	cargs = ["./logicSynth/qm.exe", str(num_inputs), str(len(unreduced_clauses))]
 	for num in unreduced_clauses:
 		cargs += [str(num)]
 
-	call(cargs,stdout=devnull, stderr=devnull)
+	with open('./logicSynth/qm_stdout.log','w') as stdout:
+		with open('./logicSynth/qm_stderr.log','w') as stderr:
+			run(cargs,stdout=stdout, stderr=stderr) 
 
-	Fn = []
-	reduced_fn = ''
+	fn = []
 	with open('c2py.txt','r') as c2py:
 		# result is 1 clause per line, comma sep for each input
 		# 1 = ON in clause, 0 = OFF in clause, -1 = not in clause, -2 = done
@@ -175,31 +164,17 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev,return_f=
 				sys.exit("Hit an infinite loop, unless file is monstrously huge") 
 
 			lits = line.split(",")
-			clause = ''
-			if len(strip_from_clause) > 0 and len(lits)>1:
-				clause += strip_from_clause[0]
 
-			if i!=0 and lits[0] != '-2':
-				reduced_fn += clause_split
-
-			if return_f: 
-				finished_clauses, clause, f = bool2clause(lits, clause, input_nodes_rev, format_name,return_f=True)
-				if f!=[]:
-					Fn += [f]
-			else:
-				finished_clauses, clause = bool2clause(lits, clause, input_nodes_rev, format_name)
-			
-			if not finished_clauses:
-				if len(strip_from_clause) > 0 and len(lits)>1:
-					clause += strip_from_clause[1]
-				reduced_fn += clause 
-			else:
+			finished_clauses, clause = bool2clause(lits, input_nodes_rev, format_name)
+			if clause!=[]:
+				fn += [clause]
+			if finished_clauses:
 				break #once reach a clause with a -2, done
 			i+=1
 
-	if return_f:
-		return Fn
-	return reduced_fn
+	os.remove('c2py.txt') #clean up
+	return fn
+
 
 
 def DNF_from_cell_collective_TT(folder, output_file):
@@ -231,25 +206,26 @@ def DNF_from_cell_collective_TT(folder, output_file):
 						clauses += [int('0b'+line,2)]
 
 				assert(clauses != []) # should not always be off
-				reduced_fn = run_qm(clauses, len(inputs), format_name, inputs_rev)
+				fn = run_qm(clauses, len(inputs), format_name, inputs_rev)
 
 				with open(output_file,'a') as ofile:
-				   	ofile.write(node + node_fn_split + reduced_fn + '\n')
+					ofile.write(node + node_fn_split + fn_str(fn,format_name) + '\n')
 
 
 if __name__ == "__main__":
-	if len(sys.argv) not in [3,4]:
-		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce, tt, exp]")
+	if len(sys.argv) !=4:
+		sys.exit("Usage: python3 logic.py input_net_file output_net_file [reduce, parity, tt]")
 	
-	if len(sys.argv) == 4: 
-		# TODO: need to return regular DNF quineMcC!
-		if sys.argv[3]=='reduce':
-			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=False)
-		if sys.argv[3]=='exp':
-			DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)
-		if sys.argv[3]=='tt':
-			DNF_from_cell_collective_TT(sys.argv[1],sys.argv[2])
-		else:
-			sys.exit("Unrecognized 3rd arg. Usage: python3 logic.py input_net_file output_net_file [reduce, tt, exp]")
+	if sys.argv[3]=='tt':
+		DNF_from_cell_collective_TT(sys.argv[1],sys.argv[2])
 	else:
-		DNF_via_QuineMcCluskey(sys.argv[1],sys.argv[2],expanded=True)
+		G = net.Net(model_file=sys.argv[1],debug=True)
+		if sys.argv[3]=='reduce':
+			parity = False
+		elif sys.argv[3]=='parity':
+			parity =True
+		else:
+			sys.exit("Unrecognized 3rd arg. Usage: python3 logic.py input_net_file output_net_file [reduce, parity, tt]")
+		
+		DNF_via_QuineMcCluskey(G,parity=parity)
+		G.write_to_file(sys.argv[2],parity=parity)

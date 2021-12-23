@@ -1,25 +1,25 @@
-import parse, util, logic
-from net import Expanded_Net
+import param, util, logic
+from net import Parity_Net, Net
 from copy import deepcopy
-import itertools, sys
+import itertools, sys, os
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # TODO:
 # check pinning=False at end of ldoi_bfs()
-# clean and check ldoi_sizes_over_all_inputs
-# check pinning of ldoi_bfs
+#	worried the idea is not correct
+# rm the 'test' function
 
-def test(param_file):
-	params = parse.params(param_file)
-	G = Expanded_Net(params, net_key='model_expanded')
-	ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=[G.nodeNums['Akt1']])
+def test(G):
+	ldoi_solns, negated = ldoi_bfs(G,pinning=1)
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
 			if ldoi_solns[i,j]:
-				soln_names += G.nodeNums[j] + ', '
-		if i == G.nodeNums['ERa']:
-			print("LDOI(",G.nodeNums[i],') =',soln_names)#,"\tnegated = ",negated[i])
+				soln_names += G.nodeNames[j] + ', '
+		if soln_names != '' :
+			print("LDOI(",G.nodeNames[i],') =',soln_names)
+		if negated[i]:
+			print('\t',G.nodeNames[i],'negates itself')
 
 
 def ldoi_bfs(G,pinning=True,init=[]):
@@ -94,30 +94,13 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	if not pinning:
 		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
 
-	# TEMP:
-	if False:
-		inputs=[num_to_node(G,init[i].get()) for i in range(len(init))]
-		print('\n\n~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nfor inputs ',inputs,'LDOI is:')
-		for i in range(G.n_neg):
-			vtd = []
-			for j in range(G.n_neg):
-				if visited[i][j]==1:
-					vtd+=[num_to_node(G,j)]
-			print("LDOI of",num_to_node(G,i),': ',vtd)
 
 	return visited[:G.n_neg,:G.n_neg], negated[:G.n_neg] 
 
-def num_to_node(G,num):
-	# this should be in G itself
-	if num > G.n:
-		return 'not' + G.nodeNames[num-G.n]
-	else:
-		return G.nodeNames[num]
 
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
-	# takes regular G, then logic.py augments into expanded net
-	# fixed_nodes should be names
-	Gexp = Expanded_Net(params, G=G)
+	# fixed_nodes should be a list of names such as ['FOXO3','ERK']
+	assert(isinstance(G,Parity_Net)) # LDOI doesn't make sense a on regular net
 	
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
 	avg_num_ldoi_nodes = {k:0 for k in range(G.n_neg)}
@@ -174,9 +157,8 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 if __name__ == "__main__":
 	if len(sys.argv) != 2:
 		sys.exit("Usage: python3 ldoi.py PARAMS.yaml")
-	if not os.path.isfile(sys.argv[1]):
-		sys.exit("Can't find parameter file: " + sys.argv[1])
-	if os.path.splitext(sys.argv[1])[-1].lower() != '.yaml':
-		sys.exit("Parameter file must be yaml format")
 	
-	print('aint nothin here no more')
+	params = param.load(sys.argv[1])
+	G = Parity_Net(params['parity_model_file'],debug=params['debug'])
+	#result = ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[])
+	test(G)

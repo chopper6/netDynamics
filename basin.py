@@ -1,23 +1,26 @@
 import itertools, util, math, sys
-import lap, parse, plot
+import lap, plot, param
 from net import Net
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
-# note that size of a phenotype or attract refers to its basin size
+# note that size of a phenotype or attractor refers to its basin size
+
+# TODO: clean up how var is handled
 
 #########################################################################################################
 
 def main(param_file):
-	params = parse.params(param_file)
-	G = Net(params)
-	steadyStates = find_steadyStates(params,G)
-	#print('basin.main: phenos=',steadyStates.phenos_str())
+	params, G = init(param_file)
+	steadyStates = calc_basin_size(params,G)
 	plot.pie(params, steadyStates,G)
 
-def find_steadyStates(params,G): 
-	G.build_Fmapd_and_A(params)
-	steadyStates = calc_basin_size(params,G)
-	return steadyStates
+	#print('basin.main: phenos=',steadyStates.phenos_str())
+
+def init(param_file):
+	params = param.load(param_file)
+	G = Net(model_file=params['model_file'],debug=params['debug'])
+	G.prepare_for_sim(params)
+	return params, G
 
 def debug_print(params,G,steadyStates):
 	k2 = len(params['outputs'])

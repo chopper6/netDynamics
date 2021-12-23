@@ -1,4 +1,4 @@
-import ldoi, parse, plot, logic, basin, features
+import ldoi, param, plot, logic, basin, features
 import sys, math, pickle
 import numpy as np
 import random as rd
@@ -8,11 +8,11 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.9, 	# minimum distance threshold to be considered a mutant 
-	'cnt_thresh':.8, 	# min distance less than the mutation distance to be considered a controller
-	'max_mutator_size':1, 
+	'mut_thresh':.2, 	# minimum distance threshold to be considered a mutant 
+	'cnt_thresh':.01, 	# min distance less than the mutation distance to be considered a controller
+	'max_mutator_size':1,  
 	'max_control_size':1,
-	'norm':'max',			# the norm used to measure distance. Use an integer or 'max'
+	'norm':4,			# the norm used to measure distance. Use an integer or 'max'
 	'verbose':True	# toggle how much is printed to the console
 }
 
@@ -27,10 +27,9 @@ class Perturbations:
 		self.mut_thresh = mut_thresh
 		self.mut_greedy_thresh = 0 #mut_thresh/10 # can greedily reduce recursion by setting this > 0
 		self.cnt_thresh = cnt_thresh 
-		self.filtered_nodes = [node.name for node in G.regularNodes if node.name not in params['outputs'] and node.name not in params['inputs'] and node.name not in params['init'].keys()]
-		
-		#print("WARNING rm temp debug in control")
-		#self.filtered_nodes = ['Bcl_2','p53']
+
+		# inputs, inits, and outputs are assumed not to be valid target
+		self.filtered_nodes = [node.name for node in G.nodes if node.name not in params['outputs'] and node.name not in params['inputs'] and node.name not in params['init'].keys()]
 
 		self.num_solutions=0
 		self.phenosWT = phenosWT
@@ -84,8 +83,8 @@ class NetMetrics:
 		self.fragility, self.reversibility = 0,0
 		
 		# TODO: how to clean node level features these features? add back later
-		#mut_pts, cnt_pts, ldoi_mut, ldoi_out_mut, ldoi_cnt, ldoi_out_cnt = [[] for _ in range(6)]
-		#cnt_scores = {C:[] for C in nodes}
+		# mut_pts, cnt_pts, ldoi_mut, ldoi_out_mut, ldoi_cnt, ldoi_out_cnt = [[] for _ in range(6)]
+		# cnt_scores = {C:[] for C in nodes}
 
 		corr_nodes, corr_avg = features.check_corr(params, G, phenosWT)
 		self.corr = corr_avg
@@ -115,7 +114,7 @@ class NetMetrics:
 		self.reversibility /= max(m,1) 
 
 	
-def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max_control_size = 1, measure=False):
+def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max_control_size = 1, measure=False):
 
 	if 'mutations' in params.keys() and len(params['mutations'])!=0:
 		print('WARNING: control search starts with existing mutations! Double check the settings file.\n')
@@ -165,8 +164,8 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=2, max
 
 def mutate_and_sim(params_orig, G_orig):
 	G, params = deepcopy(G_orig), deepcopy(params_orig)
-	G.apply_mutations(params) 
-	steadyStates = basin.find_steadyStates(params, G)
+	G.prepare_for_sim(params)
+	steadyStates = basin.calc_basin_size(params,G)
 	return steadyStates
 
 ####################################################################################################
@@ -176,7 +175,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 		return 
 
 	params = deepcopy(params_orig)
-	curr_mut_dist_orig =  curr_mut_dist
+	curr_mut_dist_orig = curr_mut_dist
 	orig_mutations = deepcopy(params['mutations'])
 	go_further = []
 	for M in perturbs.filtered_nodes:
@@ -194,7 +193,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 				if metrics is not None:
 					metrics.fragility += mut_dist # TODO: this should only be for highest depth. ANd btw rename depth if it counts down
 
-				if mut_dist  > perturbs.mut_thresh:
+				if mut_dist > perturbs.mut_thresh:
 					curr_mutators += [(M,b)]
 					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist}]
 					if CONTROL_PARAMS['verbose']:
@@ -314,9 +313,10 @@ def tune_dist(param_file, reps):
 	# finds dist thresh such that max dist btwn 2 runs of the same net < dist thresh/2
 	# TODO: add z-distrib, with enough samples it can be approx as such. Then return suggested val sT p(Z>val) <= given alpha
 
-	assert(0) #TODO: update this
-	params = parse.params(param_file)
-	F, F_mapd, A, V  = parse.net(params)
+	assert(0) #TODO: update and debug this function before using 
+
+	params = param.params(param_file)
+	F, F_mapd, A, V  = param.net(params)
 	max_dist = 0
 	params['verbose']=False #i assume
 	phenos_start = basin.calc_basin_size(params,F_mapd,V).phenotypes 
@@ -336,17 +336,11 @@ def tune_dist(param_file, reps):
 
 if __name__ == "__main__":
 	if len(sys.argv) != 2:
-		sys.exit("Usage: python3 control.py PARAMS.yaml")# [exh | tune]")
-	params = parse.params(sys.argv[1])
-	G = Net(params,complete=False)
+		sys.exit("Usage: python3 control.py PARAMS.yaml")
+	
+	params = param.load(sys.argv[1])
+	G = Net(model_file=params['model_file'],debug=params['debug'])
+	assert(CONTROL_PARAMS['max_mutator_size']==1 and CONTROL_PARAMS['max_control_size']==1) # debug required before using larger sets
+
 	perturbs = exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
 	print('\n using these control params:',CONTROL_PARAMS)
-	'''
-	if sys.argv[2] == 'tune':
-		dist_thresh = tune_dist(sys.argv[1], 100)
-		print("suggested distance threshold =",dist_thresh) 
-	elif sys.argv[2] == 'exh':
-		params = parse.params(sys.argv[1])
-		G = Net(params,complete=False)
-		exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
-	'''

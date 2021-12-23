@@ -1,6 +1,6 @@
 import math
 from copy import deepcopy
-import control, parse
+import control, param
 
 def entropy(P):
 	if isinstance(P, dict):

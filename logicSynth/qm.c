@@ -12,20 +12,31 @@
 // 1 row per clause, comma separated variables in clause
 // 1 = ON, 0 = OFF, -1 = DON'T CARE, -2 = NOT A CLAUSE/FINISHED
 
+// memory usage slowly creeps up
+// indicates that older malloc'd nodes are not remove
+// i.e. if at column 3, should free all mem from col1
+// Q is if it is worth the time to fix..
+
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+
+# define SIZE 100000   // orig: 100, cycD: 10000, but not enough for !cycD
+# define SIZE2 1000  // orig: 1000
+# define SIZE3 257 // orig: 257
+# define SIZE4 26 // orig: 26
 
 struct node
 {
-    int data[257],bin[26],noofones,isimplicant,minarr[1000];
-    char term[26];
+    int data[SIZE3],bin[SIZE4],noofones,isimplicant,minarr[SIZE2];
+    char term[SIZE4];
     struct node* right;
 };
 
 struct node *root,*head,*improot,*save,*fin;
-int var,min,number=1,columns=2,check=1,limit,imptable[100][100],counter=0,essential[1000],t=0,no=0,minterms[1000];
-char a[26],b[26];       //variable names are stored as alphabets, can be modified to work for more variables
+int var,min,number=1,columns=2,check=1,limit,imptable[SIZE][SIZE],counter=0,essential[SIZE2],t=0,no=0,minterms[SIZE2];
+char a[SIZE4],b[SIZE4];       //variable names are stored as alphabets, can be modified to work for more variables
 
 void group1();          //the minterms are grouped according to the number of ones
 void arrange();         //the minterms are arranged according t their magnitude
@@ -181,7 +192,7 @@ int *qm(int num_vars,int num_clauses, int *clauses)
             k++;
         }
     }
-    temp->right=NULL;
+    temp->right=NULL; // why? isn't temp not called anymore? does this clear the mem?
     arrange();      //various functions are called according to their needs
     store_minterms();
     group1();
@@ -398,6 +409,7 @@ void further_groupings()    //grouping based on difference in binary notation
                 }
                 printf("\n");
                 p=p->right=(struct node*)malloc(sizeof(struct node));           // one extra node that is to be deleted
+                // i have a feeling this is causing a memory leak 
             }
             next=next->right;
         }
@@ -424,6 +436,7 @@ void further_groupings()    //grouping based on difference in binary notation
                 imp->bin[i]=temp->bin[i];
             }
             imp=imp->right=(struct node*)malloc(sizeof(struct node));
+            // poss memory leak
         }
         temp=temp->right;
     }
@@ -437,11 +450,10 @@ void display_implicants()       //displays the implicants
     int i=0;
     struct node* temp;
     temp=improot;
-    printf("\n\nThe prime implicants are:- \n\n");
+    printf("\n\nThe prime implicants are: \n\n");
     while(temp!=NULL)
     {
-        i=0;
-        i=var-1; //wait what's the point of setting i twice...?
+        i=var-1; 
         while(i>=0)     //displays the binary notation
         {
             if(temp->bin[i]==-1)
@@ -466,6 +478,7 @@ void display_implicants()       //displays the implicants
         printf("\n\n");
         counter++;
     }
+    printf("finished display_implicants()");
 }
 
 void implicants(struct node* ptr)       //initializing each term as a prime implicant
@@ -735,6 +748,7 @@ void final_terms()          //in this function all the terms in the minimized ex
             temp->bin[j]=ptr->bin[j];
         }
         temp=temp->right=(struct node*)malloc(sizeof(struct node));
+        //poss memory leak
         i++;
         c++;
     }

@@ -6,10 +6,10 @@ debug : true # adds various checks, may cause slow down
 verbose : true # prints out more info 
 print_lap : 10 # how many laps before another print statement. only if verbose 
 
-parallelism : 10^4 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
-num_samples : 10^4 # number of initial states tested.
+parallelism : 10^3 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+num_samples : 10^3 # number of initial states tested.
 steps_per_lap : 50 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
-# note that 'steps_per_lap' is also the assumed transient period for async update methods
+# note that 'steps_per_lap' is also the assumed transient period for async & Gasync update methods
 update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
@@ -23,12 +23,13 @@ clause_bin_size : 4 # number of clauses each threads merges at once
 # input
 model_file: 'models/grieco.bnet' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
 setting_file: 'settings/grieco.yaml'
-expanded_net: 'models/griecoExp.bnet'
+parity_model_file: 'models/griecoExp.bnet'
+
+# output
 use_inputs_in_pheno: 1 
 fig_legend : 0
 use_phenos: 1
 
-# output
-output_dir : 'output/singular/'
-output_img : 'griecoWT_MDM2=AP1=0.png'
+output_dir : 'output/singular2'
+output_img : 'grieco.png'
 savefig : 1 # as opposed to showing the image

@@ -1,5 +1,26 @@
 # these are pieces of code that are no longer used, but may be useful later
 
+# old way to build Parity_Net that allows for dynamic parity network construction
+# 	but in general horrible idea, since should build parity once and write to file (since build v slow)
+class Parity_Net(Net):
+	def __init__(self,params,G=None,net_key='model_parity',debug=False):
+		negatives = False
+		if G is not None:
+			print("\nWARNING: building parity network dynamically (not advised unless network is small).\n")
+			negatives = True
+
+		super().__init__(net_key=net_key,G=G,negatives=negatives,debug=debug)
+		# assumes that negative nodes are already in parity form (i.e. have their logic)
+		# note that composite nodes aren't formally added, since only A_exp is actually used
+
+		if G is not None: # instead build from a regular net, so add composite nodes, ect
+			G.prepare_for_sim(params) #not best name since this isn't sim... (uses Aexp)
+			self.n_exp = self.n_neg # will add this up during build_Aexp()
+			# build F for negative nodes
+			logic.DNF_via_QuineMcCluskey(params, G,parity=True)
+			self.build_Aexp(params)
+
+
 # exhaustive is not really used, update as needed
 	if params['exhaustive']:
 		assert(0) #need to update this

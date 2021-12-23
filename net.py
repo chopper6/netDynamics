@@ -1,35 +1,32 @@
-import os, sys, yaml, util, math, logic
+import os, sys, yaml, util, math
+import util, logic
 from copy import deepcopy
 
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
 
 # TODO:
-#	Net: add a write_to_file(self), just using F and the format
-#			read_from_file(self,file), as one init option
-#			build_from_G(self,G), as another init option 
-#				why not just deepcopy then, and then expand to expanded?
 #	add explicit debug function for net construction
 #		check that certain objs same, certain diff
-#		ex that G.F[name] = G.nodes[G.nodeNames[name]].F
+#	debug changes to G.F and node.F()
 #	passing net file sep is awk af
 
 # TODO LATER:
 #	add time-reverse net (and inheritance with it)
+#		then later higher order Gexp's
 # 	Net._build_net() and build_Fmap() are still messy af
 #	function that updates expanded net due to input or mutation holding it static? ldoi cover that case anyway tho
 
 
 
 class Net:
-	def __init__(self,params,net_key='model_file',G=None, complete=True, negatives=False):
+	def __init__(self, model_file=None, G=None, parity=False, debug=False):
 		# complete will also apply any mutations in params and build Fmapd [TODO rename complete]
-		# if negatives: assume the net file explicitly lists negatives and their functions
-		# net_key is passed if want to use a different file than the default, such as the expanded one
-
-		# will first try and build with an existing Net G
-		# then try load from file using net_key
-		# otherwise just makes an empty Net
+		# if parity: assume the net file explicitly lists negatives and their functions
+		
+		# use a model_file OR an existing net
+		assert(model_file is not None or G is not None)
+		assert(model_file is None or G is None)
 
 		self.F= {} # logic function for each node
 		self.A=None # adjacency matrix, unsigned
@@ -38,12 +35,11 @@ class Net:
 		self.n = 0  # # regular nodes
 		self.n_neg = 0 # curr # regular nodes + # negative nodes
 
-		self.nodes = [] # object to hold name & number, redundant with nodeNames and nodeNums
+		self.nodes = [] # object to hold name & number, only regular nodes included
+		self.allNodes = [] # includes both regular and parity nodes
+
 		self.nodeNames = [] # num -> name
 		self.nodeNums = {} # name -> num
-
-		self.regularNodes = []
-		self.negativeNodes = []
 
 		self.encoding = None #encoding format used by the input file
 		self.not_string = None # called often enough that it is useful to store
@@ -52,22 +48,34 @@ class Net:
 		self.max_literals=0 # max literals per clause
 		self.max_clauses=0 # max clauses per node
 
-		self._complete = complete #i.e. including building Fmapd and A
-		self._negatives = negatives #i.e. negatives included in original net file
-
-		if G is not None: # don't really like this solution...
-			self.__dict__ = G.__dict__
-		elif net_key is not None:
-			self._read_from_file(params, params[net_key])
+		if G is not None: 
+			self.copy_from_net(G)
+		elif model_file is not None:
+			self.read_from_file(model_file, debug=debug,parity=parity)
 
 
 	def __str__(self):
 		# TODO: make this more complete
 		return "Net:\nF =" + str(self.F)
 
-	def _read_from_file(self, params, net_file):
+	def prepare_for_sim(self,params): 
+		# applies setting mutations and builds Fmapd
+		self.add_self_loops(params)
+		self.apply_mutations(params,debug=params['debug'])
+		self.build_Fmapd_and_A(params)
+
+	def copy_from_net(self,G):
+		self.__dict__ = deepcopy(G.__dict__) # blasphemy to some
+
+	def add_self_loops(self,params):
+		for node in self.nodes:
+			# if function is 0 or 1 set to a self-loop and an init call
+			if self.F[node.name] in [[['0']],[['1']]]:
+				params['init'][node.name] = int(self.F[node.name][0][0])
+				self.F[node.name] = [[node.name]]
+
+	def read_from_file(self, net_file, debug=False, parity=False):
 		# inits network, except for F_mapd (which maps the logic to an actual matrix execution)
-		
 		# net file should be in DNF, see README for specifications
 
 		if not os.path.isfile(net_file):
@@ -90,11 +98,10 @@ class Net:
 				node_name = line[0].strip()
 				for symbol in strip_from_node:
 					node_name = node_name.replace(symbol,'')
-				if params['debug']:
+				if debug:
 					assert(node_name not in self.nodeNames)
-				
-				assert(node_name not in ['0','1']) # these are reserved for constant off and on
-				self.add_node(node_name)
+
+				self.add_node(node_name,debug=debug,parity=parity)
 
 				clauses = line[1].split(clause_split)
 				for clause in clauses:
@@ -108,73 +115,145 @@ class Net:
 							literal_name = literal_name.replace(symbol,'')
 						this_clause += [literal_name]
 					
-					self.nodes[-1].F += [this_clause]
+					self.F[node_name] += [this_clause]
 
-				# if function is 0 or 1 set to a self-loop and an init call
-				if self.F[node_name] in [[['0']],[['1']]]:
-					if 'init' not in params.keys():
-						params['init'] = {}
-					params['init'][node_name] = int(self.F[node_name][0][0])
-					self.reset_F_selfLoop(node_name)
 				loop += 1
 		
-		if not self._negatives:
-			self.build_negative_nodes()
+		if not parity:
+			self.build_negative_nodes(debug=debug)
 
-		self.count_clauses_and_lits()
+		self.count_clauses_and_lits(parity=parity)
 
-		if self._complete:
-			self.apply_mutations(params)
-			self.build_Fmapd_and_A(params)
+
+	def write_to_file(self, output_file,parity=False):
+		# parity is an extra switch to treat the network like it is a Parity Net
+		# 	for ex when building a parity net from a regular net
+
+		with open(output_file,'w') as ofile:
+			if self.encoding != 'bnet':
+				ofile.write(self.encoding + '\n')
+			else:
+				pass # write it in case does not exist
+			# note this overwrites
+		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(self.encoding)
+		
+		for node in self.allNodes:
+			if not node.isNegative or isinstance(self,Parity_Net) or parity:
+				fn=node.F()
+				with open(output_file,'a') as ofile:
+					ofile.write(node.name + node_fn_split + self._fn_to_str(fn) + '\n')
+
+
+	def _fn_to_str(self,fn):
+		# fn = F['nodeName'] = [clause1,clause2,...] where clause = [lit1,lit2,...] 
+		# input_nodes are names
+
+		# maybe should store all of these in net obj itself? ex G.format.not_str
+		node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(self.encoding)
+		fn_str = ''
+		i=0
+		for clause in fn:
+			assert(len(clause)>0)
+			if i!=0:
+				fn_str += clause_split
+			if len(strip_from_clause) > 0 and len(clause)>1:
+				fn_str += strip_from_clause[0]
+			j=0
+			for lit in clause:
+				if j!=0:
+					fn_str += literal_split
+				fn_str += lit
+				j+=1 
+			if len(strip_from_clause) > 0 and len(clause)>1:
+				fn_str += strip_from_clause[1]
+			i+=1
+		return fn_str
 
 	
-	def add_node(self,nodeName,isNegative=False):
-		newNode = Node(nodeName,self.n_neg,isNegative=isNegative)
-		self.nodes += [newNode]
+	def add_node(self,nodeName,isNegative=False,debug=False,parity=False):
+		# note that F is not added for negative, unless a parity net
+		if parity and self.not_string in nodeName:
+			isNegative=True
+
+		newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
+		self.allNodes += [newNode]
 		self.nodeNames += [nodeName]
 		self.nodeNums[nodeName] = self.n_neg
-
-		if isNegative:
-			self.negativeNodes += [newNode]
-			self.n_neg += 1
-			# note that F is not added, but would be in the case of the expanded net
-		else:
-			self.regularNodes += [newNode]
-			self.F[nodeName] = newNode.F 
+		self.n_neg += 1
+		
+		if not isNegative or parity:
+			self.F[nodeName] = []
+		if not isNegative:
+			self.nodes += [newNode]
 			self.n += 1
-			self.n_neg += 1
 
-	def build_negative_nodes(self):
+		if parity and debug:
+			if self.not_string in nodeName:
+				positive_name = nodeName.replace(self.not_string,'')
+				assert(self.nodesByName(nodeName).num - self.n == self.nodesByName(positive_name).num)
+				# for example, LDOI relies on this precise ordering
+
+	def nodesByName(self,name):
+		return self.allNodes[self.nodeNums[name]]
+
+	def build_negative_nodes(self,debug=False):
 		# put the negative nodes as 2nd half of node array
 		for i in range(self.n):
-			self.add_node(self.not_string + self.nodeNames[i],isNegative=True)
+			self.add_node(self.not_string + self.nodeNames[i],isNegative=True,debug=debug)
 
-	def apply_mutations(self, params):
-		if 'mutations' in params.keys():
+
+	def apply_mutations(self,params, debug=False):
+		if 'mutations' in params.keys() and len(params['mutations']) > 0:
 			for node in self.nodeNames:
 				if node in params['mutations']:
-					lng = len(self.F[node])
-					self.reset_F_selfLoop(node)
+					lng = len(self.F[node]) 
+					# will be rendundant, but avoids possible issues with changing # of clauses
+					# otherwise need to rebuild Fmapd each time
+					self.F[node] = [[node] for _ in range(lng)]
 					params['init'][node] = int(params['mutations'][node])
-					if params['debug']:
+					if debug:
 						assert(params['init'][node] in [0,1]) # for PBN may allow floats
 
-	def reset_F(self,nodeName,new_fn):
-		self.F[nodeName].clear() # cannot reassign since that would decouple node.F & self.F[node]
-		self.F[nodeName] += new_fn	
 
-	def reset_F_selfLoop(self,nodeName):
-		# maintains lng of F
-		lng = len(self.F[nodeName])	
-		self.reset_F(nodeName,[[nodeName] for _ in range(lng)])
-
-	def count_clauses_and_lits(self):
-		for node in self.nodes:
-			if not node.isNegative:
-				self.num_clauses += len(self.F[node.name]) 
-				self.max_clauses = max(self.max_clauses, len(self.F[node.name]))
-				for clause in self.F[node.name]:
+	def count_clauses_and_lits(self, parity=False):
+		for node in self.allNodes:
+			if not node.isNegative or parity or isinstance(self,Parity_Net):
+				self.num_clauses += len(node.F()) 
+				self.max_clauses = max(self.max_clauses, len(node.F()))
+				for clause in node.F():
 					self.max_literals = max(self.max_literals, len(clause))
+
+	def count_HO_clauses(self):
+		# temp function, can remove
+		HO = {}
+		max_indeg=0
+		max_clauses=0
+		used_pairs = []
+		for node in self.nodes:
+			i=node.num
+			max_indeg = max(max_indeg,cp.sum(self.A[i]))
+			for j in range(len(self.A[i])):
+				if self.A[i,j]==1:
+					for k in range(len(self.A[i])):
+						if self.A[i,k]==1 and [j,k] not in used_pairs:
+							max_clauses += 2 # mult or add
+							used_pairs += [[j,k]]
+			for clause in node.F():
+				cl = clause.copy()
+				cl.sort()
+				if len(clause) not in HO.keys():
+					HO[len(clause)]=[cl] 
+				elif clause.sort() not in HO[len(clause)]:
+					HO[len(clause)]+=[cl]
+				else:
+					print(cl,' IS IN: ',HO[len(clause)])
+
+		print("total # nodes = ",self.n)
+		print("max indeg = ",max_indeg, '\tmax clauses =',max_clauses)
+		for k in HO:
+			print("# order",k,"virtual nodes=",2*len(HO[k])) # incld complement
+
+
 
 	def build_Fmapd_and_A(self, params): 
 
@@ -190,14 +269,14 @@ class Net:
 		curr_clause = 0
 
 		for i in range(n):
-			clauses = self.nodes[i].F
+			clauses = self.allNodes[i].F()
 			for j in range(len(clauses)):
 				clause = clauses[j]
 				clause_fn = []
 				for k in range(len(clause)):
 					literal_node = self.nodeNums[clause[k]]
 					clause_fn += [literal_node]
-					if self.nodes[literal_node].isNegative: 
+					if self.allNodes[literal_node].isNegative: 
 						self.A[i, literal_node-n] = 1
 					else:
 						self.A[i, literal_node] = 1
@@ -255,7 +334,7 @@ class Net:
 			clauses_to_threads += [this_set]	
 			i+=1
 			if i>1000000:
-				sys.exit("ERROR: infinite loop likely in parse.net()")
+				sys.exit("ERROR: infinite loop likely in net.build_Fmapd_and_A()")
 		
 		if params['parallelism']<256:
 			thread_dtype = cp.uint8
@@ -295,45 +374,47 @@ class Net:
 			return file.readline().replace('\n','')
 
 
-
+##################################################################################################
 
 
 class Node:
-	def __init__(self,name,num,isNegative=False):
-		if not isNegative:
-			self.F = [] #its clauses organized as [clause1,clause2,...] where clause=[lit1,lit2,...]
+	def __init__(self,G,name,num,isNegative=False):
 		self.name=name 
 		self.num=num 
 		self.isNegative = isNegative 
+		self.G=G
+
+	def F(self):
+		#if self.name not in self.G.F:
+		#	print("\nERROR: node ",self.name," not assigned a function in Net")
+		#	sys.exit()
+		return self.G.F[self.name]  # will raise error if node name not assigned in Net's F
+
+	def setF(self,new_fn):
+		self.G.F[self.name] = new_fn
 
 
-class Expanded_Net(Net):
-	def __init__(self,params,G=None,net_key='model_expanded'):
-		if G is None:
-			build_from_file=True
-			complete, negatives = False, False
-		else:
-			build_from_file = False
-			complete, negatives = True, True
 
-		super().__init__(params,net_key=net_key,G=G, complete=complete, negatives=negatives)
-		# assumes that negative nodes are already in expanded form (i.e. have their logic)
+##################################################################################################
+
+
+class Parity_Net(Net):
+	def __init__(self,parity_model_file,debug=False):
+
+		super().__init__(model_file=parity_model_file,debug=debug,parity=True)
+		# assumes that negative nodes are already in parity form (i.e. have their logic)
 		# note that composite nodes aren't formally added, since only A_exp is actually used
 
-		if not build_from_file: # instead build from a regular net, so add composite nodes, ect
-
-			self.n_exp = self.n_neg # will add this up during build_Aexp()
-			# build F for negative nodes
-			logic.DNF_via_QuineMcCluskey_nofile(params, G,expanded=True)
-			self.build_Aexp(params)
+		self.n_exp = self.n_neg # build_Aexp will iterate this
+		self.build_Aexp(debug=debug)
 
 
-	def build_Aexp(self,params):
+	def build_Aexp(self,debug=False):
 		N = self.n_neg+self._num_and_clauses(self.F)
 		self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
-		for node in self.nodes:
-			for clause in node.F:
+		for node in self.allNodes:
+			for clause in node.F():
 				if len(clause)>1: # make a composite node
 					self.A_exp[self.n_exp,node.num]=1
 					for j in range(len(clause)):
@@ -342,7 +423,7 @@ class Expanded_Net(Net):
 				else:
 					self.A_exp[self.nodeNums[clause[0]],node.num]=1
 		
-		if params['debug']:
+		if debug:
 			assert(N==self.n_exp)
 
 	def _num_and_clauses(self,F):
@@ -353,6 +434,9 @@ class Expanded_Net(Net):
 					count+=1
 		return count
 
+
+
+##################################################################################################
 
 
 def get_file_format(format_name):
