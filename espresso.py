@@ -23,7 +23,7 @@ def reduce_async_AND_espresso(fns, varbs, not_str):
     # and varbs = [var1, var2, ...] correspd to those functions
     part1 = 1
     for fn in fns:
-        part1 = eda.And(part1,fn)
+        part1 = eda.And(part1,to_pyEda_fn(fn,not_str))
     part2 = 0
     for v in varbs:
         term = 1
