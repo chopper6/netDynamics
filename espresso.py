@@ -39,7 +39,7 @@ def reduce_async_AND_espresso(fns, varbs, not_str):
     if not fn:
         return False # i.e. function evals to false always
     fn_reduced, = eda.espresso_exprs(fn)
-    return fn_reduced
+    return from_pyEda_fn(fn_reduced, not_str)
 
 def reduce_async_AND_espresso_old(fn1, vars1, fn2, vars2, not_str):
     assert(0) #old version
