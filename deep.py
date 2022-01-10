@@ -36,7 +36,6 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
             for name in nodes_to_add:
                 G.add_node(name,debug=False,parity=True)  # not a normal parity, so debug gets messed up
                 G.F[name] = nodes_to_add[name]
-                print('added node',name)
                 # poss indicate as sep type of node? 
                 # jp don't care about isNegative for LDOI, but check
             print("completed a pass with k=",k,", and",len(nodes_to_add)," new virtual nodes.")
@@ -171,6 +170,6 @@ if __name__ == "__main__":
     
     params = param.load(sys.argv[1])
     Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'])
-    Gdeep = build_deep(Gpar,8,output_file,minimizer='espresso',debug=True)
+    Gdeep = build_deep(Gpar,12,output_file,minimizer='espresso',debug=True)
     ldoi.test(Gdeep)
     #ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp
