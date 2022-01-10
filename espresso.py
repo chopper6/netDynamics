@@ -37,8 +37,10 @@ def reduce_async_AND_espresso(fns, varbs, not_str):
         part2 = eda.Or(part2,term)
     fn = eda.And(part1,part2).to_dnf()
     if not fn:
-        return False # i.e. function evals to false always
+        return ['0'] # i.e. function evals to false always
     fn_reduced, = eda.espresso_exprs(fn)
+    if not fn_reduced:
+    	return ['0']
     return from_pyEda_fn(fn_reduced, not_str)
 
 def reduce_async_AND_espresso_old(fn1, vars1, fn2, vars2, not_str):
