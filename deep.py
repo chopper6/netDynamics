@@ -72,7 +72,7 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
 		for ele in clause:
 			varbs += [ele]
 			fns += [G.F[ele]]
-		ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string):
+		ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string)
 	elif minimizer in ['qm','QM']:
 		# note that this can also calc complement
 		#print("\tCalculating deep function of ",clause)
