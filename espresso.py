@@ -31,8 +31,11 @@ def reduce_async_AND_espresso(fns, varbs, not_str):
 			if v!=u:
 				term = eda.And(term,u)
 		part2 = eda.Or(part2,term)
-	fn = eda.And(part1,part2)
-	return reduce_espresso(fn, not_str)
+	fn = eda.And(part1,part2).to_dnf()
+	if not fn:
+		return False # i.e. function evals to false always
+	fn_reduced, = eda.espresso_exprs(fn_eda)
+	return fn_reduced
 
 def reduce_async_AND_espresso_old(fn1, vars1, fn2, vars2, not_str):
 	assert(0) #old version
