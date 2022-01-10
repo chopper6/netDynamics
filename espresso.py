@@ -29,7 +29,11 @@ def reduce_async_AND_espresso(fns, varbs, not_str):
         term = 1
         for u in varbs:
             if v!=u:
-                term = eda.And(term,u)
+                if not_str in u:
+                    u=u.replace(not_str,'')
+                    term = eda.And(term,eda.Not(u))
+                else:
+                    term = eda.And(term,u)
         part2 = eda.Or(part2,term)
     fn = eda.And(part1,part2).to_dnf()
     if not fn:
