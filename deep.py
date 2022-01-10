@@ -13,9 +13,9 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 	# G should be a parity net (see Net.py)
 	# kmax is the highest order term to expand to
 
-	if minimizer == 'espresso':
-		import espresso # this is imported here since espresso does not compile on windows
-		# i.e. to allow windows to use other parts of this program
+	#if minimizer == 'espresso':
+	#	import espresso # this is imported here since espresso does not compile on windows
+	#	# i.e. to allow windows to use other parts of this program
 
 	k=2
 	while k<=kmax:
@@ -66,6 +66,8 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
 	# uses either Quine-McCluskey or Espresso
 	# Off fn may be v. slow since is the sum term
 	if minimizer == 'espresso':
+		import espresso # this is imported here since espresso does not compile on windows
+		
 		fns, varbs = [],[]
 		for ele in clause:
 			varbs += [ele]
@@ -168,6 +170,6 @@ if __name__ == "__main__":
 	
 	params = param.load(sys.argv[1])
 	Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'])
-	Gdeep = build_deep(Gpar,2,output_file,minimizer='QM',debug=True)
+	Gdeep = build_deep(Gpar,2,output_file,minimizer='espresso',debug=True)
 	ldoi.test(Gdeep)
 	#ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp
