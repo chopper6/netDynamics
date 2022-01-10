@@ -170,6 +170,6 @@ if __name__ == "__main__":
 	
 	params = param.load(sys.argv[1])
 	Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'])
-	Gdeep = build_deep(Gpar,2,output_file,minimizer='espresso',debug=True)
+	Gdeep = build_deep(Gpar,8,output_file,minimizer='espresso',debug=True)
 	ldoi.test(Gdeep)
 	#ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp
