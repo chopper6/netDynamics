@@ -32,8 +32,6 @@ def reduce_async_AND_espresso(fns, varbs, not_str):
                 term = eda.And(term,u)
         part2 = eda.Or(part2,term)
     fn = eda.And(part1,part2).to_dnf()
-    print(part1,'\tthen',part2)
-    print('also fn=',fn)
     if not fn:
         return False # i.e. function evals to false always
     fn_reduced, = eda.espresso_exprs(fn)

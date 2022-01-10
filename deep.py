@@ -7,11 +7,16 @@ import ldoi, logic, param, net
 #	not symmetric when it should be...
 
 # TODO: add DeepNet to net.py and clean that file in general
-# LATER: move to server, implement w espresso
+#		calc OR nodes too
 
 def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 	# G should be a parity net (see Net.py)
 	# kmax is the highest order term to expand to
+
+	if minimizer == 'espresso':
+		import espresso # this is imported here since espresso does not compile on windows
+		# i.e. to allow windows to use other parts of this program
+
 	k=2
 	while k<=kmax:
 		added = True
@@ -57,16 +62,26 @@ def get_composite_name(clause, not_str):
 
 
 def calc_deep_fn(G,clause,minimizer='espresso'):
-	print("\tCalculating deep function of ",clause)
-	# returns builds and reduces higher order function for the clause and it's complement
+	# returns builds and reduces higher order function for the clause
 	# uses either Quine-McCluskey or Espresso
 	# Off fn may be v. slow since is the sum term
-	inputs_num2name, inputs_name2num = organize_inputs(G, clause)
-	ON_clauses, OFF_clauses = on_off_terms(G,clause,inputs_name2num)
-	print('\tdetails:',inputs_num2name,ON_clauses, OFF_clauses)
-	ON_fn = logic.run_qm(ON_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
-	OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
-	return ON_fn, OFF_fn
+	if minimizer == 'espresso':
+		fns, varbs = [],[]
+		for ele in clause:
+			varbs += [ele]
+			fns += [G.F[ele]]
+		ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string):
+	elif minimizer in ['qm','QM']:
+		# note that this can also calc complement
+		#print("\tCalculating deep function of ",clause)
+		inputs_num2name, inputs_name2num = organize_inputs(G, clause)
+		ON_clauses, OFF_clauses = on_off_terms(G,clause,inputs_name2num)
+		#print('\tdetails:',inputs_num2name,ON_clauses, OFF_clauses)
+		ON_fn = logic.run_qm(ON_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
+		#OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
+	else:
+		assert(0) # unrecognized argument for 'minimizer'
+	return ON_fn
 
 
 def organize_inputs(G, clause):
