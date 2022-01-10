@@ -23,18 +23,10 @@ def DNF_via_QuineMcCluskey(G,parity=False):
 		input_nodes_rev = {}  # num -> name
 		unreduced_clauses = []
 
-		for clause in node.F():
-			for lit in clause:
-				literal_name = str(lit)
-				if G.not_string in literal_name:
-					literal_name = literal_name.replace(G.not_string,'')
-				if literal_name not in input_nodes.keys():
-					input_nodes_rev[len(input_nodes)] = literal_name
-					input_nodes[literal_name] = len(input_nodes)
+		add_to_input_nodes(node.F(), G.not_string, input_nodes, input_nodes_rev)
 		
 		for clause in node.F(): # go through again to build int min term representations of the clauses
 			expanded_clause = ['x' for i in range(len(input_nodes))]
-			clause_int=0
 			
 			for lit in clause: #build the int min term representation of the clause
 
@@ -89,6 +81,16 @@ def DNF_via_QuineMcCluskey(G,parity=False):
 				fn = run_qm(neg_dict['clauses'], neg_dict['num_inputs'], G.encoding, neg_dict['input_nodes_rev'])
 				node.setF(fn)
 
+def add_to_input_nodes(fn, not_str, input_nodes, input_nodes_rev):
+	for clause in fn:
+		for lit in clause:
+			literal_name = str(lit)
+			if not_str in literal_name:
+				literal_name = literal_name.replace(not_str,'')
+			if literal_name not in input_nodes.keys():
+				input_nodes_rev[len(input_nodes)] = literal_name
+				input_nodes[literal_name] = len(input_nodes)
+
 
 def int2bool(x,lng):
 	bool_str = ''
@@ -133,8 +135,6 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 	# the following two files hold output from calling the c file qm.exe
 	with open('./logicSynth/qm_stdout.log','w') as c2py:
 		pass 
-	with open('./logicSynth/qm_stderr.log','w') as c2py:
-		pass 
 
 	# this is only used internally and will be deleted at the end
 	with open('c2py.txt','w') as c2py: 
@@ -148,8 +148,7 @@ def run_qm(unreduced_clauses, num_inputs, format_name, input_nodes_rev):
 		cargs += [str(num)]
 
 	with open('./logicSynth/qm_stdout.log','w') as stdout:
-		with open('./logicSynth/qm_stderr.log','w') as stderr:
-			run(cargs,stdout=stdout, stderr=stderr) 
+		run(cargs,stdout=stdout, stderr=devnull) # in my experience stderr is always empty (even when an error occurs)
 
 	fn = []
 	with open('c2py.txt','r') as c2py:

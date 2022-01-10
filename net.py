@@ -1,5 +1,5 @@
 import os, sys, yaml, util, math
-import util, logic
+import util, logic, deep
 from copy import deepcopy
 
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
@@ -172,6 +172,7 @@ class Net:
 	
 	def add_node(self,nodeName,isNegative=False,debug=False,parity=False):
 		# note that F is not added for negative, unless a parity net
+		# TODO: have sep flags for isNegative and parity is confusing
 		if parity and self.not_string in nodeName:
 			isNegative=True
 
@@ -192,6 +193,36 @@ class Net:
 				positive_name = nodeName.replace(self.not_string,'')
 				assert(self.nodesByName(nodeName).num - self.n == self.nodesByName(positive_name).num)
 				# for example, LDOI relies on this precise ordering
+
+	def rm_node(self,node,resort=True):
+		assert(0) # for now doesn't work since self.A cannot be resized if using cupy
+		# TODO: this is messy...and likely leaves some gaps
+		# note that this does NOT update Fmapd (since may require rebuilding it entirely)
+		self.nodeNames.remove(node.name)
+		del self.nodeNums[node.name] 
+		self.A = cp.delete(self.A, (node.num), axis=0)
+		self.A = cp.delete(self.A, (node.num), axis=1)
+		if node.name in self.F:
+			del self.F[node.name]
+
+		self.nodes.remove(node)
+		self.allNodes.remove(node)
+		self.n -=1
+		if self.n_neg > self.n: # ehh kinda sloppy
+			self.n_neg -=2
+
+		if resort: # complexity of this is not great...
+			for node2 in G.nodes(): 
+				if node2.num > node.num:
+					node2.num -= 1
+	
+		if isinstance(self,Parity_Net):
+			self.n_exp -=2
+			self.A_exp = cp.delete(self.A_exp, (node.num),axis=0)
+			self.A_exp = cp.delete(self.A_exp, (node.num+self.n),axis=0) # i.e. also rm the complement
+			self.A_exp = cp.delete(self.A_exp, (node.num),axis=1)
+			self.A_exp = cp.delete(self.A_exp, (node.num+self.n),axis=1) 
+
 
 	def nodesByName(self,name):
 		return self.allNodes[self.nodeNums[name]]
@@ -405,33 +436,45 @@ class Parity_Net(Net):
 		# assumes that negative nodes are already in parity form (i.e. have their logic)
 		# note that composite nodes aren't formally added, since only A_exp is actually used
 
-		self.n_exp = self.n_neg # build_Aexp will iterate this
 		self.build_Aexp(debug=debug)
 
 
-	def build_Aexp(self,debug=False):
-		N = self.n_neg+self._num_and_clauses(self.F)
+	def build_Aexp(self,debug=False,deep=False):
+		self.n_exp = self.n_neg # build_Aexp will iterate this
+		N = self.n_neg+self._num_and_clauses(self.F,deep=deep) # TODO: N should be diff size if deep
 		self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
 		for node in self.allNodes:
 			for clause in node.F():
 				if len(clause)>1: # make a composite node
-					self.A_exp[self.n_exp,node.num]=1
-					for j in range(len(clause)):
-						self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
-					self.n_exp+=1
+					make_composite=True
+					if deep:
+						cName, negName = deep.get_composite_name(clause)
+						if cName in self.nodeNames:
+							self.A_exp[self.nodeNums[cName],node.num]=1
+							make_composite=False
+					if make_composite:
+						self.A_exp[self.n_exp,node.num]=1
+						for j in range(len(clause)):
+							self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
+						self.n_exp+=1
 				else:
 					self.A_exp[self.nodeNums[clause[0]],node.num]=1
 		
 		if debug:
 			assert(N==self.n_exp)
 
-	def _num_and_clauses(self,F):
+	def _num_and_clauses(self,F,deep=False):
 		count=0
 		for node in F:
 			for clause in F[node]:
 				if len(clause)>1:
-					count+=1
+					if not deep: 
+						count+=1
+					else:
+						cName, negName = deep.get_composite_name(clause)
+						if cName not in self.nodeNames:
+							count+=1
 		return count
 
 

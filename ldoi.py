@@ -1,5 +1,4 @@
-import param, util, logic
-from net import Parity_Net, Net
+import param, util, logic, net
 from copy import deepcopy
 import itertools, sys, os
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
@@ -8,6 +7,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # check pinning=False at end of ldoi_bfs()
 #	worried the idea is not correct
 # rm the 'test' function
+
 
 def test(G):
 	ldoi_solns, negated = ldoi_bfs(G,pinning=1)
@@ -159,6 +159,6 @@ if __name__ == "__main__":
 		sys.exit("Usage: python3 ldoi.py PARAMS.yaml")
 	
 	params = param.load(sys.argv[1])
-	G = Parity_Net(params['parity_model_file'],debug=params['debug'])
+	G = net.Parity_Net(params['parity_model_file'],debug=params['debug'])
 	#result = ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[])
 	test(G)
