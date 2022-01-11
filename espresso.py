@@ -103,6 +103,7 @@ def to_pyEda_fn(fn, not_str):
 
 def reduce_complement(fn, not_str, complement):
     # assumes fn is non-zero
+    print('espresso receiving fn=',fn)
     f = to_pyEda_fn(fn,not_str)
     fNot = eda.Not(f).to_dnf()
     if not fnNot:
