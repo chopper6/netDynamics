@@ -32,7 +32,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                             if cName not in G.nodeNames and cName not in nodes_to_add:
                                 ON_fn = calc_deep_fn(G,clause,minimizer=minimizer)
                                 nodes_to_add[cName] = ON_fn
-                                nodes_to_add[negName] = OFF_fn
+                                #nodes_to_add[negName] = OFF_fn
                                 added=True
                             G.F[V.name][i] = [cName] 
                             # TODO: factor V complement using negName 
