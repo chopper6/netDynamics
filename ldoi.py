@@ -172,7 +172,7 @@ if __name__ == "__main__":
 		sys.exit("Usage: python3 ldoi.py PARAMS.yaml")
 	
 	params = param.load(sys.argv[1])
-	G = net.Parity_Net(sys.argv[2],debug=params['debug'])
+	G = net.Parity_Net(sys.argv[2],debug=params['debug'], deep=True)
 	init = get_const_node_inits(Gdeep,params)
 	#result = ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[])
 	test(G,param, init=init)

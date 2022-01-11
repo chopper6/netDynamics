@@ -1,4 +1,4 @@
-import sys
+import sys, pickle
 import ldoi, logic, param, net
 
 # BUG: calling LDOI at end 
@@ -49,7 +49,9 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     G.build_Aexp(debug=debug)
     if output_file is not None:
-        G.write_to_file(output_file,parity=True)
+        with open(output_file) as f:
+            pickle.dump([G, params],f)
+        #G.write_to_file(output_file,parity=True)
 
     return G
 
