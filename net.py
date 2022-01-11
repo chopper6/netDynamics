@@ -170,25 +170,31 @@ class Net:
 		return fn_str
 
 	
-	def add_node(self,nodeName,isNegative=False,debug=False,parity=False):
+	def add_node(self,nodeName,isNegative=False,debug=False,parity=False,deep=False):
 		# note that F is not added for negative, unless a parity net
 		# TODO: have sep flags for isNegative and parity is confusing
+		#                and now deep too..this is becoming a shitshow
 		if parity and self.not_string in nodeName:
 			isNegative=True
 
 		newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
 		self.allNodes += [newNode]
 		self.nodeNames += [nodeName]
-		self.nodeNums[nodeName] = self.n_neg
-		self.n_neg += 1
+		if not deep:
+			self.nodeNums[nodeName] = self.n_neg
+			self.n_neg += 1
+		else:
+			self.nodeNums[nodeName] = self.n_neg + self.n_deep
+			self.n_deep += 1
 		
-		if not isNegative or parity:
+		if not isNegative or parity or deep:
 			self.F[nodeName] = []
 		if not isNegative:
 			self.nodes += [newNode]
-			self.n += 1
+			if not deep:
+				self.n += 1
 
-		if parity and debug:
+		if parity and debug and not deep:
 			if self.not_string in nodeName:
 				positive_name = nodeName.replace(self.not_string,'')
 				assert(self.nodesByName(nodeName).num - self.n == self.nodesByName(positive_name).num)
@@ -430,18 +436,24 @@ class Node:
 
 
 class Parity_Net(Net):
-	def __init__(self,parity_model_file,debug=False):
+	def __init__(self,parity_model_file,debug=False,deep=False):
 
 		super().__init__(model_file=parity_model_file,debug=debug,parity=True)
 		# assumes that negative nodes are already in parity form (i.e. have their logic)
 		# note that composite nodes aren't formally added, since only A_exp is actually used
 
-		self.build_Aexp(debug=debug)
+		if deep:
+			self.n_deep = 0 
+		else:
+			self.build_Aexp(debug=debug)
+
 
 
 	def build_Aexp(self,debug=False,deep=False):
 		self.n_exp = self.n_neg # build_Aexp will iterate this
-		N = self.n_neg+self._num_and_clauses(self.F,deep=deep) # TODO: N should be diff size if deep
+		if deep:
+			self.n_exp += self.n_deep
+		N = self.n_neg+self._num_and_clauses(self.F,deep=deep)
 		self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
 		for node in self.allNodes:

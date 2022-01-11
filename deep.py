@@ -27,7 +27,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                 for i in range(len(G.F[V.name])):
                     clause = G.F[V.name][i] 
                     if len(clause) > 1 and len(clause) <= k:
-                        if parent_clauses_overlap(G,clause):
+                        if True: #parent_clauses_overlap(G,clause):
                             cName, negName = get_composite_name(clause,G.not_string)
                             if cName not in G.nodeNames and cName not in nodes_to_add:
                                 ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
@@ -40,7 +40,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                             #   do all regular nodes, then update composites, then do composites, then update regulars?
                             #   even getting the complement name in general is non-trivial..
             for name in nodes_to_add:
-                G.add_node(name,debug=False,composite=True)  # not a normal parity, so debug gets messed up
+                G.add_node(name,debug=False,deep=True)  
                 G.F[name] = nodes_to_add[name]
                 # poss indicate as sep type of node? 
                 # jp don't care about isNegative for LDOI, but check
@@ -54,6 +54,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
     return G
 
 def parent_clauses_overlap(G, clause):
+    # TODO must've fucked this up bc somehow makes it worse
     for i in range(len(clause)):
         ele1 = clause[i]
         for clause1 in G.F[ele1]:
@@ -64,7 +65,7 @@ def parent_clauses_overlap(G, clause):
                         return True
                     for clause2 in G.F[ele2]: 
                         for b in clause2:
-                            if a==b:
+                            if a==b or ele1==b:
                                 return True
     return False
 
