@@ -459,7 +459,7 @@ class Parity_Net(Net):
         composites = []
 
         for node in self.allNodes:
-            assert(node.F == self.F[node.name])
+            assert(node.F() == self.F[node.name])
             for clause in node.F():
                 if len(clause)>1: # make a composite node
                     make_composite=True
@@ -485,8 +485,6 @@ class Parity_Net(Net):
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
         
         if debug:
-            print(N, self.n_exp,self.n_deep,self.n_neg,'\n\n\n')
-            # N + n_neg = n_exp --> actual number composites added is n_neg less than expected... wtf
             assert(N==self.n_exp)
 
     def _num_and_clauses(self,F,deep=False):
