@@ -451,9 +451,10 @@ class Parity_Net(Net):
 
     def build_Aexp(self,debug=False,deep=False):
         self.n_exp = self.n_neg # build_Aexp will iterate this
+        N = self.n_neg+self._num_and_clauses(self.F,deep=deep)
         if deep:
             self.n_exp += self.n_deep
-        N = self.n_neg+self._num_and_clauses(self.F,deep=deep)+self.n_deep
+            N += self.n_deep
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
         composites = []
 
@@ -470,6 +471,7 @@ class Parity_Net(Net):
 
                         # TODO: this shouldn't just be for deep!
                         if cName in composites:
+                            assert(0) # TODO: if this happens, need to save the composite # and use as index now
                             make_composite=False
                         else:
                             composites += [cName]
@@ -483,12 +485,12 @@ class Parity_Net(Net):
         
         if debug:
             print(N, self.n_exp,self.n_deep,self.n_neg,'\n\n\n')
-            # N + n_neg = n_exp ... wtf
+            # N + n_neg = n_exp --> actual number composites added is n_neg less than expected... wtf
             assert(N==self.n_exp)
 
     def _num_and_clauses(self,F,deep=False):
         count=0
-        for node in F:
+        for node in self.allNodes:
             for clause in F[node]:
                 if len(clause)>1:
                     if not deep: 
