@@ -458,7 +458,7 @@ class Parity_Net(Net):
 						for j in range(len(clause)):
 							self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
 						self.n_exp+=1
-				elif clause not in [['0'],['1']]: # ignore tautologies
+				elif clause not in ['0','1']: # ignore tautologies
 					self.A_exp[self.nodeNums[clause[0]],node.num]=1
 		
 		if debug:
