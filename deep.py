@@ -190,7 +190,7 @@ if __name__ == "__main__":
         output_file=sys.argv[2]
     
     params = param.load(sys.argv[1])
-    Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'])
+    Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'],deep=True)
     Gdeep = build_deep(Gpar,8,output_file,minimizer='espresso',debug=True)
     #init = ldoi.get_const_node_inits(Gdeep,params)
     #ldoi.test(Gdeep,init=init)
