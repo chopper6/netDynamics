@@ -453,7 +453,7 @@ class Parity_Net(Net):
 		self.n_exp = self.n_neg # build_Aexp will iterate this
 		if deep:
 			self.n_exp += self.n_deep
-		N = self.n_neg+self._num_and_clauses(self.F,deep=deep)
+		N = self.n_neg+self._num_and_clauses(self.F,deep=deep)+self.n_deep
 		self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
 		for node in self.allNodes:
