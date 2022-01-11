@@ -37,9 +37,9 @@ def reduce_async_AND_espresso(fns, varbs, not_str, complement=True):
         part2 = eda.Or(part2,term)
     fn = eda.And(part1,part2).to_dnf()
     if complement:
+        fn_not = eda.Not(fn).to_dnf()
         if not fn:
             return ['0'],['1']
-        fn_not = eda.Not(fn).to_dnf()
         elif not fn_not:
             return ['1'],['0']
         ON_fn, OFF_fn = eda.espresso_exprs(fn, fn_not)
