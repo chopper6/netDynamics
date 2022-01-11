@@ -455,6 +455,7 @@ class Parity_Net(Net):
             self.n_exp += self.n_deep
         N = self.n_neg+self._num_and_clauses(self.F,deep=deep)+self.n_deep
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
+        composites = []
 
         for node in self.allNodes:
             for clause in node.F():
@@ -463,9 +464,15 @@ class Parity_Net(Net):
                     if deep:
                         cName, negName = deep.get_composite_name(clause)
                         if cName in self.nodeNames:
+                            assert(0) # don't think this should happen...
                             self.A_exp[self.nodeNums[cName],node.num]=1
                             make_composite=False
-                            print('skipped 1')
+
+                        # TODO: this shouldn't just be for deep!
+                        if cName in composites:
+                            make_composite=False
+                        else:
+                            composites += [cName]
                     if make_composite:
                         self.A_exp[self.n_exp,node.num]=1
                         for j in range(len(clause)):
@@ -490,6 +497,8 @@ class Parity_Net(Net):
                         cName, negName = deep.get_composite_name(clause)
                         if cName not in self.nodeNames:
                             count+=1
+                        else:
+                            assert(False) # again i don't think this should occur!
         return count
 
 
