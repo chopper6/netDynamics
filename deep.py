@@ -30,7 +30,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                         if True: #parent_clauses_overlap(G,clause):
                             cName, negName = get_composite_name(clause,G.not_string)
                             if cName not in G.nodeNames and cName not in nodes_to_add:
-                                ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
+                                ON_fn = calc_deep_fn(G,clause,minimizer=minimizer)
                                 nodes_to_add[cName] = ON_fn
                                 nodes_to_add[negName] = OFF_fn
                                 added=True
@@ -93,7 +93,7 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
         for ele in clause:
             varbs += [ele]
             fns += [G.F[ele]]
-        ON_fn, OFF_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=True)
+        ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=False)
     elif minimizer in ['qm','QM']:
         # note that this can also calc complement
         #print("\tCalculating deep function of ",clause)
@@ -101,10 +101,10 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
         ON_clauses, OFF_clauses = on_off_terms(G,clause,inputs_name2num)
         #print('\tdetails:',inputs_num2name,ON_clauses, OFF_clauses)
         ON_fn = logic.run_qm(ON_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
-        OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
+        #OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
     else:
         assert(0) # unrecognized argument for 'minimizer'
-    return ON_fn, OFF_fn
+    return ON_fn
 
 
 def organize_inputs(G, clause):
