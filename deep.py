@@ -30,7 +30,6 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                         if cName not in G.nodeNames and cName not in nodes_to_add:
                             fn = calc_deep_fn(G,clause,minimizer=minimizer)
                             nodes_to_add[cName] = fn 
-                            print('added node with fn = ',fn)
                             #nodes_to_add[negName] = fn_neg 
                             added=True
                         clause = [cName] # todo: check that this is correct

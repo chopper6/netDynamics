@@ -22,7 +22,7 @@ def test(G):
 			print('\t',G.nodeNames[i],'negates itself')
 
 
-def ldoi_bfs(G,pinning=True,init=[]):
+def ldoi_bfs(G,pinning=True,init=[],use_init_in_params=True):
 	# A should be adjacency matrix of Gexp
 	# and the corresponding Vexp to A should be ordered such that:
 	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
@@ -38,6 +38,19 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
 	negated = cp.zeros(N,dtype=bool) # if negated[i] then the complement of i is in the LDOI of i
 	D = cp.diag(cp.ones(N,dtype=bool))
+
+
+	if use_init_in_params:
+		G.add_self_loops(params) # just in case (TODO clean)
+		for nodeName in params['init']:
+			if params['init'][nodeName] == 1:
+				init += [G.nodeNums[nodeName]]
+			elif params['init'][nodeName] == 0:
+				init += [G.n + G.nodeNums[nodeName]] 
+			else:
+				print("\nERROR: unrecognized value for params['init'][",nodeName,"]:",params['init'][nodeName])
+				assert(0) 
+
 	if len(init) > 0:
 		init = cp.array(init)
 		D[:,init] = 1 
