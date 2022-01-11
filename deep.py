@@ -49,7 +49,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     G.build_Aexp(debug=debug)
     if output_file is not None:
-        with open(output_file) as f:
+        with open(output_file,'wb') as f:
             pickle.dump([G, params],f)
         #G.write_to_file(output_file,parity=True)
 
