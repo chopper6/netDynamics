@@ -1,6 +1,6 @@
 import param, util, logic, net
 from copy import deepcopy
-import itertools, sys, os
+import itertools, sys, os, pickle
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # TODO:
@@ -168,11 +168,19 @@ def get_const_node_inits(G,params):
 
 
 if __name__ == "__main__":
-	if len(sys.argv) != 3:
+	if len(sys.argv) != 2:
 		sys.exit("Usage: python3 ldoi.py PARAMS.yaml")
-	
-	params = param.load(sys.argv[1])
-	G = net.Parity_Net(sys.argv[2],debug=params['debug'], deep=True)
-	init = get_const_node_inits(Gdeep,params)
+
+	DEEP=False
+
 	#result = ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[])
-	test(G,param, init=init)
+
+	if DEEP:
+		with open(sys.argv[1],'rb') as f:
+			G, params = pickle.load(f)
+	else:
+		params = param.load(sys.argv[1])
+		G = net.Parity_Net(params['parity_model_file'],debug=params['debug'], deep=False)		
+	
+	init = get_const_node_inits(G,params)
+	test(G, init=init)

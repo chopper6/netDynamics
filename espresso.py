@@ -101,6 +101,26 @@ def to_pyEda_fn(fn, not_str):
         i+=1
     return eda.expr(fnStr)
 
+def reduce_complement(fn, not_str, complement):
+    # assumes fn is non-zero
+    f = to_pyEda_fn(fn,not_str)
+    fNot = eda.Not(f).to_dnf()
+    if not fnNot:
+        return ['0']
+    partial, = eda.espresso_exprs(fNot)
+    if not fnNot_rd:
+        return ['0']
+    compl = eda.exprvar(complement)
+    full, = eda.espresso_exprs(eda.And(partial, compl).to_dnf())
+    full = from_pyEda_fn(full, not_str)
+    # could check if full is smaller than original fn
+    return full
+
+def reduce(fn, not_str):
+    fn = to_pyEda_fn(fn,not_str).to_dnf()
+    fn_rd, = eda.espresso_exprs(fn)
+    return from_pyEda_fn(fn_rd, not_str)
+
 def from_pyEda_fn(fn, not_str):
     newF = []
     fn = str(fn).replace('Or(','')

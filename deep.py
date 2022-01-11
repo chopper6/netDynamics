@@ -30,15 +30,20 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                         if True: #parent_clauses_overlap(G,clause):
                             cName, negName = get_composite_name(clause,G.not_string)
                             if cName not in G.nodeNames and cName not in nodes_to_add:
-                                ON_fn = calc_deep_fn(G,clause,minimizer=minimizer)
+                                print('\nreducing',cName,'vs',negName,'using',clause)
+                                ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
                                 nodes_to_add[cName] = ON_fn
-                                #nodes_to_add[negName] = OFF_fn
+                                nodes_to_add[negName] = OFF_fn
                                 added=True
-                            G.F[V.name][i] = [cName] 
-                            # TODO: factor V complement using negName 
-                            #   jp in same loop, and just run fnot + cName (i.e add the POSITIVE term, prior to concatenation)
-                            #   do all regular nodes, then update composites, then do composites, then update regulars?
-                            #   even getting the complement name in general is non-trivial..
+                            
+                            complement = get_complement_name(V.name, G.not_string)#can rm
+                            print('in addition to replacing term in',V.name,'factoring its complement',get_complement_name(cName, G.not_string))
+                            print('prev function=',G.F[complement])
+                            G.F[complement] = complement_factor(G.F[V.name],clause,cName,G.not_string)
+                            print('factored function=',G.F[complement])
+                            # just assuming espresso now
+                            G.F[V.name][i] = [cName] # TODO check if leaving as mult is better for LDOI
+
             for name in nodes_to_add:
                 G.add_node(name,debug=False,deep=True)  
                 G.F[name] = nodes_to_add[name]
@@ -55,8 +60,19 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     return G
 
+
+def complement_factor(fn,clause, composite_name, not_str):
+    partial_fn = []
+    for clause2 in fn:
+        if clause2 != clause:
+            partial_fn += [clause2]
+    complement = get_complement_name(composite_name, not_str)
+    fn = espresso.reduce_complement(partial_fn, not_str,complement)
+    return fn
+
 def parent_clauses_overlap(G, clause):
-    # TODO must've fucked this up bc somehow makes it worse
+    # TODO might've fucked this up
+    assert(0)
     for i in range(len(clause)):
         ele1 = clause[i]
         for clause1 in G.F[ele1]:
@@ -71,6 +87,36 @@ def parent_clauses_overlap(G, clause):
                                 return True
     return False
 
+
+def get_complement_name(name, not_str):
+    assert('&' not in name or '+' not in name)
+    print('in get_complement_name(): starting with',name)
+    if '&' in name:
+        name = name.split('&')
+        for i in range(len(name)):
+            part=name[i]
+            if not_str in part:
+                name[i] = part.replace(not_str,'')
+            else:
+                name[i] = not_str + part 
+        name ='+'.join(name)
+    elif '+' in name:
+        name = name.split('+')
+        for i in range(len(name)):
+            part=name[i]
+            if not_str in part:
+                name[i] = part.replace(not_str,'')
+            else:
+                name[i] = not_str + part 
+        name = '&'.join(name)
+    else:
+        if not_str in name:
+            name = name.replace(not_str, '')
+        else:
+            name = not_str + name
+    print('\tcomplement=',name,'\n')
+    return name
+
 def get_composite_name(clause, not_str):
     s,snot = '',''
     i=0
@@ -84,18 +130,21 @@ def get_composite_name(clause, not_str):
     return s,snot
 
 
-def calc_deep_fn(G,clause,minimizer='espresso'):
+def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
     # returns builds and reduces higher order function for the clause
     # uses either Quine-McCluskey or Espresso
     # Off fn may be v. slow since is the sum term
     if minimizer == 'espresso':
-        import espresso # this is imported here since espresso does not compile on windows
+        import espresso # imported here since espresso does not compile on windows (so someone using windows uses the 'qm' minimizer instead)
         
         fns, varbs = [],[]
         for ele in clause:
             varbs += [ele]
             fns += [G.F[ele]]
-        ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=False)
+        if complement:
+            ON_fn, OFF_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=complement)
+        else:
+            ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=complement)
     elif minimizer in ['qm','QM']:
         # note that this can also calc complement
         #print("\tCalculating deep function of ",clause)
@@ -103,10 +152,14 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
         ON_clauses, OFF_clauses = on_off_terms(G,clause,inputs_name2num)
         #print('\tdetails:',inputs_num2name,ON_clauses, OFF_clauses)
         ON_fn = logic.run_qm(ON_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
-        #OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
+        if complement:
+            OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
     else:
         assert(0) # unrecognized argument for 'minimizer'
-    return ON_fn
+    if complement:
+        return ON_fn, OFF_fn 
+    else:
+        return ON_fn
 
 
 def organize_inputs(G, clause):
