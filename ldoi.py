@@ -9,8 +9,8 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # rm the 'test' function
 
 
-def test(G):
-	ldoi_solns, negated = ldoi_bfs(G,pinning=1)
+def test(G,init=[]):
+	ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=init)
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
@@ -22,7 +22,7 @@ def test(G):
 			print('\t',G.nodeNames[i],'negates itself')
 
 
-def ldoi_bfs(G,pinning=True,init=[],use_init_in_params=True):
+def ldoi_bfs(G,pinning=True,init=[]):
 	# A should be adjacency matrix of Gexp
 	# and the corresponding Vexp to A should be ordered such that:
 	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
@@ -38,18 +38,6 @@ def ldoi_bfs(G,pinning=True,init=[],use_init_in_params=True):
 	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
 	negated = cp.zeros(N,dtype=bool) # if negated[i] then the complement of i is in the LDOI of i
 	D = cp.diag(cp.ones(N,dtype=bool))
-
-
-	if use_init_in_params:
-		G.add_self_loops(params) # just in case (TODO clean)
-		for nodeName in params['init']:
-			if params['init'][nodeName] == 1:
-				init += [G.nodeNums[nodeName]]
-			elif params['init'][nodeName] == 0:
-				init += [G.n + G.nodeNums[nodeName]] 
-			else:
-				print("\nERROR: unrecognized value for params['init'][",nodeName,"]:",params['init'][nodeName])
-				assert(0) 
 
 	if len(init) > 0:
 		init = cp.array(init)
@@ -164,6 +152,18 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 
 	return {'total':avg_sum_ldoi,'total_onlyOuts':avg_sum_ldoi_outputs, 'node':avg_num_ldoi_nodes,'node_onlyOuts':avg_num_ldoi_outputs}
 
+def get_const_node_inits(G,params):
+	init = []
+	G.add_self_loops(params) # just in case (TODO clean)
+	for nodeName in params['init']:
+		if params['init'][nodeName] == 1:
+			init += [G.nodeNums[nodeName]]
+		elif params['init'][nodeName] == 0:
+			init += [G.n + G.nodeNums[nodeName]] 
+		else:
+			print("\nERROR: unrecognized value for params['init'][",nodeName,"]:",params['init'][nodeName])
+			assert(0) 
+	return init
 
 
 
