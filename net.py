@@ -474,6 +474,7 @@ class Parity_Net(Net):
 					self.A_exp[self.nodeNums[clause[0]],node.num]=1
 		
 		if debug:
+			print(N, self.n_exp,self.n_deep,self.n_neg,'\n\n\n')
 			assert(N==self.n_exp)
 
 	def _num_and_clauses(self,F,deep=False):
