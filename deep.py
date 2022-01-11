@@ -68,7 +68,8 @@ def complement_factor(fn,clause, composite_name, not_str):
         if clause2 != clause:
             partial_fn += [clause2]
     complement = get_complement_name(composite_name, not_str)
-    fn = espresso.reduce_complement(partial_fn, not_str,complement)
+    if partial_fn!=[]:
+        fn = espresso.reduce_complement(partial_fn, not_str,complement)
     return fn
 
 def parent_clauses_overlap(G, clause):
