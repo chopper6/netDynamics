@@ -491,7 +491,7 @@ class Parity_Net(Net):
     def _num_and_clauses(self,F,deep=False):
         count=0
         for node in self.allNodes:
-            for clause in F[node]:
+            for clause in node.F:
                 if len(clause)>1:
                     if not deep: 
                         count+=1
