@@ -24,15 +24,19 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
             added=False
             nodes_to_add = {} # will add these nodes (which are products) and their complements (which are sums)
             for V in G.nodes:
-                for clause in G.F[V.name]: 
+                for i in range(len(G.F[V.name])):
+                    clause = G.F[V.name][i] 
                     if len(clause) > 1 and len(clause) <= k:
                         cName, negName = get_composite_name(clause,G.not_string)
                         if cName not in G.nodeNames and cName not in nodes_to_add:
-                            fn = calc_deep_fn(G,clause,minimizer=minimizer)
-                            nodes_to_add[cName] = fn 
-                            #nodes_to_add[negName] = fn_neg 
+                            ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
+                            nodes_to_add[cName] = ON_fn
+                            nodes_to_add[negName] = OFF_fn
                             added=True
-                        clause = [cName] # todo: check that this is correct
+                        G.F[V.name][i] = [cName] 
+                        # TODO: factor V complement using negName 
+                        #   jp req sep loop, and just run fnot + cName (i.e add the POSITIVE term, prior to concatenation)
+                        #   do all regular nodes, then update composites, then do composites, then update regulars?
             for name in nodes_to_add:
                 G.add_node(name,debug=False,parity=True)  # not a normal parity, so debug gets messed up
                 G.F[name] = nodes_to_add[name]
@@ -72,7 +76,7 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
         for ele in clause:
             varbs += [ele]
             fns += [G.F[ele]]
-        ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string)
+        ON_fn, OFF_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=True)
     elif minimizer in ['qm','QM']:
         # note that this can also calc complement
         #print("\tCalculating deep function of ",clause)
@@ -80,10 +84,10 @@ def calc_deep_fn(G,clause,minimizer='espresso'):
         ON_clauses, OFF_clauses = on_off_terms(G,clause,inputs_name2num)
         #print('\tdetails:',inputs_num2name,ON_clauses, OFF_clauses)
         ON_fn = logic.run_qm(ON_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
-        #OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
+        OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
     else:
         assert(0) # unrecognized argument for 'minimizer'
-    return ON_fn
+    return ON_fn, OFF_fn
 
 
 def organize_inputs(G, clause):
@@ -170,7 +174,7 @@ if __name__ == "__main__":
     
     params = param.load(sys.argv[1])
     Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'])
-    Gdeep = build_deep(Gpar,12,output_file,minimizer='espresso',debug=True)
+    Gdeep = build_deep(Gpar,8,output_file,minimizer='espresso',debug=True)
     #init = ldoi.get_const_node_inits(Gdeep,params)
     #ldoi.test(Gdeep,init=init)
     #ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp
