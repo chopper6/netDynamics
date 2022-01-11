@@ -459,8 +459,8 @@ class Parity_Net(Net):
         composites = []
 
         for node in self.allNodes:
+            assert(node.F == self.F[node.name])
             for clause in node.F():
-                assert(clause in self.F[node.name])
                 if len(clause)>1: # make a composite node
                     make_composite=True
                     if deep:
