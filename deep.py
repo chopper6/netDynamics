@@ -1,5 +1,6 @@
 import sys, pickle
 import ldoi, logic, param, net
+import espresso # this file uses pyeda, and so will require linux
 
 # BUG: calling LDOI at end 
 #   not same as directly building net and running LDOI, so something about parity net construction
