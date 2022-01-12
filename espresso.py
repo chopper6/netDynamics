@@ -1,7 +1,8 @@
 from pyeda import inter as eda
+import deep # TODO: should move fns from deep to here instead, or some utility file
 
 ##########################################
-fa = [['a','b'],['c']]
+fa = [['!a','c']]
 fb = [['a','!b']]
 vars1 = ['a','b']
 vars2 = ['b']
@@ -9,6 +10,63 @@ f1 = [['a','b'],['a','c'],['d']]
 f2 = [['a','!b'],['d']]
 not_str = '!'
 ##########################################
+
+
+def not_to_dnf(fn,not_str,cap=100):
+    # assumes fn is already in dnf and in a pyeda form
+    # returns in pyeda form
+    # when |new terms| > cap, will reduce using espresso
+    fn = from_pyEda_fn(fn,not_str) 
+    if fn == ['1']:
+        return 0
+    elif fn == ['0']:
+        return 1
+
+    terms = []
+    clause1 = fn[0]
+    for ele1 in clause1:
+        terms += [[deep.composite_name([[ele1]], not_str, negate=True)]]  # get_complement_name(ele1, not_str)]]
+        for j in range(1,len(fn)):
+            clause2=fn[j]
+            new_terms = []
+            for ele2 in clause2:
+                for term in terms:
+                    new_terms += [term + [deep.composite_name([[ele2]], not_str, negate=True)]]              #deep.get_complement_name(ele2, not_str)]]
+            terms = new_terms
+
+            if len(terms) > cap:
+                terms = reduce_espresso(terms, not_str)
+    terms = reduce_espresso(terms, not_str)
+    return to_pyEda_fn(terms, not_str)   
+
+
+def F_to_str(fn):
+    # TODO: move to util or net or something
+    # assumes F is of the form [clause1,clause2,...] where each clause is [ele1,ele2,...]
+    s = ''
+    i=0
+    for clause in fn:
+        j=0
+        if i!=0:
+            s+='|'
+        for ele in clause:
+            if j!=0:
+                s+='&'
+            s+=ele 
+            j+=1
+        i+=1
+    return s 
+
+def str_to_F(s):
+    fn = []
+    clauses = s.split('&') 
+    for clause in clauses:
+        fn_clause = []
+        eles = clause.split('|')
+        for ele in eles:
+            fn_clause += [ele]
+        fn += [fn_clause]
+    return fn 
 
 def reduce_espresso(fn, not_str):
     fn_eda = to_pyEda_fn(fn,not_str).to_dnf()
@@ -35,9 +93,11 @@ def reduce_async_AND_espresso(fns, varbs, not_str, complement=True):
                 else:
                     term = eda.And(term,u)
         part2 = eda.Or(part2,term)
+
     fn = eda.And(part1,part2).to_dnf()
+    #print('espresso attempting to reduce:',eda.And(part1,part2).to_dnf())
     if complement:
-        fn_not = eda.Not(fn).to_dnf()
+        fn_not = not_to_dnf(fn,not_str)
         if not fn:
             return ['0'],['1']
         elif not fn_not:
@@ -48,7 +108,7 @@ def reduce_async_AND_espresso(fns, varbs, not_str, complement=True):
         elif not OFF_fn:
             return ['1'],['0']
         return from_pyEda_fn(ON_fn, not_str), from_pyEda_fn(OFF_fn, not_str)
-    else:     
+    else:  
         if not fn:
             return ['0'] # i.e. function evals to false always
         fn_reduced, = eda.espresso_exprs(fn)
@@ -101,20 +161,29 @@ def to_pyEda_fn(fn, not_str):
         i+=1
     return eda.expr(fnStr)
 
-def reduce_complement(fn, not_str, complement):
+def reduce_complement(fn, not_str, complements):
     # assumes fn is non-zero
-    print('espresso receiving fn=',fn)
-    f = to_pyEda_fn(fn,not_str)
-    fNot = eda.Not(f).to_dnf()
-    if not fnNot:
-        return ['0']
-    partial, = eda.espresso_exprs(fNot)
-    if not fnNot_rd:
-        return ['0']
-    compl = eda.exprvar(complement)
-    full, = eda.espresso_exprs(eda.And(partial, compl).to_dnf())
+    if fn==[]:
+        full_unred = 1
+    else:
+        f = to_pyEda_fn(fn,not_str)
+        print("esp.reduce_compl, partial fn=",f)
+        fNot = not_to_dnf(f,not_str)
+        if not fNot:
+            assert(0) # have to think about what to do
+        partial, = eda.espresso_exprs(fNot) # TODO: reduce at end of not_to_dnf, sT this is unnec
+        if not partial:
+            assert(0) # have to think about what to do
+        full_unred = partial
+    compls = map(eda.exprvar,complements) # TODO need mult
+    print("esp.reduce_compl, compls=",compls)
+    print("esp.reduce_compl, partialNot=",full_unred)
+    for compl in compls:
+        full_unred = eda.And(full_unred, compl)
+    full, = eda.espresso_exprs(full_unred.to_dnf())
     full = from_pyEda_fn(full, not_str)
     # could check if full is smaller than original fn
+    print("esp.reduce_compl yields",full)
     return full
 
 def reduce(fn, not_str):
@@ -126,7 +195,11 @@ def from_pyEda_fn(fn, not_str):
     newF = []
     fn = str(fn).replace('Or(','')
     assert('Or(' not in fn) #since this is DNF, should only be one Or which is rm'd in prev line
-    clauses = fn.split('And(')
+    if 'And' in fn:
+        clauses = fn.split('And(')
+    else:
+        clauses = fn.split(',')
+
     for clause in clauses:
         eles = clause.split(', ')
         newClause = []
@@ -146,8 +219,12 @@ def from_pyEda_fn(fn, not_str):
     return newF
 
 if __name__ == '__main__':
-    fn = reduce_async_AND_espresso([fa,fb], vars1, not_str)
-    print('Final form = ',fn)
+    f=to_pyEda_fn(fa,'!')
+    fnot = not_to_dnf(f,'!')
+    print('f=>!f : ',f,'=>',fnot)
+    if False:
+        fn = reduce_async_AND_espresso([fa,fb], vars1, not_str)
+        print('Final form = ',fn)
     if False:
         f1_rd = reduce_espresso(f1, not_str)
         print("Reduced f1 = ",f1_rd)

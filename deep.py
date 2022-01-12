@@ -25,25 +25,32 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
             added=False
             nodes_to_add = {} # will add these nodes (which are products) and their complements (which are sums)
             for V in G.nodes:
+                merged_names = [] #these will be used when rebuilding the complement term
                 for i in range(len(G.F[V.name])):
-                    clause = G.F[V.name][i] 
+                    clause = G.F[V.name][i]
                     if len(clause) > 1 and len(clause) <= k:
                         if True: #parent_clauses_overlap(G,clause):
-                            cName, negName = get_composite_name(clause,G.not_string)
+                            cName = composite_name([clause], G.not_string, negate=False)
                             if cName not in G.nodeNames and cName not in nodes_to_add:
+                                negName = composite_name([clause], G.not_string, negate=True)
                                 print('\nreducing',cName,'vs',negName,'using',clause)
                                 ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
                                 nodes_to_add[cName] = ON_fn
                                 nodes_to_add[negName] = OFF_fn
                                 added=True
                             
-                            complement = get_complement_name(V.name, G.not_string)#can rm
-                            print('in addition to replacing term in',V.name,'factoring its complement',get_complement_name(cName, G.not_string))
-                            print('prev function=',G.F[complement])
-                            G.F[complement] = complement_factor(G.F[V.name],clause,cName,G.not_string)
-                            print('factored function=',G.F[complement])
-                            # just assuming espresso now
+                            merged_names += [cName]
+
                             G.F[V.name][i] = [cName] # TODO check if leaving as mult is better for LDOI
+
+                if len(merged_names)>0:
+                    complement = composite_name([[V.name]], G.not_string, negate=True)
+                    #complement = get_complement_name(V.name, G.not_string)
+                    print('prev function of',complement,'=',G.F[complement])
+                    print("will reduce using compls of",merged_names)
+                    G.F[complement] = complement_factor(G.F[V.name],merged_names,G.not_string)
+                    print('factored function=',G.F[complement])
+                    # just assuming espresso now
 
             for name in nodes_to_add:
                 G.add_node(name,debug=False,deep=True)  
@@ -61,15 +68,43 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     return G
 
+def composite_name(fn, not_str, negate=False):
+    # TODO: standardize, then also call from espresso.py
+    #           and clean this mess
+    #           esp calling to espresso.to_dnf and back is not good
+    #           and having to pass [[ele]] is messy af
+    #               really just need to check if regular vs deep node
+    # fn = espresso.str_to_F(fn_name) 
+    if not negate:
+        return espresso.F_to_str(fn)
+    else:
+        if len(fn)==1 and len(fn[0])==1 and '&' not in fn[0][0] and '|' not in fn[0][0]: # w/o this inf loop btwn espresso n deep
+            if not_str in fn[0][0]:
+                fn[0][0] = fn[0][0].replace(not_str,'')
+            else:
+                fn[0][0] = not_str + fn[0][0]
+            return espresso.F_to_str(fn)
+        else:
+            print('\npassng fn=',fn,'\n')
+            fn_eda = espresso.to_pyEda_fn(fn, not_str)
+            fn_eda = espresso.not_to_dnf(fn_eda,not_str)
+            fn_new = espresso.from_pyEda_fn(fn_eda, not_str)
+            fn_name_new = espresso.F_to_str(fn_new)
+            print('original fn=',fn,'\tcomplement fn=',fn_name_new)
+            return fn_name_new
 
-def complement_factor(fn,clause, composite_name, not_str):
+
+def complement_factor(fn, merged_names, not_str):
+    print('deep.compl_factor(): original +ve fn=',fn)
     partial_fn = []
     for clause2 in fn:
-        if clause2 != clause:
+        if len(clause2)>1 or clause2[0] not in merged_names:
             partial_fn += [clause2]
-    complement = get_complement_name(composite_name, not_str)
-    if partial_fn!=[]:
-        fn = espresso.reduce_complement(partial_fn, not_str,complement)
+    complements = []
+    for name in merged_names:
+        complements += [composite_name([[name]], not_str, negate=True)] #get_complement_name(name, not_str)]
+
+    fn = espresso.reduce_complement(partial_fn, not_str,complements) 
     return fn
 
 def parent_clauses_overlap(G, clause):
@@ -91,8 +126,9 @@ def parent_clauses_overlap(G, clause):
 
 
 def get_complement_name(name, not_str):
-    assert('&' not in name or '+' not in name)
+    assert(0) # rm soon
     print('in get_complement_name(): starting with',name)
+    assert('&' not in name or '+' not in name)
     if '&' in name:
         name = name.split('&')
         for i in range(len(name)):
@@ -101,7 +137,7 @@ def get_complement_name(name, not_str):
                 name[i] = part.replace(not_str,'')
             else:
                 name[i] = not_str + part 
-        name ='+'.join(name)
+        name = '(' + '+'.join(name) + ')'
     elif '+' in name:
         name = name.split('+')
         for i in range(len(name)):
@@ -110,13 +146,13 @@ def get_complement_name(name, not_str):
                 name[i] = part.replace(not_str,'')
             else:
                 name[i] = not_str + part 
-        name = '&'.join(name)
+        name = '(' + '&'.join(name) + ')'
     else:
         if not_str in name:
             name = name.replace(not_str, '')
         else:
             name = not_str + name
-    print('\tcomplement=',name,'\n')
+    #print('\tcomplement=',name,'\n')
     return name
 
 def get_composite_name(clause, not_str):
@@ -125,11 +161,11 @@ def get_composite_name(clause, not_str):
     for ele in clause:
         if i!=0:
             s+='&'
-            snot+='+'
+            #snot+='+'
         s += str(ele)
-        snot += not_str + str(ele)
+        #snot += not_str + str(ele)
         i+=1
-    return s,snot
+    return s#,snot
 
 
 def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
