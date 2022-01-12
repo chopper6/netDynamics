@@ -12,10 +12,28 @@ not_str = '!'
 ##########################################
 
 
+def negate_ele(ele, not_str):
+    # base case
+    if '&' not in ele and '|' not in ele:
+        if not_str in ele:
+            return ele.replace(not_str,'')
+        else:
+            return not_str + ele
+
+    # else higher order node
+    ele_fn = str_to_F(ele)
+    ele_fn_eda = to_pyEda_fn(ele_fn, not_str) # TODO this is way to error prone, having to always do both
+    ele_not = not_to_dnf(ele_fn_eda,not_str)
+    x = F_to_str(ele_not)
+    return x
+
 def not_to_dnf(fn,not_str,cap=100):
     # assumes fn is already in dnf and in a pyeda form
     # returns in pyeda form
     # when |new terms| > cap, will reduce using espresso
+
+    # CURR: recursion via not_to_dnf() -> negate_ele() -> not_to_dnf(); works but poss confusing
+    # ALT: could make 2 dicts of higher order terms and their complements, sT don't have to reconstruct each time
     fn = from_pyEda_fn(fn,not_str) 
     if fn == ['1']:
         return 0
@@ -24,19 +42,21 @@ def not_to_dnf(fn,not_str,cap=100):
 
     terms = []
     clause1 = fn[0]
+
     for ele1 in clause1:
-        terms += [[deep.composite_name([[ele1]], not_str, negate=True)]]  # get_complement_name(ele1, not_str)]]
+        terms += [[negate_ele(ele1,not_str)]]  
         for j in range(1,len(fn)):
             clause2=fn[j]
             new_terms = []
             for ele2 in clause2:
                 for term in terms:
-                    new_terms += [term + [deep.composite_name([[ele2]], not_str, negate=True)]]              #deep.get_complement_name(ele2, not_str)]]
+                    new_terms += [term + [negate_ele(ele2,not_str)]]           
             terms = new_terms
 
             if len(terms) > cap:
                 terms = reduce_espresso(terms, not_str)
     terms = reduce_espresso(terms, not_str)
+
     return to_pyEda_fn(terms, not_str)   
 
 
@@ -175,16 +195,33 @@ def reduce_complement(fn, not_str, complements):
         if not partial:
             assert(0) # have to think about what to do
         full_unred = partial
-    compls = map(eda.exprvar,complements) # TODO need mult
-    print("esp.reduce_compl, compls=",compls)
-    print("esp.reduce_compl, partialNot=",full_unred)
-    for compl in compls:
+
+    # if for some crazy reason this is the name of a node ("compl_placeholder1"), then may cause an issue
+    compl_placeholders = ['compl_placeholder'+str(i) for i in range(len(complements))]
+    compl_variables = map(eda.exprvar,compl_placeholders) 
+    #print("esp.reduce_compl, compls=",complements)
+    #print("esp.reduce_compl, partialNot=",full_unred)
+    for compl in compl_variables:
         full_unred = eda.And(full_unred, compl)
     full, = eda.espresso_exprs(full_unred.to_dnf())
     full = from_pyEda_fn(full, not_str)
+    #print("esp.reduce_compl before subbing in placeholders:",full)
+    full = replace_placeholders(full, compl_placeholders, complements)
+    # TODO: don't return if changes internally!
+
     # could check if full is smaller than original fn
-    print("esp.reduce_compl yields",full)
+    #print("esp.reduce_compl yields",full)
     return full
+
+def replace_placeholders(fn, placeholders, actual_names):
+    # this is to use names that have illegal symbols as variables, such as "A+B"
+    # assumes a regular fn (gotta name this btw, as opposed to pyeda or str)
+    for clause in fn:
+        for i in range(len(clause)):
+            if clause[i] in placeholders:
+                indx = placeholders.index(clause[i])
+                clause[i] = actual_names[indx]
+    return fn
 
 def reduce(fn, not_str):
     fn = to_pyEda_fn(fn,not_str).to_dnf()
