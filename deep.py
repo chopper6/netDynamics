@@ -5,6 +5,10 @@ import espresso # this file uses pyeda, and so will require linux
 # TODO:
 # clean all non-QM fns, esp w.r.t new DeepNet object
 # move QM section to logic.py? [and update it once espresso version done jp]
+
+# TODO HERE AND  ELSEWHERE:
+#   double check whenever call 'not_str' (since generally shouldn't)
+
 # LATER: add term condition to prev building unnec new nodes
 
 def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
