@@ -101,7 +101,7 @@ def ldoi_bfs(G,pinning=True,init=[]):
 
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	# fixed_nodes should be a list of names such as ['FOXO3','ERK']
-	assert(isinstance(G,Parity_Net)) # LDOI doesn't make sense a on regular net
+	assert(isinstance(G,ParityNet)) # LDOI doesn't make sense a on regular net
 	
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
 	avg_num_ldoi_nodes = {k:0 for k in range(G.n_neg)}
@@ -180,7 +180,7 @@ if __name__ == "__main__":
 			G, params = pickle.load(f)
 	else:
 		params = param.load(sys.argv[1])
-		G = net.Parity_Net(params['parity_model_file'],debug=params['debug'], deep=False)		
+		G = net.ParityNet(params['parity_model_file'],debug=params['debug'], deep=False)		
 	
 	init = get_const_node_inits(G,params)
 	test(G, init=init)

@@ -6,6 +6,8 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
 
 # TODO:
+#   G.nodes() should be the default, not AllNodes!
+#       use G.parityNodes() or something to distinguish
 #   add explicit debug function for net construction
 #       check that certain objs same, certain diff
 #   debug changes to G.F and node.F()
@@ -20,9 +22,8 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 
 
 class Net:
-    def __init__(self, model_file=None, G=None, parity=False, debug=False):
+    def __init__(self, model_file=None, G=None, debug=False):
         # complete will also apply any mutations in params and build Fmapd [TODO rename complete]
-        # if parity: assume the net file explicitly lists negatives and their functions
         
         # use a model_file OR an existing net
         assert(model_file is not None or G is not None)
@@ -33,16 +34,15 @@ class Net:
         self.Fmapd = None
 
         self.n = 0  # # regular nodes
-        self.n_neg = 0 # curr # regular nodes + # negative nodes
+        self.n_neg = 0 # curr num regular nodes + num negative nodes
 
         self.nodes = [] # object to hold name & number, only regular nodes included
-        self.allNodes = [] # includes both regular and parity nodes
 
         self.nodeNames = [] # num -> name
         self.nodeNums = {} # name -> num
 
-        self.encoding = None #encoding format used by the input file
-        self.not_string = None # called often enough that it is useful to store
+        self.encoding = None # encoding format used by the input file
+        self.not_string = None # from encoding, called often enough that it is useful to store
         
         self.num_clauses=0 # total number of clauses
         self.max_literals=0 # max literals per clause
@@ -51,7 +51,7 @@ class Net:
         if G is not None: 
             self.copy_from_net(G)
         elif model_file is not None:
-            self.read_from_file(model_file, debug=debug,parity=parity)
+            self.read_from_file(model_file, debug=debug)
 
 
     def __str__(self):
@@ -74,7 +74,7 @@ class Net:
                 params['init'][node.name] = int(self.F[node.name][0][0])
                 self.F[node.name] = [[node.name]]
 
-    def read_from_file(self, net_file, debug=False, parity=False):
+    def read_from_file(self, net_file, debug=False):
         # inits network, except for F_mapd (which maps the logic to an actual matrix execution)
         # net file should be in DNF, see README for specifications
 
@@ -101,7 +101,7 @@ class Net:
                 if debug:
                     assert(node_name not in self.nodeNames)
 
-                self.add_node(node_name,debug=debug,parity=parity)
+                self.add_node(node_name,debug=debug)
 
                 clauses = line[1].split(clause_split)
                 for clause in clauses:
@@ -119,10 +119,9 @@ class Net:
 
                 loop += 1
         
-        if not parity:
-            self.build_negative_nodes(debug=debug)
+        self.build_negative_nodes(debug=debug) # this is just a pass function for Parity & DeepNet
 
-        self.count_clauses_and_lits(parity=parity)
+        self.count_clauses_and_lits()
 
 
     def write_to_file(self, output_file,parity=False):
@@ -137,8 +136,8 @@ class Net:
             # note this overwrites
         node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(self.encoding)
         
-        for node in self.allNodes:
-            if not node.isNegative or isinstance(self,Parity_Net) or parity:
+        for node in self.nodes:
+            if not node.isNegative:
                 fn=node.F()
                 with open(output_file,'a') as ofile:
                     ofile.write(node.name + node_fn_split + self._fn_to_str(fn) + '\n')
@@ -170,68 +169,20 @@ class Net:
         return fn_str
 
     
-    def add_node(self,nodeName,isNegative=False,debug=False,parity=False,deep=False):
-        # note that F is not added for negative, unless a parity net
-        # TODO: have sep flags for isNegative and parity is confusing
-        #                and now deep too..this is becoming a shitshow
-        if parity and self.not_string in nodeName:
-            isNegative=True
+    def add_node(self,nodeName,isNegative=False,debug=False):
+        # note that F is not added for negatives, since simulation just negates their positive nodes directly
 
         newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
-        self.allNodes += [newNode]
         self.nodeNames += [nodeName]
-        if not deep:
-            self.nodeNums[nodeName] = self.n_neg
-            self.n_neg += 1
-        else:
-            self.nodeNums[nodeName] = self.n_neg + self.n_deep
-            self.n_deep += 1
+        self.nodeNums[nodeName] = self.n_neg
+        self.n_neg += 1
         
-        if not isNegative or parity or deep:
-            self.F[nodeName] = []
         if not isNegative:
+            self.F[nodeName] = []
             self.nodes += [newNode]
-            if not deep:
-                self.n += 1
-
-        if parity and debug and not deep:
-            if self.not_string in nodeName:
-                positive_name = nodeName.replace(self.not_string,'')
-                assert(self.nodesByName(nodeName).num - self.n == self.nodesByName(positive_name).num)
-                # for example, LDOI relies on this precise ordering
-
-    def rm_node(self,node,resort=True):
-        assert(0) # for now doesn't work since self.A cannot be resized if using cupy
-        # TODO: this is messy...and likely leaves some gaps
-        # note that this does NOT update Fmapd (since may require rebuilding it entirely)
-        self.nodeNames.remove(node.name)
-        del self.nodeNums[node.name] 
-        self.A = cp.delete(self.A, (node.num), axis=0)
-        self.A = cp.delete(self.A, (node.num), axis=1)
-        if node.name in self.F:
-            del self.F[node.name]
-
-        self.nodes.remove(node)
-        self.allNodes.remove(node)
-        self.n -=1
-        if self.n_neg > self.n: # ehh kinda sloppy
-            self.n_neg -=2
-
-        if resort: # complexity of this is not great...
-            for node2 in G.nodes(): 
-                if node2.num > node.num:
-                    node2.num -= 1
-    
-        if isinstance(self,Parity_Net):
-            self.n_exp -=2
-            self.A_exp = cp.delete(self.A_exp, (node.num),axis=0)
-            self.A_exp = cp.delete(self.A_exp, (node.num+self.n),axis=0) # i.e. also rm the complement
-            self.A_exp = cp.delete(self.A_exp, (node.num),axis=1)
-            self.A_exp = cp.delete(self.A_exp, (node.num+self.n),axis=1) 
-
 
     def nodesByName(self,name):
-        return self.allNodes[self.nodeNums[name]]
+        return self.nodes[self.nodeNums[name]]
 
     def build_negative_nodes(self,debug=False):
         # put the negative nodes as 2nd half of node array
@@ -252,44 +203,13 @@ class Net:
                         assert(params['init'][node] in [0,1]) # for PBN may allow floats
 
 
-    def count_clauses_and_lits(self, parity=False):
-        for node in self.allNodes:
-            if not node.isNegative or parity or isinstance(self,Parity_Net):
+    def count_clauses_and_lits(self):
+        for node in self.nodes:
+            if not node.isNegative:
                 self.num_clauses += len(node.F()) 
                 self.max_clauses = max(self.max_clauses, len(node.F()))
                 for clause in node.F():
                     self.max_literals = max(self.max_literals, len(clause))
-
-    def count_HO_clauses(self):
-        # temp function, can remove
-        HO = {}
-        max_indeg=0
-        max_clauses=0
-        used_pairs = []
-        for node in self.nodes:
-            i=node.num
-            max_indeg = max(max_indeg,cp.sum(self.A[i]))
-            for j in range(len(self.A[i])):
-                if self.A[i,j]==1:
-                    for k in range(len(self.A[i])):
-                        if self.A[i,k]==1 and [j,k] not in used_pairs:
-                            max_clauses += 2 # mult or add
-                            used_pairs += [[j,k]]
-            for clause in node.F():
-                cl = clause.copy()
-                cl.sort()
-                if len(clause) not in HO.keys():
-                    HO[len(clause)]=[cl] 
-                elif clause.sort() not in HO[len(clause)]:
-                    HO[len(clause)]+=[cl]
-                else:
-                    print(cl,' IS IN: ',HO[len(clause)])
-
-        print("total # nodes = ",self.n)
-        print("max indeg = ",max_indeg, '\tmax clauses =',max_clauses)
-        for k in HO:
-            print("# order",k,"virtual nodes=",2*len(HO[k])) # incld complement
-
 
 
     def build_Fmapd_and_A(self, params): 
@@ -306,14 +226,14 @@ class Net:
         curr_clause = 0
 
         for i in range(n):
-            clauses = self.allNodes[i].F()
+            clauses = self.nodes[i].F()
             for j in range(len(clauses)):
                 clause = clauses[j]
                 clause_fn = []
                 for k in range(len(clause)):
                     literal_node = self.nodeNums[clause[k]]
                     clause_fn += [literal_node]
-                    if self.allNodes[literal_node].isNegative: 
+                    if self.nodes[literal_node].isNegative: 
                         self.A[i, literal_node-n] = 1
                     else:
                         self.A[i, literal_node] = 1
@@ -434,78 +354,202 @@ class Node:
 
 ##################################################################################################
 
+class ParityNet(Net):
+    def __init__(self,parity_model_file,debug=False):
 
-class Parity_Net(Net):
-    def __init__(self,parity_model_file,debug=False,deep=False):
-
-        super().__init__(model_file=parity_model_file,debug=debug,parity=True)
+        self.parityNodes = [] # these include all regular nodes and their complements
+        super().__init__(model_file=parity_model_file,debug=debug)
         # assumes that negative nodes are already in parity form (i.e. have their logic)
         # note that composite nodes aren't formally added, since only A_exp is actually used
 
-        if deep:
-            self.n_deep = 0 
-        else:
-            self.build_Aexp(debug=debug)
+        self.build_Aexp(debug=debug)
 
 
+    def add_node(self,nodeName,isNegative=False,debug=False):
+        if self.not_string in nodeName:
+            isNegative=True
+        newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
+        self.parityNodes += [newNode]
+        self.nodeNames += [nodeName]
+        self.nodeNums[nodeName] = self.n_neg
+        self.n_neg += 1
+        
+        self.F[nodeName] = []
 
-    def build_Aexp(self,debug=False,deep=False):
+        if not isNegative:
+            self.nodes += [newNode]
+            self.n += 1
+
+        if debug:
+            if self.not_string in nodeName:
+                positive_name = nodeName.replace(self.not_string,'')
+                assert(self.nodesByName(nodeName).num - self.n == self.nodesByName(positive_name).num)
+                # for example, LDOI relies on this precise ordering
+
+    def build_Aexp(self,debug=False):
         self.n_exp = self.n_neg # build_Aexp will iterate this
-        N = self.n_neg+self._num_and_clauses(self.F,deep=deep)
-        if deep:
-            self.n_exp += self.n_deep
-            N += self.n_deep
+        N = self.n_neg+self._num_and_clauses()
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
         composites = []
 
-        for node in self.allNodes:
+        for node in self.parityNodes:
             assert(node.F() == self.F[node.name]) # TODO rm this safety check (or only w debug)
             for clause in node.F():
                 if len(clause)>1: # make a composite node
-                    make_composite=True
-                    if deep:
-                        cName, negName = deep.get_composite_name(clause)
-                        if cName in self.nodeNames:
-                            assert(0) # don't think this should happen...
-                            self.A_exp[self.nodeNums[cName],node.num]=1
-                            make_composite=False
-
-                        # TODO: this shouldn't just be for deep!
-                        if cName in composites:
-                            assert(0) # TODO: if this happens, need to save the composite # and use as index now
-                            make_composite=False
-                        else:
-                            composites += [cName]
-                    if make_composite:
-                        self.A_exp[self.n_exp,node.num]=1
-                        for j in range(len(clause)):
-                            self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
-                        self.n_exp+=1
+                    self.A_exp[self.n_exp,node.num]=1
+                    for j in range(len(clause)):
+                        self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
+                    self.n_exp+=1
                 elif clause not in ['0','1']: # ignore tautologies
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
         
         if debug:
             assert(N==self.n_exp)
 
-    def _num_and_clauses(self,F,deep=False):
+
+    def _num_and_clauses(self):
         count=0
-        for node in self.allNodes:
+        for node in self.parityNodes:
             for clause in node.F():
-                if len(clause)>1:
-                    if not deep: 
-                        count+=1
-                    else:
-                        cName, negName = deep.get_composite_name(clause)
-                        if cName not in self.nodeNames:
-                            count+=1
-                        else:
-                            assert(False) # again i don't think this should occur!
+                if len(clause)>1: 
+                    count+=1
         return count
 
+    def count_clauses_and_lits(self):
+        for node in self.parityNodes:
+            self.num_clauses += len(node.F()) 
+            self.max_clauses = max(self.max_clauses, len(node.F()))
+            for clause in node.F():
+                self.max_literals = max(self.max_literals, len(clause))
+
+    def build_negative_nodes(debug=False):
+        # just to make compatible with default net def
+        pass 
+
+    def write_to_file(self, output_file,parity=False):
+        # parity is an extra switch to treat the network like it is a Parity Net
+        #   for ex when building a parity net from a regular net
+
+        with open(output_file,'w') as ofile:
+            if self.encoding != 'bnet':
+                ofile.write(self.encoding + '\n')
+            else:
+                pass # write it in case does not exist
+            # note this overwrites
+        node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(self.encoding)
+        
+        for node in self.parityNodes:
+            fn=node.F()
+            with open(output_file,'a') as ofile:
+                ofile.write(node.name + node_fn_split + self._fn_to_str(fn) + '\n')
 
 
 ##################################################################################################
 
+# TODO: 
+# think about init DeepNet
+#       finish build_Aexp?, including reordering node nums
+#       also take the time to check that all complements have their functions def'd
+#   should also be fine to start w a regular net..right?
+# debug ParityNet & DeepNet
+
+class DeepNet(ParityNet):
+    def __init__(self,parity_model_file,debug=False):
+        import espresso # due to installation difficulties, imported here
+        self.complement = {}
+
+        super().__init__(model_file=parity_model_file,debug=debug)
+        # assumes that negative nodes are already in parity form (i.e. have their logic)
+        # note that composite nodes aren't formally added, since only A_exp is actually used
+
+        self.build_Aexp(debug=debug)
+
+
+    def add_node(self,nodeName,debug=False):
+        newNode = Node(self,nodeName,self.n_neg)
+        self.nodes += [newNode]
+        self.nodeNames += [nodeName]
+        self.nodeNums[nodeName] = self.n
+        self.n += 1
+        self.F[nodeName] = []
+
+        compl = self.complement_name(fn, not_str) # TODO except cast fn properly
+        self.complement[nodeName] = compl 
+        self.complement[compl] = nodeName
+
+
+    def build_Aexp(self,debug=False):
+        # TODO: first reorder nodes sT compls are always node.num+n/2 % n away!
+
+        self.n_exp = self.n 
+        N = self.n+self._num_and_clauses()
+
+        self.A_exp = cp.zeros((N,N)) #adj for expanded net 
+        composites = []
+
+        for node in self.nodes:
+            if debug:
+                assert(node.F() == self.F[node.name]) 
+            for clause in node.F():
+                if len(clause)>1: # make a composite node
+                    self.A_exp[self.n_exp,node.num]=1
+                    for j in range(len(clause)):
+                        self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
+                    self.n_exp+=1
+                elif clause not in ['0','1']: # ignore tautologies
+                    self.A_exp[self.nodeNums[clause[0]],node.num]=1
+                else:
+                    print("net.build_Aexp of deepNet: tautology found: ",clause)
+        
+        if debug:
+            assert(N==self.n_exp)
+
+
+    def F_to_str(fn):
+        # assumes F is of the form node.F, which is:
+        #   [clause1,clause2,...]  where each clause is [ele1,ele2,...]
+        s = ''
+        i=0
+        for clause in fn:
+            j=0
+            if i!=0:
+                s+='+'
+            for ele in clause:
+                if j!=0:
+                    s+='&'
+                s+=ele 
+                j+=1
+            i+=1
+        return s 
+
+    def str_to_F(s):
+        fn = []
+        clauses = s.split('+') 
+        for clause in clauses:
+            fn_clause = []
+            eles = clause.split('&')
+            for ele in eles:
+                fn_clause += [ele]
+            fn += [fn_clause]
+        return fn 
+
+
+    def complement_name(fn, not_str):
+        fn_new = espresso.not_to_dnf(fn,not_str)
+        fn_name_new = F_to_str(fn_new)
+        print('net.complement_name: original name=',fn,'\tcomplement name=',fn_name_new)
+        return fn_name_new
+
+    def composite_name(fn, not_str):
+        fn_new = espresso.reduce_espresso(fn, not_str)
+        cName = espresso.F_to_str(fn_new)
+        return cName
+
+    def build_negative_nodes(debug=False):
+        # just to make compatible with default net def
+        pass 
+
+##################################################################################################
 
 def get_file_format(format_name):
     recognized_formats = ['DNFwords','DNFsymbolic','bnet']

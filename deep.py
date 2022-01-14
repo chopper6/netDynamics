@@ -3,17 +3,12 @@ import ldoi, logic, param, net
 import espresso # this file uses pyeda, and so will require linux
 
 # TODO:
-# 1) there is an incorrect complement term, looks to reduce too much (and wrongly)
-#       ie if have 'A&B'&'B&C' want !'A&B'+ !'B&C' (and somehow distinguish where ! is)
-#           but instead seem to have !A+B+!B+C 
-# 2) seem to be compressing new composite terms even in 1st pass...before adding any of their fns!
-#       ex. reducing ErbB2_3|!Akt1&!ErbB2_3|ERa vs ErbB2_3|!Akt1&!ERa using ['ErbB2_3|!Akt1', '!ErbB2_3|ERa']
-#       likely 'marked' is not working correctly
-# add DeepNet to net.py and clean that file in general
-
+# clean all non-QM fns, esp w.r.t new DeepNet object
+# move QM section to logic.py? [and update it once espresso version done jp]
+# LATER: add term condition to prev building unnec new nodes
 
 def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
-    # G should be a parity net (see Net.py)
+    # G should be a DeepNet (see Net.py)
     # kmax is the highest order term to expand to
 
     assert(minimizer=='espresso') # put back QM later (maybe)
@@ -25,38 +20,39 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
     while k<=kmax:
         added = True
         while added:
-            marked = [0 for i in range(len(G.allNodes))] # wait until next round if a node has been modified (may need to add new nodes 1st)
             added=False
             nodes_to_add = {} # will add these nodes (which are products) and their complements (which are sums)
             for V in G.allNodes: 
-                if not marked[V.num]:
-                    merged_names = [] #these will be used when rebuilding the complement term
-                    for i in range(len(G.F[V.name])):
-                        clause = G.F[V.name][i]
-                        if len(clause) > 1 and len(clause) <= k:
-                            if True: #parent_clauses_overlap(G,clause):
-                                cName = composite_name([clause], G.not_string, negate=False)
-                                if cName not in G.nodeNames and cName not in nodes_to_add:
-                                    negName = composite_name([clause], G.not_string, negate=True)
-                                    print('\nreducing',cName,'vs',negName,'using',clause)
-                                    ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
-                                    nodes_to_add[cName] = ON_fn
-                                    nodes_to_add[negName] = OFF_fn
-                                    added=True
-                                
-                                merged_names += [cName]
+                merged_names = [] #these will be used when rebuilding the complement term
+                for i in range(len(G.F[V.name])):
+                    clause = G.F[V.name][i]
+                    if len(clause) > 1 and len(clause) <= k:
+                        cName = composite_name([clause], G.not_string)
+                        if cName not in G.nodeNames and cName not in nodes_to_add:
+                            negName = complement_name([clause], G.not_string)
+                            print('\nreducing',cName,'vs compl',negName,'using',clause)
+                            ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
+                            nodes_to_add[cName] = ON_fn
+                            nodes_to_add[negName] = OFF_fn
 
+                            # UGLY HACK PLZ FIX
+                            # for now can actually add the functions, even if the node isn't add
+                            # instead do i in range of G.nodes(), and add nodes during, since new nodes will always be a large value (outside of what G.n was)
+                            G.F[cName] = ON_fn
+                            G.F[negName] = OFF_fn
+                            added=True
+                        
+                        merged_names += [cName]
+                        G.F[V.name][i] = [cName] # TODO check if leaving as mult is better for LDOI
 
-                                G.F[V.name][i] = [cName] # TODO check if leaving as mult is better for LDOI
+                if len(merged_names)>0:
+                    complement = complement_name([[V.name]], G.not_string)
+                    #complement = get_complement_name(V.name, G.not_string)
+                    print('prev function of',complement,'=',G.F[complement])
+                    G.F[complement] = complement_factor(G.F[V.name],merged_names,G.not_string)
+                    print('\tfactored function=',G.F[complement])
+                    # just assuming espresso now
 
-                    if len(merged_names)>0:
-                        marked[(V.num+int(G.n/2)) % G.n]=1 # % since could be modifying the complement and marking the regular
-                        complement = composite_name([[V.name]], G.not_string, negate=True)
-                        #complement = get_complement_name(V.name, G.not_string)
-                        print('prev function of',complement,'=',G.F[complement])
-                        G.F[complement] = complement_factor(G.F[V.name],merged_names,G.not_string)
-                        print('\tfactored function=',G.F[complement])
-                        # just assuming espresso now
             assert(0) # just checking if added 1st round of nodes yet
             for name in nodes_to_add:
                 G.add_node(name,debug=False,deep=True)  
@@ -74,54 +70,6 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     return G
 
-def composite_name(fn, not_str, negate=False):
-    # TODO: standardize, then also call from espresso.py
-    #           and clean this mess
-    #           esp calling to espresso.to_dnf and back is not good
-    #           and having to pass [[ele]] is messy af
-    #               really just need to check if regular vs deep node
-    # fn = espresso.str_to_F(fn_name) 
-    if not negate:
-        return espresso.F_to_str(fn)
-    else:
-        fn_eda = espresso.to_pyEda_fn(fn, not_str)
-        fn_eda = espresso.not_to_dnf(fn_eda,not_str)
-        fn_new = espresso.from_pyEda_fn(fn_eda, not_str)
-        fn_name_new = espresso.F_to_str(fn_new)
-        print('original name=',fn,'\tcomplement name=',fn_name_new)
-        return fn_name_new
-
-
-def complement_factor(fn, merged_names, not_str):
-    print('deep.compl_factor(): original +ve fn=',fn)
-    partial_fn = []
-    for clause2 in fn:
-        if len(clause2)>1 or clause2[0] not in merged_names:
-            partial_fn += [clause2]
-    complements = []
-    for name in merged_names:
-        complements += [composite_name([[name]], not_str, negate=True)] #get_complement_name(name, not_str)]
-
-    fn = espresso.reduce_complement(partial_fn, not_str,complements) 
-    return fn
-
-def parent_clauses_overlap(G, clause):
-    # TODO might've fucked this up
-    assert(0)
-    for i in range(len(clause)):
-        ele1 = clause[i]
-        for clause1 in G.F[ele1]:
-            for a in clause1:
-                for j in range(i,len(clause)):
-                    ele2 = clause[j]
-                    if ele2 == a:
-                        return True
-                    for clause2 in G.F[ele2]: 
-                        for b in clause2:
-                            if a==b or ele1==b:
-                                return True
-    return False
-
 
 
 def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
@@ -129,17 +77,18 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
     # uses either Quine-McCluskey or Espresso
     # Off fn may be v. slow since is the sum term
     if minimizer == 'espresso':
-        import espresso # imported here since espresso does not compile on windows (so someone using windows uses the 'qm' minimizer instead)
+        #import espresso # imported here since espresso does not compile on windows (so someone using windows uses the 'qm' minimizer instead)
         
         fns, varbs = [],[]
         for ele in clause:
             varbs += [ele]
             fns += [G.F[ele]]
         if complement:
-            ON_fn, OFF_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=complement)
+            ON_fn, OFF_fn = espresso.reduce_AND_async(fns, varbs, G.not_string, complement=complement)
         else:
-            ON_fn = espresso.reduce_async_AND_espresso(fns, varbs, G.not_string, complement=complement)
+            ON_fn = espresso.reduce_AND_async(fns, varbs, G.not_string, complement=complement)
     elif minimizer in ['qm','QM']:
+        assert(0) #haven't updated this in awhile
         # note that this can also calc complement
         #print("\tCalculating deep function of ",clause)
         inputs_num2name, inputs_name2num = organize_inputs(G, clause)
@@ -156,7 +105,18 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
         return ON_fn
 
 
+def complement_factor(fn, merged_names, not_str):
+    print('deep.compl_factor(): original +ve fn=',fn)
+    partial_fn = []
+    for clause2 in fn:
+        if len(clause2)>1 or clause2[0] not in merged_names:
+            partial_fn += [clause2]
+    complements = []
+    for name in merged_names:
+        complements += [complement_name([[name]], not_str)] #get_complement_name(name, not_str)]
 
+    fn = espresso.reduce_complement(partial_fn, not_str,complements) 
+    return fn
 
 
 
@@ -235,7 +195,7 @@ def on_off_terms(G,clause,inputs_name2num):
 
     return ON_clauses, OFF_clauses
 
-
+#############################################
 
 if __name__ == "__main__":
     if len(sys.argv) not in [2,3]:
