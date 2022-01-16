@@ -5,6 +5,14 @@ from copy import deepcopy
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
 
+# TODO: 
+# think about init DeepNet
+#       finish build_Aexp?, including reordering node nums
+#       also take the time to check that all complements have their functions def'd
+#   should also be fine to start w a regular net..right?
+# debug ParityNet & DeepNet
+# poss have to add self to a bunch of those fns, not sure
+
 # TODO:
 #   G.nodes() should be the default, not AllNodes!
 #       use G.parityNodes() or something to distinguish
@@ -446,16 +454,9 @@ class ParityNet(Net):
 
 ##################################################################################################
 
-# TODO: 
-# think about init DeepNet
-#       finish build_Aexp?, including reordering node nums
-#       also take the time to check that all complements have their functions def'd
-#   should also be fine to start w a regular net..right?
-# debug ParityNet & DeepNet
-
 class DeepNet(ParityNet):
     def __init__(self,parity_model_file,debug=False):
-        import espresso # due to installation difficulties, imported here
+        import espresso # due to potential installation difficulties, imported here
         self.complement = {}
 
         super().__init__(model_file=parity_model_file,debug=debug)
@@ -473,13 +474,35 @@ class DeepNet(ParityNet):
         self.n += 1
         self.F[nodeName] = []
 
-        compl = self.complement_name(fn, not_str) # TODO except cast fn properly
+        compl = self.complement_name(fn, self.not_string) # TODO except cast fn properly
         self.complement[nodeName] = compl 
         self.complement[compl] = nodeName
 
 
+    def reorder(self):
+        # sorts nodes such that 2nd half are the complements of the 1st half
+        visited = [0 for i in range(self.n)]
+        new_nodes = []
+
+        for i in range(G.n):
+            node = self.nodes[i]
+            compl = self.get_complement(node)
+            if compl.num > i:
+                node.num = len(new_nodes)
+                new_nodes += [node]
+        half_n = len(new_nodes)
+        assert(half_n == int(self.n/2))
+        for i in range(len(new_nodes)):
+            compl = self.get_complement(new_nodes[i])
+            compl.num = len(new_nodes)
+            new_nodes += [compl]
+
+        self.nodes = new_nodes 
+        self.nodeNames = [node.name for node in self.nodes] 
+        self.nodeNums = {node.name:node.num for node in self.ndoes} 
+
     def build_Aexp(self,debug=False):
-        # TODO: first reorder nodes sT compls are always node.num+n/2 % n away!
+        self.reorder()
 
         self.n_exp = self.n 
         N = self.n+self._num_and_clauses()
@@ -496,7 +519,7 @@ class DeepNet(ParityNet):
                     for j in range(len(clause)):
                         self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
                     self.n_exp+=1
-                elif clause not in ['0','1']: # ignore tautologies
+                elif clause not in ['0','1',['0'],['1']]: # ignore tautologies
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
                 else:
                     print("net.build_Aexp of deepNet: tautology found: ",clause)
@@ -548,6 +571,10 @@ class DeepNet(ParityNet):
     def build_negative_nodes(debug=False):
         # just to make compatible with default net def
         pass 
+
+    def get_complement(self, node):
+        # returns Node objects, whereas G.complements[name] returns string of the name
+        return G.nodesByName(G.complements[node.name])
 
 ##################################################################################################
 

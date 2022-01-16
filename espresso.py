@@ -17,58 +17,58 @@ not_str = '!'
 # pass G to these fns from wherever
 # when debugging check edge cases such as: return ['0'],['1']
 
-def reduce(fn, not_str, G):
-    fn_eda, placeholders = to_pyEda_fn(fn,not_str,G)
+def reduce(fn, G):
+    fn_eda, placeholders = to_pyEda(fn,G)
     fn_eda = fn_eda.to_dnf()
     if not fn_eda:
         return False # i.e. function evals to false always
     fn_reduced, = eda.espresso_exprs(fn_eda)
-    fn_reduced = from_pyEda_fn(fn_reduced,not_str,placeholders,G)
+    fn_reduced = from_pyEda(fn_reduced,G,placeholders)
     #print("\n\treduced fn:",fn_reduced)
     return fn_reduced
 
 
-def reduce_complement(fn, not_str, complements, G):
+def reduce_complement(fn, complements, G):
     if fn==[]:
         full_unred = 1
         ph = {}
     else:
-        f, ph = to_pyEda_fn(fn,not_str)
+        f, ph = to_pyEda(fn,G)
         print("esp.reduce_compl, partial fn=",f)
-        partial = not_to_dnf(f,not_str,pyeda_form=True) #again ok to skip ph here only bc fwd fn's ph already recorded
+        partial = not_to_dnf(f,G,pyeda_form=True) #again ok to skip ph here only bc fwd fn's ph already recorded
         if not partial:
             assert(0) # have to think about what to do
         full_unred = partial
 
-    compls, ph = to_pyEda([[compl for compl in complements]], not_str,G,placeholders=ph) 
+    compls, ph = to_pyEda([[compl for compl in complements]], G,placeholders=ph) 
     full_unred = eda.And(full_unred, compls)
     full, = eda.espresso_exprs(full_unred.to_dnf())
-    full = from_pyEda_fn(full, not_str,ph,G)
+    full = from_pyEda(full, G,ph)
     return full
 
 
-def reduce_AND_async(fns, varbs, not_str,G, complement=True):
+def reduce_AND_async(fns, varbs,G, complement=True):
     # where fns = [fn1, fn2, ...]
     # and varbs = [var1, var2, ...] correspd to those functions
     used_compls = []
     part1 = 1
     ph={}
     for fn in fns:
-        fn, ph = to_pyEda_fn(fn,not_str,G,placeholders=ph)
+        fn, ph = to_pyEda(fn,G,placeholders=ph)
         part1 = eda.And(part1,fn) 
     part2 = 0
     for v in varbs:
         term = []
         for u in varbs:
             if v!=u:
-                term += [negate_ele(u, not_str)]
-        fn, ph = to_pyEda_fn(term,not_str,G,placeholders=ph)
+                term += [negate_ele(u, G)]
+        fn, ph = to_pyEda(term,G,placeholders=ph)
         part2 = eda.Or(part2,term)
 
     fn = eda.And(part1,part2).to_dnf()
     #print('espresso attempting to reduce:',eda.And(part1,part2).to_dnf())
     if complement:
-        OFF_fn = not_to_dnf(fn,not_str,pyeda_form=True)
+        OFF_fn = not_to_dnf(fn,G,pyeda_form=True)
         # note that any placeholders during not are lost, this is only ok since the complement of any such ph should be in the On fn
         # but in general this is smthg not great about not_to_dnf(pyeda_form=True)
         if not fn:
@@ -80,19 +80,19 @@ def reduce_AND_async(fns, varbs, not_str,G, complement=True):
             return ['0'],['1']
         elif not OFF_fn:
             return ['1'],['0']
-        return from_pyEda_fn(ON_fn, not_str,placeholders=ph,G=G), from_pyEda_fn(OFF_fn, not_str,placeholders=ph,G=G)
+        return from_pyEda(ON_fn, G,placeholders=ph), from_pyEda(OFF_fn, G,placeholders=ph)
     else:  
         if not fn:
             return ['0'] # i.e. function evals to false always
         fn_reduced, = eda.espresso_exprs(fn)
         if not fn_reduced:
             return ['0']
-        return from_pyEda_fn(fn_reduced, not_str,placeholders=ph,G=G)
+        return from_pyEda(fn_reduced, G,placeholders=ph)
 
 
 ######### CONVERSION ###########
 
-def not_to_dnf(fn,not_str,G,cap=100,pyeda_form=False):
+def not_to_dnf(fn,G,cap=100,pyeda_form=False):
     # when |new terms| > cap, will reduce using espresso
 
     # TODO: poss problematic w/ phs
@@ -102,7 +102,7 @@ def not_to_dnf(fn,not_str,G,cap=100,pyeda_form=False):
     # ALT: could make 2 dicts of higher order terms and their complements, sT don't have to reconstruct each time
     #           (although would still have to construct the 1st time, ect)
     if pyeda_form:
-        fn = from_pyEda_fn(fn,not_str) 
+        fn = from_pyEda(fn,G) 
     if fn == ['1']:
         return 0
     elif fn == ['0']:
@@ -112,28 +112,29 @@ def not_to_dnf(fn,not_str,G,cap=100,pyeda_form=False):
     clause1 = fn[0]
 
     for ele1 in clause1:
-        terms += [[negate_ele(ele1,not_str)]]  
+        terms += [[negate_ele(ele1,G)]]  
         for j in range(1,len(fn)):
             clause2=fn[j]
             new_terms = []
             for ele2 in clause2:
                 for term in terms:
-                    new_terms += [term + [negate_ele(ele2,not_str)]]           
+                    new_terms += [term + [negate_ele(ele2,G)]]           
             terms = new_terms
 
             if len(terms) > cap:
-                terms = reduce_espresso(terms, not_str)
-    terms = reduce_espresso(terms, not_str)
+                terms = reduce(terms, G)
+    terms = reduce(terms, G)
 
     if pyeda_form:
-        return to_pyEda_fn(terms, not_str,G)   
+        return to_pyEda(terms, G)   
     else:
         return terms
 
 
-def negate_ele(ele, not_str):
+def negate_ele(ele, G):
     # ele is str
     
+    not_str = G.not_string
     # base case
     if '&' not in ele and '+' not in ele:
         if not_str in ele:
@@ -143,12 +144,12 @@ def negate_ele(ele, not_str):
 
     # else higher order node
     ele_fn = str_to_F(ele)
-    ele_not_eda = espresso.not_to_dnf(ele_fn,not_str)
+    ele_not_eda = espresso.not_to_dnf(ele_fn,G)
     return F_to_str(ele_not)
 
 ######### UTILITY FNS ############
 
-def to_pyEda(fn, not_str,G,placeholders={}):
+def to_pyEda(fn, G,placeholders={}):
     # takes my function format and converts to pyEda 
     # pass placeholders if calling multiple times before from_pyEda
     placeholders = insert_placeholders(fn,G,placeholders=placeholders)
@@ -161,15 +162,15 @@ def to_pyEda(fn, not_str,G,placeholders={}):
         for ele in clause:
             if j!=0:
                 fnStr += ' & '
-            if not_str in ele:
+            if G.not_string in ele:
                 fnStr += '~'
-                ele = ele.replace(not_str,'')
+                ele = ele.replace(G.not_string,'')
             fnStr += ele
             j+=1
         i+=1
     return eda.expr(fnStr), placeholders
 
-def from_pyEda(fn, not_str,placeholders=None,G=None):
+def from_pyEda(fn, G,placeholders=None):
     newF = []
     fn = str(fn).replace('Or(','')
     assert('Or(' not in fn) #since this is DNF, should only be one Or which is rm'd in prev line
@@ -184,7 +185,7 @@ def from_pyEda(fn, not_str,placeholders=None,G=None):
         for ele in eles:
             newEle = ''
             if '~' in ele:
-                newEle += not_str
+                newEle += G.not_string
                 ele = ele.replace('~','')
             while ' ' in ele or ')' in ele:
                 ele = ele.replace(' ','')
@@ -196,7 +197,7 @@ def from_pyEda(fn, not_str,placeholders=None,G=None):
             newF += [newClause]
 
     if placeholders is not None and len(placeholders):
-        replace_placeholders(newF, placeholders,G)
+        replace_placeholders(newF, G, placeholders)
     return newF
 
 
@@ -223,7 +224,7 @@ def insert_placeholders(fn,G,placeholders={}):
     return placeholders #note that fn has been implicitly modified
 
 
-def replace_placeholders(fn, placeholders, G):
+def replace_placeholders(fn, G, placeholders):
     # this is to use names that have illegal symbols as variables, such as "A+B"
     # implicitly modifies fn
     for clause in fn:

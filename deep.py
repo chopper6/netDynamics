@@ -16,54 +16,46 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
     # kmax is the highest order term to expand to
 
     assert(minimizer=='espresso') # put back QM later (maybe)
-    #if minimizer == 'espresso':
-    #   import espresso # this is imported here since espresso does not compile on windows
-    #   # i.e. to allow windows to use other parts of this program
 
     k=2
     while k<=kmax:
         added = True
         while added:
             added=False
-            nodes_to_add = {} # will add these nodes (which are products) and their complements (which are sums)
-            for V in G.allNodes: 
-                merged_names = [] #these will be used when rebuilding the complement term
-                for i in range(len(G.F[V.name])):
-                    clause = G.F[V.name][i]
+            for i in range(len(G.nodes)): 
+                V = G.nodes[i]
+                cmps,cmpls = [],[] #composites and complements, resp
+                for j in range(len(G.F[V.name])):
+                    clause = G.F[V.name][j]
                     if len(clause) > 1 and len(clause) <= k:
-                        cName = composite_name([clause], G.not_string)
-                        if cName not in G.nodeNames and cName not in nodes_to_add:
-                            negName = complement_name([clause], G.not_string)
-                            print('\nreducing',cName,'vs compl',negName,'using',clause)
+                        cmpsName = composite_name([clause], G.not_string)
+                        if cmpsName not in G.nodeNames:
+                            cmplName = complement_name([clause], G.not_string)
+                            assert(cmplName not in G.nodeNames)
+                            print('\nreducing',cmpsName,'vs compl',negName,'using',clause)
                             ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
-                            nodes_to_add[cName] = ON_fn
-                            nodes_to_add[negName] = OFF_fn
 
-                            # UGLY HACK PLZ FIX
-                            # for now can actually add the functions, even if the node isn't add
-                            # instead do i in range of G.nodes(), and add nodes during, since new nodes will always be a large value (outside of what G.n was)
-                            G.F[cName] = ON_fn
-                            G.F[negName] = OFF_fn
+                            G.add_node(cmpsName,debug=debug) 
+                            G.F[cmpsName] = ON_fn
+                            G.add_node(cmplName,debug=debug) 
+                            G.F[cmplName] = OFF_fn
                             added=True
+                            cmps += [cmpsName]
+                            cmpl += [cmplName]
                         
-                        merged_names += [cName]
-                        G.F[V.name][i] = [cName] # TODO check if leaving as mult is better for LDOI
+                        G.F[V.name][j] = [cmpsName] 
 
-                if len(merged_names)>0:
-                    complement = complement_name([[V.name]], G.not_string)
-                    #complement = get_complement_name(V.name, G.not_string)
+
+                if len(cmps)>0:
+                    complement = G.complement[V.name]
+                    G.F[complement] = complement_factor(G.F[V.name],cmps,cmpls,G)
+                    
                     print('prev function of',complement,'=',G.F[complement])
-                    G.F[complement] = complement_factor(G.F[V.name],merged_names,G.not_string)
                     print('\tfactored function=',G.F[complement])
-                    # just assuming espresso now
 
-            assert(0) # just checking if added 1st round of nodes yet
-            for name in nodes_to_add:
-                G.add_node(name,debug=False,deep=True)  
-                G.F[name] = nodes_to_add[name]
-                # poss indicate as sep type of node? 
-                # jp don't care about isNegative for LDOI, but check
             print("completed a pass with k=",k,", and",len(nodes_to_add)," new virtual nodes.")
+            assert(0) # just checking if added 1st round of nodes yet
+            
         k += 1
 
     G.build_Aexp(debug=debug)
@@ -88,9 +80,9 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
             varbs += [ele]
             fns += [G.F[ele]]
         if complement:
-            ON_fn, OFF_fn = espresso.reduce_AND_async(fns, varbs, G.not_string, complement=complement)
+            ON_fn, OFF_fn = espresso.reduce_AND_async(fns, varbs, G, complement=complement)
         else:
-            ON_fn = espresso.reduce_AND_async(fns, varbs, G.not_string, complement=complement)
+            ON_fn = espresso.reduce_AND_async(fns, varbs, G, complement=complement)
     elif minimizer in ['qm','QM']:
         assert(0) #haven't updated this in awhile
         # note that this can also calc complement
@@ -109,17 +101,15 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
         return ON_fn
 
 
-def complement_factor(fn, merged_names, not_str):
+def complement_factor(fn, cmpsNames, cmplNames, G):
     print('deep.compl_factor(): original +ve fn=',fn)
+    # compositeNames & complementNames should match
     partial_fn = []
     for clause2 in fn:
-        if len(clause2)>1 or clause2[0] not in merged_names:
+        if len(clause2)>1 or clause2[0] not in cmpsNames:
             partial_fn += [clause2]
-    complements = []
-    for name in merged_names:
-        complements += [complement_name([[name]], not_str)] #get_complement_name(name, not_str)]
 
-    fn = espresso.reduce_complement(partial_fn, not_str,complements) 
+    fn = espresso.reduce_complement(partial_fn, cmplNames, G) 
     return fn
 
 
