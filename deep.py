@@ -1,15 +1,13 @@
 import sys, pickle
 import ldoi, logic, param, net
-import espresso # this file uses pyeda, and so will require linux
-
-# TODO:
-# clean all non-QM fns, esp w.r.t new DeepNet object
-# move QM section to logic.py? [and update it once espresso version done jp]
+import espresso # this file uses pyeda, and can be a bit tricky to install on windows
 
 # TODO HERE AND  ELSEWHERE:
 #   double check whenever call 'not_str' (since generally shouldn't)
 
 # LATER: add term condition to prev building unnec new nodes
+
+# move QM section to logic.py? [and update it once espresso version done jp]
 
 def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
     # G should be a DeepNet (see Net.py)
@@ -24,21 +22,23 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
             added=False
             for i in range(len(G.nodes)): 
                 V = G.nodes[i]
-                cmps,cmpls = [],[] #composites and complements, resp
+                cmps,cmpl = [],[] #composites and complements, resp
                 for j in range(len(G.F[V.name])):
                     clause = G.F[V.name][j]
                     if len(clause) > 1 and len(clause) <= k:
-                        cmpsName = composite_name([clause], G.not_string)
+                        cmpsName = G.composite_name([clause])
                         if cmpsName not in G.nodeNames:
-                            cmplName = complement_name([clause], G.not_string)
+                            cmplName = G.complement_name(clause,clause=True)
                             assert(cmplName not in G.nodeNames)
-                            print('\nreducing',cmpsName,'vs compl',negName,'using',clause)
+                            print('\nreducing',cmpsName,'vs compl',cmplName ,'using',clause)
                             ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
 
                             G.add_node(cmpsName,debug=debug) 
                             G.F[cmpsName] = ON_fn
                             G.add_node(cmplName,debug=debug) 
                             G.F[cmplName] = OFF_fn
+                            print("ON=",ON_fn)
+                            print("OFF=",OFF_fn)
                             added=True
                             cmps += [cmpsName]
                             cmpl += [cmplName]
@@ -48,7 +48,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
                 if len(cmps)>0:
                     complement = G.complement[V.name]
-                    G.F[complement] = complement_factor(G.F[V.name],cmps,cmpls,G)
+                    G.F[complement] = complement_factor(G.F[V.name],cmps,cmpl,G)
                     
                     print('prev function of',complement,'=',G.F[complement])
                     print('\tfactored function=',G.F[complement])
@@ -201,8 +201,9 @@ if __name__ == "__main__":
         output_file=sys.argv[2]
     
     params = param.load(sys.argv[1])
-    Gpar = net.Parity_Net(params['parity_model_file'],debug=params['debug'],deep=True)
-    Gdeep = build_deep(Gpar,5,output_file,minimizer='espresso',debug=True)
-    init = ldoi.get_const_node_inits(Gdeep,params)
-    ldoi.test(Gdeep,init=init)
-    ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp
+    G = net.DeepNet(params['parity_model_file'],debug=True)
+    Gdeep = build_deep(G,2,output_file,minimizer='espresso',debug=True)
+    print("\nDone (not yet using LDOI)\n")
+    #init = ldoi.get_const_node_inits(Gdeep,params)
+    #ldoi.test(Gdeep,init=init)
+    #ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp

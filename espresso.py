@@ -14,7 +14,6 @@ not_str = '!'
 # F form: fn = [clause1, clause2, ...], where clause = [ele1, ele2, ...]
 
 # TODO: not_dnf() and negate_ele() still need cleaning, esp w.r.t phs
-# pass G to these fns from wherever
 # when debugging check edge cases such as: return ['0'],['1']
 
 def reduce(fn, G):
@@ -62,7 +61,7 @@ def reduce_AND_async(fns, varbs,G, complement=True):
         for u in varbs:
             if v!=u:
                 term += [negate_ele(u, G)]
-        fn, ph = to_pyEda(term,G,placeholders=ph)
+        fn, ph = to_pyEda([term],G,placeholders=ph)
         part2 = eda.Or(part2,term)
 
     fn = eda.And(part1,part2).to_dnf()
@@ -97,6 +96,7 @@ def not_to_dnf(fn,G,cap=100,pyeda_form=False):
 
     # TODO: poss problematic w/ phs
     # if poss get rid of negate_ele ect recursion, but the phs may not be in G.complements
+    # esp 'if pyeda' clause at the end...
 
     # CURR: recursion via not_to_dnf() -> negate_ele() -> not_to_dnf(); works but poss confusing
     # ALT: could make 2 dicts of higher order terms and their complements, sT don't have to reconstruct each time
@@ -107,6 +107,7 @@ def not_to_dnf(fn,G,cap=100,pyeda_form=False):
         return 0
     elif fn == ['0']:
         return 1
+    assert(fn != [['1']] and fn != [['0']] and fn != [[1]] and fn != [[0]]) #rm after awhile
 
     terms = []
     clause1 = fn[0]
@@ -126,17 +127,17 @@ def not_to_dnf(fn,G,cap=100,pyeda_form=False):
     terms = reduce(terms, G)
 
     if pyeda_form:
-        return to_pyEda(terms, G)   
-    else:
-        return terms
+        terms, phs = to_pyEda(terms, G) # should these phs ever be returned?
+        #print('terms,phs=',terms,phs)
+    return terms
 
 
 def negate_ele(ele, G):
     # ele is str
     
-    not_str = G.not_string
     # base case
     if '&' not in ele and '+' not in ele:
+        not_str = G.not_string
         if not_str in ele:
             return ele.replace(not_str,'')
         else:
@@ -144,7 +145,7 @@ def negate_ele(ele, G):
 
     # else higher order node
     ele_fn = str_to_F(ele)
-    ele_not_eda = espresso.not_to_dnf(ele_fn,G)
+    ele_not = not_to_dnf(ele_fn,G)
     return F_to_str(ele_not)
 
 ######### UTILITY FNS ############
@@ -152,6 +153,7 @@ def negate_ele(ele, G):
 def to_pyEda(fn, G,placeholders={}):
     # takes my function format and converts to pyEda 
     # pass placeholders if calling multiple times before from_pyEda
+    #print("in to_pyEda converting fn:",fn)
     placeholders = insert_placeholders(fn,G,placeholders=placeholders)
     fnStr = ''
     i=0
@@ -209,15 +211,22 @@ def insert_placeholders(fn,G,placeholders={}):
     originals = []
     for clause in fn:
         for i in range(len(clause)):
-            ele = clause[i]
-            if '&' in ele or '+' in ele:
-                name = ele.replace(not_str,'')
-                compl = G.complement[name]
-                if name not in originals and compl not in originals:
+            name = clause[i]
+            if '&' in name or '+' in name:
+                #name = ele.replace(not_str,'')
+                
+                # this breaks cyclic: new node -> find it's complement -> not_to_dnf -> reduce -> insert_phs -> but compl doesn't exist yet (bc finding)
+                # BUT should be careful..
+                if name in G.complement:
+                    compl = G.complement[name]
+                else:
+                    compl = None
+
+                if name not in originals and (not compl or compl not in originals):
                     originals += [name]
                     placeholders['placeholder'+str(originals.index(name))] = clause[i]
                     clause[i] = 'placeholder'+str(originals.index(name))
-                elif compl in originals:
+                elif not compl or compl in originals:
                     clause[i] = '!placeholder'+str(originals.index(name))
                 else:
                     clause[i] = 'placeholder'+str(originals.index(name))
@@ -232,9 +241,35 @@ def replace_placeholders(fn, G, placeholders):
             if clause[i] in placeholders:
                 clause[i] = placeholders[clause[i]]
             elif clause[i].replace('!','') in placeholders:
-                clause[i] = G.complement[placeholders[clause[i]]]
+                clause[i] = G.complement[placeholders[clause[i].replace('!','')]]
 
 
+
+def F_to_str(fn):
+    s = ''
+    i=0
+    for clause in fn:
+        j=0
+        if i!=0:
+            s+='+'
+        for ele in clause:
+            if j!=0:
+                s+='&'
+            s+=ele 
+            j+=1
+        i+=1
+    return s 
+
+def str_to_F(s):
+    fn = []
+    clauses = s.split('+') 
+    for clause in clauses:
+        fn_clause = []
+        eles = clause.split('&')
+        for ele in eles:
+            fn_clause += [ele]
+        fn += [fn_clause]
+    return fn 
 
 
 if __name__ == '__main__':

@@ -1,21 +1,20 @@
 import os, sys, yaml, util, math
 import util, logic, deep
 from copy import deepcopy
+import espresso
 
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
 
 # TODO: 
-# think about init DeepNet
-#       finish build_Aexp?, including reordering node nums
-#       also take the time to check that all complements have their functions def'd
-#   should also be fine to start w a regular net..right?
+# should also be fine to start w a regular net..right?
 # debug ParityNet & DeepNet
-# poss have to add self to a bunch of those fns, not sure
-
-# TODO:
 #   G.nodes() should be the default, not AllNodes!
 #       use G.parityNodes() or something to distinguish
+#           --> need to check all over the place where allNodes may have been used
+#   check that ParityNet name (vs Parity_Net) is fixed elsewhere
+
+# TODO 2:
 #   add explicit debug function for net construction
 #       check that certain objs same, certain diff
 #   debug changes to G.F and node.F()
@@ -430,7 +429,7 @@ class ParityNet(Net):
             for clause in node.F():
                 self.max_literals = max(self.max_literals, len(clause))
 
-    def build_negative_nodes(debug=False):
+    def build_negative_nodes(self, debug=False):
         # just to make compatible with default net def
         pass 
 
@@ -454,9 +453,8 @@ class ParityNet(Net):
 
 ##################################################################################################
 
-class DeepNet(ParityNet):
+class DeepNet(Net):
     def __init__(self,parity_model_file,debug=False):
-        import espresso # due to potential installation difficulties, imported here
         self.complement = {}
 
         super().__init__(model_file=parity_model_file,debug=debug)
@@ -467,39 +465,44 @@ class DeepNet(ParityNet):
 
 
     def add_node(self,nodeName,debug=False):
-        newNode = Node(self,nodeName,self.n_neg)
+        newNode = Node(self,nodeName,self.n)
         self.nodes += [newNode]
         self.nodeNames += [nodeName]
         self.nodeNums[nodeName] = self.n
         self.n += 1
         self.F[nodeName] = []
 
-        compl = self.complement_name(fn, self.not_string) # TODO except cast fn properly
+        compl = self.complement_name(nodeName) 
         self.complement[nodeName] = compl 
         self.complement[compl] = nodeName
 
 
-    def reorder(self):
+    def reorder(self,debug=True):
         # sorts nodes such that 2nd half are the complements of the 1st half
         visited = [0 for i in range(self.n)]
         new_nodes = []
 
-        for i in range(G.n):
+        for i in range(self.n):
             node = self.nodes[i]
+            if debug:
+                assert(node.F() != [])
             compl = self.get_complement(node)
             if compl.num > i:
                 node.num = len(new_nodes)
                 new_nodes += [node]
         half_n = len(new_nodes)
-        assert(half_n == int(self.n/2))
+        if debug:
+            assert(half_n == int(self.n/2))
         for i in range(len(new_nodes)):
             compl = self.get_complement(new_nodes[i])
+            if debug:
+                assert(compl.F() != [])
             compl.num = len(new_nodes)
             new_nodes += [compl]
 
         self.nodes = new_nodes 
         self.nodeNames = [node.name for node in self.nodes] 
-        self.nodeNums = {node.name:node.num for node in self.ndoes} 
+        self.nodeNums = {node.name:node.num for node in self.nodes} 
 
     def build_Aexp(self,debug=False):
         self.reorder()
@@ -508,7 +511,6 @@ class DeepNet(ParityNet):
         N = self.n+self._num_and_clauses()
 
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
-        composites = []
 
         for node in self.nodes:
             if debug:
@@ -528,53 +530,37 @@ class DeepNet(ParityNet):
             assert(N==self.n_exp)
 
 
-    def F_to_str(fn):
-        # assumes F is of the form node.F, which is:
-        #   [clause1,clause2,...]  where each clause is [ele1,ele2,...]
-        s = ''
-        i=0
-        for clause in fn:
-            j=0
-            if i!=0:
-                s+='+'
-            for ele in clause:
-                if j!=0:
-                    s+='&'
-                s+=ele 
-                j+=1
-            i+=1
-        return s 
-
-    def str_to_F(s):
-        fn = []
-        clauses = s.split('+') 
-        for clause in clauses:
-            fn_clause = []
-            eles = clause.split('&')
-            for ele in eles:
-                fn_clause += [ele]
-            fn += [fn_clause]
-        return fn 
-
-
-    def complement_name(fn, not_str):
-        fn_new = espresso.not_to_dnf(fn,not_str)
-        fn_name_new = F_to_str(fn_new)
+    def complement_name(self,fn,clause=False):
+        if clause:
+            fn = [fn]
+        else:
+            fn = [[fn]]
+        fn_new = espresso.not_to_dnf(fn,self)
+        fn_name_new = espresso.F_to_str(fn_new)
         print('net.complement_name: original name=',fn,'\tcomplement name=',fn_name_new)
         return fn_name_new
 
-    def composite_name(fn, not_str):
-        fn_new = espresso.reduce_espresso(fn, not_str)
+    def _num_and_clauses(self):
+        count=0
+        for node in self.nodes:
+            for clause in node.F():
+                if len(clause)>1: 
+                    count+=1
+        return count
+
+    def composite_name(self,fn):
+        fn_new = espresso.reduce(fn, self)
         cName = espresso.F_to_str(fn_new)
         return cName
 
-    def build_negative_nodes(debug=False):
+    def build_negative_nodes(self,debug=False):
         # just to make compatible with default net def
         pass 
 
     def get_complement(self, node):
-        # returns Node objects, whereas G.complements[name] returns string of the name
-        return G.nodesByName(G.complements[node.name])
+        # returns Node objects, whereas self.complements[name] returns string of the name
+        return self.nodesByName(self.complement[node.name])
+
 
 ##################################################################################################
 
