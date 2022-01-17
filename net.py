@@ -472,7 +472,9 @@ class DeepNet(Net):
         self.n += 1
         self.F[nodeName] = []
 
-        compl = self.complement_name(nodeName) 
+        compl = espresso.negate_ele(nodeName, self)
+        if 'ErbB2_3+!Akt1&ErbB2_3+!ERa' in nodeName:
+            print('net: adding node',nodeName,'and compl',compl)
         self.complement[nodeName] = compl 
         self.complement[compl] = nodeName
 
@@ -529,16 +531,6 @@ class DeepNet(Net):
         if debug:
             assert(N==self.n_exp)
 
-
-    def complement_name(self,fn,clause=False):
-        if clause:
-            fn = [fn]
-        else:
-            fn = [[fn]]
-        fn_new = espresso.not_to_dnf(fn,self)
-        fn_name_new = espresso.F_to_str(fn_new)
-        print('net.complement_name: original name=',fn,'\tcomplement name=',fn_name_new)
-        return fn_name_new
 
     def _num_and_clauses(self):
         count=0

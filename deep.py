@@ -19,7 +19,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
     while k<=kmax:
         added = True
         while added:
-            added=False
+            added=0
             for i in range(len(G.nodes)): 
                 V = G.nodes[i]
                 cmps,cmpl = [],[] #composites and complements, resp
@@ -28,33 +28,33 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                     if len(clause) > 1 and len(clause) <= k:
                         cmpsName = G.composite_name([clause])
                         if cmpsName not in G.nodeNames:
-                            cmplName = G.complement_name(clause,clause=True)
+                            cmplName = complement_clause(clause,G)
                             assert(cmplName not in G.nodeNames)
-                            print('\nreducing',cmpsName,'vs compl',cmplName ,'using',clause)
+                            if 'ErbB2_3+!Akt1&ErbB2_3+!ERa' == cmpsName:
+                                print('\ndeep: reducing',cmpsName,'vs compl',cmplName ,'using',clause)
                             ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
 
                             G.add_node(cmpsName,debug=debug) 
                             G.F[cmpsName] = ON_fn
                             G.add_node(cmplName,debug=debug) 
                             G.F[cmplName] = OFF_fn
-                            print("ON=",ON_fn)
-                            print("OFF=",OFF_fn)
-                            added=True
+                            #print("F[",cmpsName,"]=",ON_fn, 'from clause=',clause)
+                            #print("\tOFF=",OFF_fn)
+                            added += 1
                             cmps += [cmpsName]
                             cmpl += [cmplName]
-                        
+
+
                         G.F[V.name][j] = [cmpsName] 
 
 
                 if len(cmps)>0:
                     complement = G.complement[V.name]
+                    #print('prev function of',complement,'=',G.F[complement])
                     G.F[complement] = complement_factor(G.F[V.name],cmps,cmpl,G)
-                    
-                    print('prev function of',complement,'=',G.F[complement])
-                    print('\tfactored function=',G.F[complement])
+                    #print('\tfactored function=',G.F[complement])
 
-            print("completed a pass with k=",k,", and",len(nodes_to_add)," new virtual nodes.")
-            assert(0) # just checking if added 1st round of nodes yet
+            print("completed a pass with k=",k,", and",added," new virtual nodes.")
             
         k += 1
 
@@ -66,6 +66,11 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     return G
 
+
+def debug_check_fn(fn): # can rm this fn
+    for clause in fn:
+        for ele in clause:
+            assert('placeholder' not in ele)
 
 
 def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
@@ -102,7 +107,7 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
 
 
 def complement_factor(fn, cmpsNames, cmplNames, G):
-    print('deep.compl_factor(): original +ve fn=',fn)
+    #print('deep.compl_factor(): original +ve fn=',fn)
     # compositeNames & complementNames should match
     partial_fn = []
     for clause2 in fn:
@@ -113,6 +118,12 @@ def complement_factor(fn, cmpsNames, cmplNames, G):
     return fn
 
 
+def complement_clause(fn,G):
+    fn = [fn]
+    fn_new = espresso.not_to_dnf(fn,G)
+    fn_name_new = espresso.F_to_str(fn_new)
+    #print('deep.complement_name: original name=',fn,'\tcomplement name=',fn_name_new)
+    return fn_name_new
 
 
 
