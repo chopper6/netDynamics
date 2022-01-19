@@ -42,25 +42,29 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                             G.F[cmplName] = OFF_fn
                             if cmplName == '!a+c':
                                 print("OFF_fn for !a+c: ",OFF_fn)
-                                assert(0)
                             #print("F[",cmpsName,"]=",ON_fn, 'from clause=',clause)
                             #print("\tOFF=",OFF_fn)
                             added += 1
 
                             checked += [clause]
 
-                        cmps += [cmpsName]
+                        cmps += [cmpsName] 
                         cmpl += [cmplName]
+
+                        # rm'g duplicates, TODO: see if this is nec (same for further below)
+                        cmps = rm_list_in_list_dups(cmps)
+                        cmpl = rm_list_in_list_dups(cmpl)
 
                         # TODO: still end up with duplicates here, due to diff orderings
                         if [cmpsName] not in G.F[V.name]: # this is also ineffic
                             G.F[V.name] += [[cmpsName]]  # poss later change to G.F[V.name][j] = [cmpsName], if use term condition
                         
+                            G.F[V.name] = rm_list_in_list_dups(G.F[V.name])
                     
                 if len(cmps)>0:
                     complement = G.complement[V.name]
-
-                    G.F[complement] += complement_factor(G.F[V.name],cmps,cmpl,G) # again if rm lower order terms, change to G.F[complement] += [complement_factor]
+                    G.F[complement] += complement_factor(G.F[V.name],cmpl) # again if rm lower order terms, change to G.F[complement] += [complement_factor]
+                    G.F[complement] = rm_list_in_list_dups(G.F[complement])
 
             print("completed a pass with k=",k,", and",added," new virtual nodes.")
             
@@ -73,6 +77,11 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
         #G.write_to_file(output_file,parity=True)
 
     return G
+
+def rm_list_in_list_dups(k):
+    k = sorted(k)
+    k =[k[i] for i in range(len(k)) if i == 0 or k[i] != k[i-1]]
+    return k
 
 def clause_order(clause):
     order = 0
@@ -124,13 +133,15 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
         return ON_fn
 
 
-def complement_factor(fn, factors):
+def complement_factor(fn, factor_strs):
     # this is effectively dividing and finding quotient + remainder, in boolean alg
     # fn and factor are both functions of the same form, although factor is typically smaller
     
-    factor_strs = [espresso.F_to_str(factor) for factor in factors]
-    print('init fn=',fn)
-    print('factors=',factors,'factor_str=',factor_strs)
+    #factor_strs = [espresso.F_to_str(factor) for factor in factors]
+    #print('in compl_factor, factors=',[factor for factor in factor_strs])
+    factors = [espresso.str_to_F(factor) for factor in factor_strs]
+    #print('init fn=',fn)
+    #print('factors=',factors,'factor_str=',factor_strs)
     quotient = [[[] for _ in range(len(factors[i]))] for i in range(len(factors))]
     quotient_used_clauses = [[[] for _ in range(len(factors[i]))] for i in range(len(factors))] # the clause that were used to generate the quoient
     
@@ -178,6 +189,8 @@ def complement_factor(fn, factors):
         # check for additional factors:
         other_factors = deepcopy(factors)
         other_factors.remove(factors[i])
+        other_factors = [espresso.F_to_str(factor) for factor in other_factors]
+
         # i assume that this factor will not appear again after checking other factors
         if new_fn_part != [] and other_factors != []:
             new_fn_part = complement_factor(new_fn_part, other_factors)
@@ -191,7 +204,7 @@ def complement_factor(fn, factors):
     # note that fn - new_fn*factor should also work
     for clause in remainder:
         new_fn += [clause]
-    print("final function =",new_fn)
+    #print("final function =",new_fn)
     return new_fn
 
 
