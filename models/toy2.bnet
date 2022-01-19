@@ -1,4 +1,8 @@
-x1,	x1
-x2,	x2
-p1,	x2
-p2,	x1 & x2
+a,	a & b & c | !a & !b & !c
+b,	a & b & c | !a & !b & !c
+c,	c
+d,	a & b
+!a,	!a & b | !a & c | a & !b | !b & c | a & !c | b & !c
+!b,	!a & b | !a & c | a & !b | !b & c | a & !c | b & !c
+!c,	!c
+!d,	!a | !b

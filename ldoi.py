@@ -4,6 +4,9 @@ import itertools, sys, os, pickle
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # TODO:
+#	add an assert than regular and complement aren't both ON
+
+# TODO:
 # check pinning=False at end of ldoi_bfs()
 #	worried the idea is not correct
 # rm the 'test' function
@@ -29,10 +32,26 @@ def ldoi_bfs(G,pinning=True,init=[]):
 
 	# pinning means that sources cannot drive their complement (they are fixed to be ON)
 	# without pinning the algorithm will run faster, and it is possible that ~A in LDOI(A)
+	
+	# TODO: clean this
+	if isinstance(G,net.ParityNet):
+		n=G.n_neg 
+		n_compl = G.n 
+	elif isinstance(G,net.DeepNet):
+		n=G.n 
+		n_compl = int(G.n/2)
+	else:
+		assert(0) # LDOI should be on a ParityNet or a DeepNet
 
 	N = G.n_exp
 	A = G.A_exp
 	A = cp.array(A, dtype=bool).copy()
+	
+	# Debugging:
+	#Alist = A.astype(int).tolist()
+	#print("\nLDOI.ldoi_bfs: Aexp=")
+	#for row in Alist:
+	#	print(row)
 
 	X = cp.zeros((N,N),dtype=bool) # the current sent of nodes being considered
 	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
@@ -42,9 +61,9 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	if len(init) > 0:
 		init = cp.array(init)
 		D[:,init] = 1 
-	D[cp.arange(G.n_neg,N)]=0 #don't care about source nodes for complement nodes
+	D[cp.arange(n,N)]=0 #don't care about source nodes for complement nodes
 	D_compl = D.copy()
-	D_compl[:G.n_neg] = cp.roll(D_compl[:G.n_neg],G.n,axis=0)
+	D_compl[:n] = cp.roll(D_compl[:n],n_compl,axis=0)
 
 	max_count = max(cp.sum(A,axis=0))
 	if max_count<128: 
@@ -53,7 +72,7 @@ def ldoi_bfs(G,pinning=True,init=[]):
 		index_dtype = cp.int16
 
 	num_to_activate = cp.sum(A,axis=0,dtype=index_dtype)
-	num_to_activate[:G.n_neg] = 1 # non composite nodes are OR gates
+	num_to_activate[:n] = 1 # non composite nodes are OR gates
 	counts = cp.tile(num_to_activate,N).reshape(N,N) # num input nodes needed to activate
 	zero = cp.zeros((N,N))
 
@@ -72,7 +91,7 @@ def ldoi_bfs(G,pinning=True,init=[]):
 
 		if pinning:
 			visited_rolled = visited.copy()
-			visited_rolled[:G.n_neg] = cp.roll(visited_rolled[:G.n_neg],G.n,axis=0)
+			visited_rolled[:n] = cp.roll(visited_rolled[:n],n_compl,axis=0)
 			memoX = cp.matmul((visited|D) & cp.logical_not(visited_rolled.T), visited) 
 			# if A has visited B, then add B's visited to A if ~A not in B's visited
 			# otherwise must cut all of B's contribution!
@@ -95,17 +114,23 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	if not pinning:
 		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
 
-
-	return visited[:G.n_neg,:G.n_neg], negated[:G.n_neg] 
+	return visited[:n,:n], negated[:n] 
 
 
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	# fixed_nodes should be a list of names such as ['FOXO3','ERK']
-	assert(isinstance(G,ParityNet)) # LDOI doesn't make sense a on regular net
-	
+	if isinstance(G,net.ParityNet):
+		n=G.n_neg 
+		n_compl = G.n 
+	elif isinstance(G,net.DeepNet):
+		n=G.n 
+		n_compl = int(G.n/2)
+	else:
+		assert(0) # LDOI should be on a ParityNet or a DeepNet
+
 	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
-	avg_num_ldoi_nodes = {k:0 for k in range(G.n_neg)}
-	avg_num_ldoi_outputs = {k:0 for k in range(G.n_neg)}
+	avg_num_ldoi_nodes = {k:0 for k in range(n)}
+	avg_num_ldoi_outputs = {k:0 for k in range(n)}
 	output_indices = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
 
 	ldoi_fixed = []
@@ -125,45 +150,52 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 			if input_set[i]==1:
 				ldoi_inpts += [input_indices[i]]
 			else:
-				ldoi_inpts += [input_indices[i] + G.n] #i.e. its complement
+				ldoi_inpts += [input_indices[i] + n_compl] #i.e. its complement
 
 		ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=ldoi_inpts)
 		if CUPY:
 			ldoi_solns = ldoi_solns.get() #explicitly cast out of cupy
 
-		avg_sum_ldoi += cp.sum(ldoi_solns)/((G.n_neg)**2) #normz by max sum poss
-		for i in range(G.n_neg):
-			avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(G.n_neg)
+		avg_sum_ldoi += cp.sum(ldoi_solns)/((n)**2) #normz by max sum poss
+
+		for i in range(n):
+			avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(n)
 			for o in output_indices:
 				if ldoi_solns[i,o]:
 					avg_num_ldoi_outputs[i] += 1 
 					avg_sum_ldoi_outputs += 1				
-				if ldoi_solns[i,o+G.n]:
+				if ldoi_solns[i,o+n_compl]:
 					avg_num_ldoi_outputs[i] += 1 
 					avg_sum_ldoi_outputs += 1
 			avg_num_ldoi_outputs[i] /= len(output_indices)
-		avg_sum_ldoi_outputs /= (len(output_indices)*G.n_neg)
+		avg_sum_ldoi_outputs /= (len(output_indices)*n)
 
 	avg_sum_ldoi /= 2**k
 	avg_sum_ldoi_outputs /= 2**k
-	for i in range(G.n_neg):
+	for i in range(n):
 		avg_num_ldoi_nodes[i] /= 2**k # normz
 		avg_num_ldoi_outputs[i] /= 2**k # normz
 
 	return {'total':avg_sum_ldoi,'total_onlyOuts':avg_sum_ldoi_outputs, 'node':avg_num_ldoi_nodes,'node_onlyOuts':avg_num_ldoi_outputs}
 
 def get_const_node_inits(G,params):
+	assert(isinstance(G,net.DeepNet)) #can make this for ParityNet to, but right now is just for Deep
 	init = []
 	G.add_self_loops(params) # just in case (TODO clean)
 	for nodeName in params['init']:
 		if params['init'][nodeName] == 1:
 			init += [G.nodeNums[nodeName]]
 		elif params['init'][nodeName] == 0:
-			init += [G.n + G.nodeNums[nodeName]] 
+			if isinstance(G,net.DeepNet):
+				init += [(int(G.n/2) + G.nodeNums[nodeName]) % G.n]
+			else:
+				init += [G.n + G.nodeNums[nodeName]] 
 		else:
 			print("\nERROR: unrecognized value for params['init'][",nodeName,"]:",params['init'][nodeName])
 			assert(0) 
+	init = list(set(init))
 	return init
+
 
 
 

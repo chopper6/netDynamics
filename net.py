@@ -461,7 +461,7 @@ class DeepNet(Net):
         # assumes that negative nodes are already in parity form (i.e. have their logic)
         # note that composite nodes aren't formally added, since only A_exp is actually used
 
-        self.build_Aexp(debug=debug)
+        #self.build_Aexp(debug=debug)
 
 
     def add_node(self,nodeName,debug=False):
@@ -525,8 +525,12 @@ class DeepNet(Net):
                     self.n_exp+=1
                 elif clause not in ['0','1',['0'],['1']]: # ignore tautologies
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
-                else:
-                    print("net.build_Aexp of deepNet: tautology found: ",clause)
+                #else: JUST DEBUGGING STUFF
+                #    num = node.num 
+                #    if clause == ['0']:
+                #       node.num = (node.num + int(self.n/2)) % self.n
+                #    print("net.build_Aexp of deepNet: tautology found for",node.name,": ",clause)
+                #    print("\tcorresp node function:",node.F())
         
         if debug:
             assert(N==self.n_exp)
@@ -541,7 +545,7 @@ class DeepNet(Net):
         return count
 
     def composite_name(self,fn):
-        fn_new = espresso.reduce(fn, self)
+        fn_new = espresso.reduce_deep(fn, self)
         cName = espresso.F_to_str(fn_new)
         return cName
 
