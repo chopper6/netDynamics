@@ -88,16 +88,19 @@ def to_pyEda_deep(fn,G):
     return eda.expr(fnStr)
 
 
-def reduce(fn, G):
-    fn_eda, placeholders = to_pyEda(fn,G)
-    fn_eda = fn_eda.to_dnf()
+def reduce(fn, G,pyeda_form=False):
+    if not pyeda_form:
+        fn, placeholders = to_pyEda(fn,G)
+    fn_eda = fn.to_dnf()
     if not fn_eda:
         return [['0']] # i.e. function evals to false always
-    elif fn_eda is True:
+    elif fn_eda == True or str(fn_eda)=='1': # eda's 1 is not == 1 or '1' lol
         return [['1']]
     fn_reduced, = eda.espresso_exprs(fn_eda)
     #print(fn_reduced) # Or(ph1,ph2)
-    fn_reduced = from_pyEda(fn_reduced,G,placeholders)
+
+    if not pyeda_form:
+        fn_reduced = from_pyEda(fn_reduced,G,placeholders)
     #print("\n\treduced fn:",fn_reduced)
     return fn_reduced
 
@@ -141,7 +144,7 @@ def reduce_AND_async(fns, varbs,compl_fns, compl_varbs, G, complement=True):
         fn, ph = to_pyEda([term],G,placeholders=ph)
         part2 = eda.Or(part2,fn)
 
-    fn = eda.And(part1,part2).to_dnf()
+    ON_fn = eda.And(part1,part2).to_dnf()
     #print('espresso attempting to reduce:',eda.And(part1,part2).to_dnf())
     if complement:
         OFF_fn =  reduce_OR_async(compl_fns, compl_varbs, G,placeholders=ph)   
@@ -154,11 +157,12 @@ def reduce_AND_async(fns, varbs,compl_fns, compl_varbs, G, complement=True):
         elif not OFF_fn:
             ON_fn, OFF_fn = 1,0
         else:
-            ON_fn, = eda.espresso_exprs(fn)
+            ON_fn, OFF_fn = eda.espresso_exprs(ON_fn,OFF_fn)
         if not ON_fn:
             ON_fn, OFF_fn = 0,1
         elif not OFF_fn:
             ON_fn, OFF_fn = 1,0
+
         return from_pyEda(ON_fn, G,placeholders=ph), from_pyEda(OFF_fn, G,placeholders=ph)
     else:  
         if not fn:
@@ -174,6 +178,7 @@ def reduce_OR_async(fns, varbs, G,placeholders={}):
     # either combine with AND or sep entirely
     # either AND or OR (this) needs to change their return statement to match
 
+    #print("OR receives fns=",fns,"\tand varbs=",varbs)
     # TODO: unsure of proper equations for part 2!
     part1 = 0
     ph=placeholders
@@ -196,6 +201,8 @@ def reduce_OR_async(fns, varbs, G,placeholders={}):
     for i in range(len(fns)): 
         part3 = eda.And(part3,fns[i])
 
+    #print("part1=",part1,'\npart2=',part2,'\npart3=',part3)
+    #print("in total: ",eda.Or(part1,part2,part3).to_dnf())
     return eda.Or(part1,part2,part3).to_dnf()
 
 
@@ -205,6 +212,34 @@ def reduce_multivalent(fns, fns_compl, varbs):
     # think about this more
     assert(0)
 
+def check_equiv_AND(fns, ON_fn, G):
+    naive = 1
+    ph = {}
+    for fn in fns:
+        fn, ph = to_pyEda(fn,G,placeholders=ph)
+        naive = eda.And(fn,naive)
+    if naive not in [0,1]:
+        naive = reduce(naive, G,pyeda_form=True)
+    naive = from_pyEda(naive,G,ph)
+    sort_fn(naive)
+    return ON_fn==naive
+
+def check_equiv_OR(fns, OFF_fn, G):
+    naive = 0
+    ph = {}
+    for fn in fns:
+        fn, ph = to_pyEda(fn,G,placeholders=ph)
+        naive = eda.Or(fn,naive)
+    if naive not in [0,1]:
+        naive = reduce(naive, G,pyeda_form=True)
+    naive = from_pyEda(naive,G,ph)
+    sort_fn(naive)
+    return OFF_fn==naive
+
+def sort_fn(fn):
+    for clause in fn:
+        clause.sort()
+    fn.sort()
 
 ######### CONVERSION ###########
 

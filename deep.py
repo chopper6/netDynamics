@@ -17,6 +17,7 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     assert(minimizer=='espresso') # put back QM later (maybe)
     checked = []
+    terminates = {}
     k=2
     while k<=kmax:
         added = True
@@ -30,41 +31,50 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                     if len(clause) > 1 and clause_order(clause) <= k:
                         cmpsName = G.composite_name([clause])
                         cmplName = complement_clause(clause,G)
-
+                        just_added=False
                         # need to check "checked" here sT other nodes with the same clause still add it
                         if cmpsName not in G.nodeNames and clause not in checked:
+                            checked += [clause]
                             assert(cmplName not in G.nodeNames)
                             ON_fn, OFF_fn = calc_deep_fn(G,clause,minimizer=minimizer)
 
-                            G.add_node(cmpsName,debug=debug) 
-                            G.F[cmpsName] = ON_fn
-                            G.add_node(cmplName,debug=debug) 
-                            G.F[cmplName] = OFF_fn
-                            if cmplName == '!a+c':
-                                print("OFF_fn for !a+c: ",OFF_fn)
-                            #print("F[",cmpsName,"]=",ON_fn, 'from clause=',clause)
-                            #print("\tOFF=",OFF_fn)
-                            added += 1
+                            on_terminates, off_terminates = check_termination(ON_fn, OFF_fn, clause,G)
+                            terminates[cmpsName] = on_terminates
+                            terminates[cmplName] = off_terminates
+                            #print("\nstarting w clause=",clause)
+                            if not on_terminates or not off_terminates:
+                                G.add_node(cmpsName,debug=debug) 
+                                G.F[cmpsName] = ON_fn
+                                #print("cmps added: F[",cmpsName,"]=",ON_fn)
 
-                            checked += [clause]
+                                G.add_node(cmplName,debug=debug) 
+                                G.F[cmplName] = OFF_fn
+                                #print("cmpl added: F[",cmplName,"]=",OFF_fn) 
+                            
+                                added += 1
+                                just_added=True
 
-                        cmps += [cmpsName] 
-                        cmpl += [cmplName]
+                        # node that if cmps was checked and considered to terminate, then it won't be a node
+                        if (cmpsName in G.nodeNames and [cmpsName] not in G.F[V.name]) or just_added:
+                            if not terminates[cmpsName]:
+                                #G.F[V.name][j] = [cmpsName] #rm lower order terms
+                                G.F[V.name][j] += [cmpsName]
+                            if not terminates[cmplName]:
+                                cmpl += [cmplName]
+                                #print('cmpl of',cmpsName,'is',cmplName)
+                                cmpl = rm_list_in_list_dups(cmpl)
 
-                        # rm'g duplicates, TODO: see if this is nec (same for further below)
-                        cmps = rm_list_in_list_dups(cmps)
-                        cmpl = rm_list_in_list_dups(cmpl)
-
-                        # TODO: still end up with duplicates here, due to diff orderings
-                        if [cmpsName] not in G.F[V.name]: # this is also ineffic
-                            G.F[V.name] += [[cmpsName]]  # poss later change to G.F[V.name][j] = [cmpsName], if use term condition
-                        
-                            G.F[V.name] = rm_list_in_list_dups(G.F[V.name])
                     
-                if len(cmps)>0:
+                if len(cmpl)>0:
                     complement = G.complement[V.name]
-                    G.F[complement] += complement_factor(G.F[V.name],cmpl) # again if rm lower order terms, change to G.F[complement] += [complement_factor]
+                    G.F[complement] += complement_factor(G.F[complement],cmpl) # again if rm lower order terms, change to G.F[complement] += [complement_factor]
+                        # use += instead if want to keep lower level terms (and rm red as w below)
+                        # whereas use just = to rm lower orders
                     G.F[complement] = rm_list_in_list_dups(G.F[complement])
+
+                    ## note that if lower orders are NOT kept, then have to track which clauses are replaced
+                    #G.F[V.name] += [cmps]
+                    #G.F[V.name] = rm_list_in_list_dups(G.F[V.name])
 
             print("completed a pass with k=",k,", and",added," new virtual nodes.")
             
@@ -96,6 +106,31 @@ def debug_check_fn(fn): # can rm this fn
     for clause in fn:
         for ele in clause:
             assert('placeholder' not in ele)
+
+def check_termination(ON_fn, OFF_fn, clause,G):
+    # TODO: merge this better with the espresso side (prob can do as 2 fns for ON vs OFF)
+    # TODO: red w calc_deep_fn()
+    fns, fns_compl = [],[]
+    for ele in clause:
+        fns += [sorted(G.F[ele])]
+        fns_compl += [sorted(G.F[G.complement[ele]])]
+
+    # TODO: merge w espresso.sort_fn()
+    for clause in fns:
+        clause.sort()
+    for clause in fns_compl:
+        clause.sort()
+    fns.sort()
+    fns_compl.sort()
+    ON_fn.sort()
+    OFF_fn.sort()
+
+    on_terminates = espresso.check_equiv_AND(fns, ON_fn, G)
+    off_terminates = espresso.check_equiv_OR(fns_compl, OFF_fn, G)
+
+    #assert(on_terminates==off_terminates) # complements should be consistent...i think
+    #print('on terminates=',on_terminates,'off terminates',off_terminates)
+    return on_terminates, off_terminates
 
 
 def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
@@ -326,16 +361,25 @@ if __name__ == "__main__":
 
     else:
         # TODO: clean up this general flow as well (ex ldoi.test())
-
-        #sys.setrecursionlimit(4000) #this is occuring in pyeda when reducing an exapnded str -> fn
         params = param.load(sys.argv[1])
+        if 1:
+            print("\n~~~Original LDOI~~~\n")
+            G = net.ParityNet(params['parity_model_file'],debug=True)
+            init = ldoi.get_const_node_inits(G,params)
+            print('initialization:',[G.nodeNames[num] for num in init])
+            ldoi.test(G,init=init)
+
+        #sys.setrecursionlimit(4000) #this is occuring in pyeda when reducing an exapnded str -> f
         G = net.DeepNet(params['parity_model_file'],debug=True)
         Gdeep = build_deep(G,2,output_file,minimizer='espresso',debug=True)
         
-        print("\nDEEP G")
-        for node in Gdeep.nodes:
-            print(node.name,node.num,' F=',node.F())
         if 0:
+            print("\nDEEP G")
+            for node in Gdeep.nodes:
+                print(node.name,node.num,' F=',node.F())
+            print('\n')
+        if 1:
+            print("\n~~~Deep LDOI~~~\n")
             init = ldoi.get_const_node_inits(Gdeep,params)
             print('initialization:',[G.nodeNames[num] for num in init])
 

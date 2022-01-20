@@ -18,7 +18,8 @@ def test(G,init=[]):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
 			if ldoi_solns[i,j]:
-				soln_names += G.nodeNames[j] + ', '
+				if '+' not in G.nodeNames[j] and '&' not in G.nodeNames[j]: #ignore deep nodes
+					soln_names += G.nodeNames[j] + ', '
 		if soln_names != '' :
 			print("LDOI(",G.nodeNames[i],') =',soln_names)
 		if negated[i]:
@@ -179,7 +180,16 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	return {'total':avg_sum_ldoi,'total_onlyOuts':avg_sum_ldoi_outputs, 'node':avg_num_ldoi_nodes,'node_onlyOuts':avg_num_ldoi_outputs}
 
 def get_const_node_inits(G,params):
-	assert(isinstance(G,net.DeepNet)) #can make this for ParityNet to, but right now is just for Deep
+	#TODO: clean all this nonsense of distinguishing Deep vs ParityNet (in general need to standardize more)
+	if isinstance(G,net.ParityNet):
+		n=G.n_neg 
+		n_compl = G.n 
+	elif isinstance(G,net.DeepNet):
+		n=G.n 
+		n_compl = int(G.n/2)
+	else:
+		assert(0) # LDOI should be on a ParityNet or a DeepNet
+
 	init = []
 	G.add_self_loops(params) # just in case (TODO clean)
 	for nodeName in params['init']:
@@ -187,9 +197,9 @@ def get_const_node_inits(G,params):
 			init += [G.nodeNums[nodeName]]
 		elif params['init'][nodeName] == 0:
 			if isinstance(G,net.DeepNet):
-				init += [(int(G.n/2) + G.nodeNums[nodeName]) % G.n]
+				init += [(n_compl + G.nodeNums[nodeName]) % n]
 			else:
-				init += [G.n + G.nodeNums[nodeName]] 
+				init += [n + G.nodeNums[nodeName]] 
 		else:
 			print("\nERROR: unrecognized value for params['init'][",nodeName,"]:",params['init'][nodeName])
 			assert(0) 

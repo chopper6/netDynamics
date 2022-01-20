@@ -412,6 +412,10 @@ class ParityNet(Net):
         
         if debug:
             assert(N==self.n_exp)
+    
+
+    def nodesByName(self,name):
+        return self.parityNodes[self.nodeNums[name]]
 
 
     def _num_and_clauses(self):
@@ -512,6 +516,8 @@ class DeepNet(Net):
         self.n_exp = self.n 
         N = self.n+self._num_and_clauses()
 
+        print("\nnet.build_Aexp, n=",self.n,"n_exp=",N,"\n")
+
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
         for node in self.nodes:
@@ -534,8 +540,7 @@ class DeepNet(Net):
         
         if debug:
             assert(N==self.n_exp)
-
-
+    
     def _num_and_clauses(self):
         count=0
         for node in self.nodes:
