@@ -520,15 +520,21 @@ class DeepNet(Net):
 
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
 
+        expanded_node_map = {}
         for node in self.nodes:
             if debug:
                 assert(node.F() == self.F[node.name]) 
             for clause in node.F():
-                if len(clause)>1: # make a composite node
-                    self.A_exp[self.n_exp,node.num]=1
-                    for j in range(len(clause)):
-                        self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
-                    self.n_exp+=1
+                if len(clause)>1: 
+                    if str(clause) in expanded_node_map: 
+                        exp_num = expanded_node_map[str(clause)]
+                        self.A_exp[exp_num,node.num]=1
+                    else: # make a new expanded node
+                        self.A_exp[self.n_exp,node.num]=1
+                        expanded_node_map[str(clause)] = self.n_exp
+                        for j in range(len(clause)):
+                            self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
+                        self.n_exp+=1
                 elif clause not in ['0','1',['0'],['1']]: # ignore tautologies
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
                 #else: JUST DEBUGGING STUFF
@@ -543,16 +549,14 @@ class DeepNet(Net):
     
     def _num_and_clauses(self):
         count=0
+        seen = []
         for node in self.nodes:
             for clause in node.F():
                 if len(clause)>1: 
-                    count+=1
+                    if str(clause) not in seen:
+                        count+=1
+                        seen+=[str(clause)]
         return count
-
-    def composite_name(self,fn):
-        fn_new = espresso.reduce_deep(fn, self)
-        cName = espresso.F_to_str(fn_new)
-        return cName
 
     def build_negative_nodes(self,debug=False):
         # just to make compatible with default net def

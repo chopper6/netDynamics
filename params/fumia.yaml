@@ -23,7 +23,7 @@ clause_bin_size : 4 # number of clauses each threads merges at once
 # input
 model_file: 'models/fumia.txt' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
 setting_file: 'settings/fumia.yaml'
-expanded_net: 'models/fumiaExp.bnet'
+parity_model_file: 'models/fumiaExp2.txt'
 use_inputs_in_pheno: 1
 use_phenos: 1
 fig_legend: 0

@@ -2,7 +2,7 @@
 
 use_phenos : true # quick way to disable outputs
 
-outputs : ['d']
+outputs : []
 output_thresholds : [.5,.5] 
 # will produce output phenotypes with output=1 if it's average value is > threshold
 

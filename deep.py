@@ -3,12 +3,6 @@ import ldoi, logic, param, net
 import espresso # this file uses pyeda, and can be a bit tricky to install on windows
 from copy import deepcopy 
 
-# TODO HERE AND  ELSEWHERE:
-#   double check whenever call 'not_str' (since generally shouldn't)
-
-# LATER: add term condition to prev building unnec new nodes
-#   rm redundancy in complement_factor(): if decide to keep lower order terms, composite names shouldn't be repeatedly called jp
-
 # move QM section to logic.py? [and update it once espresso version done jp]
 
 def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
@@ -29,8 +23,8 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                 for j in range(len(G.F[V.name])):
                     clause = deepcopy(G.F[V.name][j])
                     if len(clause) > 1 and clause_order(clause) <= k:
-                        cmpsName = G.composite_name([clause])
-                        cmplName = complement_clause(clause,G)
+                        cmpsName = composite_name([clause],G)
+                        cmplName = complement_name(clause,G)
                         just_added=False
                         # need to check "checked" here sT other nodes with the same clause still add it
                         if cmpsName not in G.nodeNames and clause not in checked:
@@ -41,24 +35,24 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                             on_terminates, off_terminates = check_termination(ON_fn, OFF_fn, clause,G)
                             terminates[cmpsName] = on_terminates
                             terminates[cmplName] = off_terminates
-                            #print("\nstarting w clause=",clause)
                             if not on_terminates or not off_terminates:
                                 G.add_node(cmpsName,debug=debug) 
                                 G.F[cmpsName] = ON_fn
-                                #print("cmps added: F[",cmpsName,"]=",ON_fn)
-
                                 G.add_node(cmplName,debug=debug) 
                                 G.F[cmplName] = OFF_fn
-                                #print("cmpl added: F[",cmplName,"]=",OFF_fn) 
-                            
                                 added += 1
                                 just_added=True
+                            if on_terminates:
+                                checked += [cmpsName]
+                            if off_terminates:
+                                checked += [cmplName]
 
                         # node that if cmps was checked and considered to terminate, then it won't be a node
                         if (cmpsName in G.nodeNames and [cmpsName] not in G.F[V.name]) or just_added:
-                            if not terminates[cmpsName]:
-                                #G.F[V.name][j] = [cmpsName] #rm lower order terms
-                                G.F[V.name][j] += [cmpsName]
+                            #if not terminates[cmpsName]: #temp not adding them ands
+                            #   #G.F[V.name][j] = [cmpsName] #rm lower order terms
+                            #    G.F[V.name] += [[cmpsName]]
+
                             if not terminates[cmplName]:
                                 cmpl += [cmplName]
                                 #print('cmpl of',cmpsName,'is',cmplName)
@@ -72,12 +66,13 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
                         # whereas use just = to rm lower orders
                     G.F[complement] = rm_list_in_list_dups(G.F[complement])
 
+                    #rm_rendunant_nodes(G.F[complement],cmpl,k)
                     ## note that if lower orders are NOT kept, then have to track which clauses are replaced
                     #G.F[V.name] += [cmps]
                     #G.F[V.name] = rm_list_in_list_dups(G.F[V.name])
 
             print("completed a pass with k=",k,", and",added," new virtual nodes.")
-            
+
         k += 1
 
     G.build_Aexp(debug=debug)
@@ -88,12 +83,29 @@ def build_deep(G,kmax,output_file,minimizer='espresso',debug=True):
 
     return G
 
+
+def rm_rendunant_nodes(fn,cmpl,k):
+    # curr unused
+    assert(k<3)
+    rm = []
+    for cml in cmpl:
+        pieces = cml.split('+')
+        for clause in fn: 
+            for piece in pieces:
+                if clause in pieces:
+                    rm+=[clause]
+    for clause in rm:
+        if clause in fn:
+            fn.remove(clause)
+
 def rm_list_in_list_dups(k):
     k = sorted(k)
     k =[k[i] for i in range(len(k)) if i == 0 or k[i] != k[i-1]]
     return k
 
 def clause_order(clause):
+    # order = # base nodes included
+    # for example 'A&B+C+D' is considered 4th order
     order = 0
     for ele in clause:
         parts = ele.split('&')
@@ -102,41 +114,25 @@ def clause_order(clause):
             order += len(frags)
     return order
 
-def debug_check_fn(fn): # can rm this fn
-    for clause in fn:
-        for ele in clause:
-            assert('placeholder' not in ele)
 
 def check_termination(ON_fn, OFF_fn, clause,G):
-    # TODO: merge this better with the espresso side (prob can do as 2 fns for ON vs OFF)
-    # TODO: red w calc_deep_fn()
     fns, fns_compl = [],[]
     for ele in clause:
         fns += [sorted(G.F[ele])]
         fns_compl += [sorted(G.F[G.complement[ele]])]
-
-    # TODO: merge w espresso.sort_fn()
-    for clause in fns:
-        clause.sort()
-    for clause in fns_compl:
-        clause.sort()
-    fns.sort()
-    fns_compl.sort()
+    espresso.sort_fn_of_fns(fns)
+    espresso.sort_fn_of_fns(fns_compl)
     ON_fn.sort()
     OFF_fn.sort()
-
     on_terminates = espresso.check_equiv_AND(fns, ON_fn, G)
     off_terminates = espresso.check_equiv_OR(fns_compl, OFF_fn, G)
-
-    #assert(on_terminates==off_terminates) # complements should be consistent...i think
-    #print('on terminates=',on_terminates,'off terminates',off_terminates)
     return on_terminates, off_terminates
 
 
 def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
     # returns builds and reduces higher order function for the clause
     # uses either Quine-McCluskey or Espresso
-    # Off fn may be v. slow since is the sum term
+
     if minimizer == 'espresso':
         
         fns, varbs = [],[]
@@ -146,22 +142,21 @@ def calc_deep_fn(G,clause,minimizer='espresso',complement=True):
             varbs_compl += [G.complement[ele]]
             fns += [G.F[ele]]
             fns_compl += [G.F[G.complement[ele]]]
+
+        ON_fn = espresso.reduce_AND_async(fns, varbs, G)
         if complement:
-            ON_fn, OFF_fn = espresso.reduce_AND_async(fns, varbs,fns_compl, varbs_compl, G, complement=complement)
-        else:
-            ON_fn = espresso.reduce_AND_async(fns, varbs, G, complement=complement)
+            OFF_fn = espresso.reduce_OR_async(fns_compl, varbs_compl, G)
+
     elif minimizer in ['qm','QM']:
         assert(0) #haven't updated this in awhile
-        # note that this can also calc complement
-        #print("\tCalculating deep function of ",clause)
         inputs_num2name, inputs_name2num = organize_inputs(G, clause)
         ON_clauses, OFF_clauses = on_off_terms(G,clause,inputs_name2num)
-        #print('\tdetails:',inputs_num2name,ON_clauses, OFF_clauses)
         ON_fn = logic.run_qm(ON_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
         if complement:
             OFF_fn = logic.run_qm(OFF_clauses, len(inputs_name2num), G.encoding, inputs_num2name)
     else:
         assert(0) # unrecognized argument for 'minimizer'
+    
     if complement:
         return ON_fn, OFF_fn 
     else:
@@ -172,11 +167,7 @@ def complement_factor(fn, factor_strs):
     # this is effectively dividing and finding quotient + remainder, in boolean alg
     # fn and factor are both functions of the same form, although factor is typically smaller
     
-    #factor_strs = [espresso.F_to_str(factor) for factor in factors]
-    #print('in compl_factor, factors=',[factor for factor in factor_strs])
     factors = [espresso.str_to_F(factor) for factor in factor_strs]
-    #print('init fn=',fn)
-    #print('factors=',factors,'factor_str=',factor_strs)
     quotient = [[[] for _ in range(len(factors[i]))] for i in range(len(factors))]
     quotient_used_clauses = [[[] for _ in range(len(factors[i]))] for i in range(len(factors))] # the clause that were used to generate the quoient
     
@@ -195,7 +186,6 @@ def complement_factor(fn, factor_strs):
                             q += [fn_ele]
                     quotient[i][j] += [q]
                     quotient_used_clauses[i][j]+=[clause]
-                    #print(clause,'/',factors[i][j],'=',q,'with used clause:',clause)
         
     new_fn=[]
     remainder = deepcopy(fn)
@@ -217,7 +207,6 @@ def complement_factor(fn, factor_strs):
             if in_all:
                 new_fn_part += [term + [factor_strs[i]]]
                 for used_term in for_this_term_used: # if used by ANY of the factors, is not a remainder
-                    #print('a used term:',used_term)
                     if used_term in remainder:
                         remainder.remove(used_term)
 
@@ -236,36 +225,22 @@ def complement_factor(fn, factor_strs):
                 new_fn += [clause]
 
     # add back remainder
-    # note that fn - new_fn*factor should also work
+    # note that fn - new_fn*factor might also work
     for clause in remainder:
         new_fn += [clause]
-    #print("final function =",new_fn)
     return new_fn
 
 
-
-
-def complement_factor_old(fn, cmpsNames, cmplNames, G): # del soon!
-    #print('deep.compl_factor(): original +ve fn=',fn)
-    # compositeNames & complementNames should match
-    partial_fn = []
-    for clause in fn:
-        if (len(clause)>1 or clause[0] not in cmpsNames) and (G.composite_name([clause]) not in cmpsNames): 
-            # 2nd condition (and ..) due to fact that lower order terms are included atm
-            partial_fn += [clause]
-
-    fn = espresso.reduce_complement(partial_fn, cmplNames, G) 
-
-    return fn
-
-
-def complement_clause(fn,G):
+def complement_name(fn,G):
     fn = [fn]
-    fn_new = espresso.not_to_dnf(fn,G)
+    fn_new = espresso.not_to_dnf(fn,G) # this fn can be prohibatively slow for large fns
     fn_name_new = espresso.F_to_str(fn_new)
-    #print('deep.complement_name: original name=',fn,'\tcomplement name=',fn_name_new)
     return fn_name_new
 
+def composite_name(fn, G):
+    fn_new = espresso.reduce_deep(fn, G)
+    cName = espresso.F_to_str(fn_new)
+    return cName
 
 
 ########### Quine McC Only ##############
@@ -367,7 +342,7 @@ if __name__ == "__main__":
             G = net.ParityNet(params['parity_model_file'],debug=True)
             init = ldoi.get_const_node_inits(G,params)
             print('initialization:',[G.nodeNames[num] for num in init])
-            ldoi.test(G,init=init)
+            regular_ldoi = ldoi.test(G,params, init=init)
 
         #sys.setrecursionlimit(4000) #this is occuring in pyeda when reducing an exapnded str -> f
         G = net.DeepNet(params['parity_model_file'],debug=True)
@@ -383,7 +358,24 @@ if __name__ == "__main__":
             init = ldoi.get_const_node_inits(Gdeep,params)
             print('initialization:',[G.nodeNames[num] for num in init])
 
-            ldoi.test(Gdeep,init=init)
+            deep_ldoi = ldoi.test(Gdeep,params, init=init)
             #ldoi.ldoi_sizes_over_all_inputs(params,Gdeep) # todo: change this fn so that it returns actual solns jp
+            
+            if 1:
+                print('\n\n~~~Comparison~~~\n')
+                for k in regular_ldoi.keys():
+                    if k not in deep_ldoi.keys():
+                        print("only REGULAR ldoi has solution for",k,'=',regular_ldoi[k]) 
+                for k in deep_ldoi.keys():
+                    if k not in regular_ldoi.keys():
+                        print("only DEEP ldoi has solution for",k,'=',deep_ldoi[k]) 
+                    elif deep_ldoi[k] != regular_ldoi[k]:
+                        print("Deep vs Regular possibly diff for:",k)
+                        for soln in deep_ldoi[k]:
+                            if soln not in regular_ldoi[k]:
+                                print('\tonly DEEP:',soln)
+                        for soln in regular_ldoi[k]:
+                            if soln not in deep_ldoi[k]:
+                                print('\tonly REGULAR:',soln)
         else:
             print("Done. no ldoi atm")

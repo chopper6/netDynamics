@@ -12,19 +12,26 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # rm the 'test' function
 
 
-def test(G,init=[]):
-	ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=init)
+def test(G,params,init=[]):
+	#ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=init)
+	ldoi_solns = ldoi_sizes_over_all_inputs(params,G,fixed_nodes=init)
+	return ldoi_solns
+
+def convert_solutions(G,ldoi_solns):
+	soln_dict = {}
 	for i in range(len(ldoi_solns)):
 		soln_names = ''
 		for j in range(len(ldoi_solns[i])):
-			if ldoi_solns[i,j]:
-				if '+' not in G.nodeNames[j] and '&' not in G.nodeNames[j]: #ignore deep nodes
-					soln_names += G.nodeNames[j] + ', '
+			if '+' not in G.nodeNames[i] and '&' not in G.nodeNames[i]: #ignore deep nodes
+				if ldoi_solns[i,j]:
+					if '+' not in G.nodeNames[j] and '&' not in G.nodeNames[j]: #ignore deep nodes
+						soln_names += G.nodeNames[j] + ', '
 		if soln_names != '' :
-			print("LDOI(",G.nodeNames[i],') =',soln_names)
-		if negated[i]:
-			print('\t',G.nodeNames[i],'negates itself')
-
+			#print("LDOI(",G.nodeNames[i],') =',soln_names)
+			soln_dict[G.nodeNames[i]] = soln_names
+		#if negated[i]:
+		#	print('\t',G.nodeNames[i],'negates itself')
+	return soln_dict
 
 def ldoi_bfs(G,pinning=True,init=[]):
 	# A should be adjacency matrix of Gexp
@@ -129,18 +136,15 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	else:
 		assert(0) # LDOI should be on a ParityNet or a DeepNet
 
-	avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
-	avg_num_ldoi_nodes = {k:0 for k in range(n)}
-	avg_num_ldoi_outputs = {k:0 for k in range(n)}
-	output_indices = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
+	all_solns = {}
+	#output_indices = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
 
-	ldoi_fixed = []
-	for pair in fixed_nodes:
-		indx = G.nodeNums[pair[0]] 
-		if pair[1]==0:
-			indx += n # i.e. the node's complement
-		ldoi_fixed += [indx]
-
+	ldoi_fixed = fixed_nodes # TODO clean
+	#for pair in fixed_nodes: # this used to be pairs {'name':0} for example
+		#indx = G.nodeNums[pair[0]] 
+		#if pair[1]==0:
+		#	indx += n # i.e. the node's complement
+		#ldoi_fixed += [indx]
 
 	k = len(params['inputs'])
 	input_indices = [G.nodeNums[params['inputs'][i]] for i in range(k)]
@@ -156,26 +160,42 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 		ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=ldoi_inpts)
 		if CUPY:
 			ldoi_solns = ldoi_solns.get() #explicitly cast out of cupy
+		
+		ldoi_solns = convert_solutions(G,ldoi_solns)
+		
+		# merge diff input sets into one soln set
+		input_str = str(input_set)
+		for k in ldoi_solns.keys():
+			all_solns[k + ' given ' + input_str] = ldoi_solns[k]
+	return all_solns
 
-		avg_sum_ldoi += cp.sum(ldoi_solns)/((n)**2) #normz by max sum poss
+def cut_from_ldoi_over_inputs():
+		#avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0
+	#avg_num_ldoi_nodes = {k:0 for k in range(n)}
+	#avg_num_ldoi_outputs = {k:0 for k in range(n)}
 
-		for i in range(n):
-			avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(n)
-			for o in output_indices:
-				if ldoi_solns[i,o]:
-					avg_num_ldoi_outputs[i] += 1 
-					avg_sum_ldoi_outputs += 1				
-				if ldoi_solns[i,o+n_compl]:
-					avg_num_ldoi_outputs[i] += 1 
-					avg_sum_ldoi_outputs += 1
-			avg_num_ldoi_outputs[i] /= len(output_indices)
-		avg_sum_ldoi_outputs /= (len(output_indices)*n)
+	# .....
 
-	avg_sum_ldoi /= 2**k
-	avg_sum_ldoi_outputs /= 2**k
-	for i in range(n):
-		avg_num_ldoi_nodes[i] /= 2**k # normz
-		avg_num_ldoi_outputs[i] /= 2**k # normz
+	# input loop:
+		#avg_sum_ldoi += cp.sum(ldoi_solns)/((n)**2) #normz by max sum poss
+
+		#for i in range(n):
+		#	avg_num_ldoi_nodes[i] += cp.sum(ldoi_solns[i])/(n)
+		#	for o in output_indices:
+		#		if ldoi_solns[i,o]:
+		#			avg_num_ldoi_outputs[i] += 1 
+		#			avg_sum_ldoi_outputs += 1				
+		#		if ldoi_solns[i,o+n_compl]:
+		#			avg_num_ldoi_outputs[i] += 1 
+		#			avg_sum_ldoi_outputs += 1
+		#	avg_num_ldoi_outputs[i] /= len(output_indices)
+		#avg_sum_ldoi_outputs /= (len(output_indices)*n)
+
+	#avg_sum_ldoi /= 2**k
+	#avg_sum_ldoi_outputs /= 2**k
+	#for i in range(n):
+	#	avg_num_ldoi_nodes[i] /= 2**k # normz
+	#	avg_num_ldoi_outputs[i] /= 2**k # normz
 
 	return {'total':avg_sum_ldoi,'total_onlyOuts':avg_sum_ldoi_outputs, 'node':avg_num_ldoi_nodes,'node_onlyOuts':avg_num_ldoi_outputs}
 
@@ -196,10 +216,7 @@ def get_const_node_inits(G,params):
 		if params['init'][nodeName] == 1:
 			init += [G.nodeNums[nodeName]]
 		elif params['init'][nodeName] == 0:
-			if isinstance(G,net.DeepNet):
-				init += [(n_compl + G.nodeNums[nodeName]) % n]
-			else:
-				init += [n + G.nodeNums[nodeName]] 
+			init += [(n_compl + G.nodeNums[nodeName]) % n]
 		else:
 			print("\nERROR: unrecognized value for params['init'][",nodeName,"]:",params['init'][nodeName])
 			assert(0) 

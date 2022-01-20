@@ -1,38 +1,8 @@
 from pyeda import inter as eda
 from copy import deepcopy
-##########################################
-fa = [['!a','c']]
-fb = [['a','!b']]
-vars1 = ['a','b']
-vars2 = ['b']
-f1 = [['a','b'],['a','c'],['d']]
-f2 = [['a','!b'],['d']]
-not_str = '!'
-##########################################
 
 # Anything in espresso.py should use F form and internally convert to pyEda and back as needed
 # F form: fn = [clause1, clause2, ...], where clause = [ele1, ele2, ...]
-
-# TODO: 
-# other than general cleaning, reduce_OR_async() esp needs to be checked
-
-# for any reduction with phs, need to check if reduces after subbing back phs
-#       or when defg phs in the 1st place
-# want [['A+B','A+C']] => [['A'],['B+C']]
-#       need to be careful bc [['A+B','A+C']] => str is not dnf
-#   but want [['A+B']] => [['A+B']]
-#   standardization is most important (even over some actual minimal form)
-#   i worry that could factor into a term for which there is no expression yet [cross that bridge when get there]
-#   and this kind of ph simplification could happen for seemingly arbit complex fns...
-# ALT: when making a node name, don't reduce fully
-#   also complicated, but less so
-#   hope is that the missing factor will be obvious in the complement node
-
-# EXPLICIT DEBUG
-# check all w.r.t phs
-# when debugging check edge cases such as: return ['0'],['1']
-
-# merge to_pyEda_deep and reduce_deep with their regular counterparts (& rename jp)
 
 def reduce_deep(fn,G):
     # reduce, while seperating any composites in fn
@@ -97,40 +67,17 @@ def reduce(fn, G,pyeda_form=False):
     elif fn_eda == True or str(fn_eda)=='1': # eda's 1 is not == 1 or '1' lol
         return [['1']]
     fn_reduced, = eda.espresso_exprs(fn_eda)
-    #print(fn_reduced) # Or(ph1,ph2)
 
     if not pyeda_form:
         fn_reduced = from_pyEda(fn_reduced,G,placeholders)
-    #print("\n\treduced fn:",fn_reduced)
     return fn_reduced
 
 
-def reduce_complement(fn, complements, G):
-    if fn==[]:
-        full_unred = 1
-        ph = {}
-    else:
-        f, ph = to_pyEda(fn,G)
-        assert(0) # this also needs to be the strong basin and not the weak basin
-        # maybe easier to use multivalent?
-        partial = not_to_dnf(f,G,pyeda_form=True) #again ok to skip ph here only bc fwd fn's ph already recorded
-        if not partial:
-            assert(0) # have to think about what to do
-        full_unred = partial
-
-    compls, ph = to_pyEda([[compl for compl in complements]], G,placeholders=ph) 
-    full_unred = eda.And(full_unred, compls)
-    full, = eda.espresso_exprs(full_unred.to_dnf())
-    full = from_pyEda(full, G,ph)
-    return full
-
-
-def reduce_AND_async(fns, varbs,compl_fns, compl_varbs, G, complement=True):
+def reduce_AND_async(fns, varbs, G):
     # where fns = [fn1, fn2, ...]
     # and varbs = [var1, var2, ...] correspd to those functions
-    used_compls = []
-    part1 = 1
     ph={}
+    part1 = 1
     for fn in fns:
         fn, ph = to_pyEda(fn,G,placeholders=ph)
         part1 = eda.And(part1,fn) 
@@ -143,74 +90,38 @@ def reduce_AND_async(fns, varbs,compl_fns, compl_varbs, G, complement=True):
                 #term += [negate_ele(u, G)]
         fn, ph = to_pyEda([term],G,placeholders=ph)
         part2 = eda.Or(part2,fn)
+    fn = eda.And(part1,part2).to_dnf()
 
-    ON_fn = eda.And(part1,part2).to_dnf()
-    #print('espresso attempting to reduce:',eda.And(part1,part2).to_dnf())
-    if complement:
-        OFF_fn =  reduce_OR_async(compl_fns, compl_varbs, G,placeholders=ph)   
-        # old version is wrong and would be just the Weak basin: not_to_dnf(fn,G,pyeda_form=True)
-        # rm these notes soon:
-            # note that any placeholders during not are lost, this is only ok since the complement of any such ph should be in the On fn
-            # but in general this is smthg not great about not_to_dnf(pyeda_form=True)
-        if not fn:
-            ON_fn, OFF_fn = 0,1
-        elif not OFF_fn:
-            ON_fn, OFF_fn = 1,0
-        else:
-            ON_fn, OFF_fn = eda.espresso_exprs(ON_fn,OFF_fn)
-        if not ON_fn:
-            ON_fn, OFF_fn = 0,1
-        elif not OFF_fn:
-            ON_fn, OFF_fn = 1,0
+    return reduce_and_return(fn,G,placeholders=ph)
 
-        return from_pyEda(ON_fn, G,placeholders=ph), from_pyEda(OFF_fn, G,placeholders=ph)
-    else:  
-        if not fn:
-            fn_reduced = 0 # i.e. function evals to false always
-        else:
-            fn_reduced, = eda.espresso_exprs(fn)
-        if not fn_reduced:
-            fn_reduced = 0
-        return from_pyEda(fn_reduced, G,placeholders=ph)
-
-
-def reduce_OR_async(fns, varbs, G,placeholders={}):
-    # either combine with AND or sep entirely
-    # either AND or OR (this) needs to change their return statement to match
-
-    #print("OR receives fns=",fns,"\tand varbs=",varbs)
+def reduce_OR_async(fns, varbs, G):
     # TODO: unsure of proper equations for part 2!
+
     part1 = 0
-    ph=placeholders
-
-    # TODO: clean these deepcopy calls
-    fns, varbs = deepcopy(fns), deepcopy(varbs)
-
-    # TODO: much of this is redudant with AND and could be run once (or at least cleaned)
+    ph={}
     for i in range(len(fns)):
         fns[i], ph = to_pyEda(fns[i],G,placeholders=ph)
         varbs[i], ph = to_pyEda([[varbs[i]]],G,placeholders=ph)
         part1 = eda.Or(part1,eda.And(fns[i],varbs[i]) )
-    
     part2 = 0
     for i in range(len(varbs)):
         for j in range(i+1,len(varbs)):
             part2 = eda.Or(part2,eda.And(varbs[i],varbs[j]))
-
     part3 = 1
     for i in range(len(fns)): 
         part3 = eda.And(part3,fns[i])
-
-    #print("part1=",part1,'\npart2=',part2,'\npart3=',part3)
-    #print("in total: ",eda.Or(part1,part2,part3).to_dnf())
-    return eda.Or(part1,part2,part3).to_dnf()
+    fn = eda.Or(part1,part2,part3).to_dnf()
+    return reduce_and_return(fn,G,placeholders=ph)
 
 
-def reduce_multivalent(fns, fns_compl, varbs):
-    # fns[i], fns_compl[i], varbs[i] should match 
-    # and varbs should be positive (not compls)
-    # think about this more
-    assert(0)
+def reduce_and_return(fn,G,placeholders={}):
+    if not fn:
+        fn_reduced = 0 # i.e. function evals to false always
+    else:
+        fn_reduced, = eda.espresso_exprs(fn)
+    if not fn_reduced:
+        fn_reduced = 0
+    return from_pyEda(fn_reduced, G,placeholders=placeholders)
 
 def check_equiv_AND(fns, ON_fn, G):
     naive = 1
@@ -240,6 +151,11 @@ def sort_fn(fn):
     for clause in fn:
         clause.sort()
     fn.sort()
+
+def sort_fn_of_fns(F):
+    for fn in F:
+        sort_fn(fn)
+    F.sort()
 
 ######### CONVERSION ###########
 
@@ -364,7 +280,6 @@ def insert_placeholders(fn,G,placeholders={}):
     # this is to use names that have illegal symbols as variables, such as "A+B"
     # implicitly modifies fn
     # if for some crazy reason this is the name of a node ("placeholder1"), then may cause an issue
-    #fn = deepcopy(fn) # jp DON"T want this, but lets see
     originals = []
     for clause in fn:
         for i in range(len(clause)):
