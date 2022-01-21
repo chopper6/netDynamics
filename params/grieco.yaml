@@ -31,10 +31,10 @@ setting_file: 'settings/grieco.yaml'
 parity_model_file: 'models/griecoExp.bnet'
 
 # output
-use_inputs_in_pheno: 0 
-fig_legend : 1
+use_inputs_in_pheno: 1 
+fig_legend : 0
 use_phenos: 1
 
-output_dir : 'output/half'
-output_img : 'grieco_half_minimal4.png'
-savefig : 0 # as opposed to showing the image
+output_dir : 'output/grieco'
+output_img : 'griecoC_MDM2=0_AP1=0_slices7.png'
+savefig : 1 # as opposed to showing the image

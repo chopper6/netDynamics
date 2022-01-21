@@ -26,7 +26,7 @@ fraction_per_lap : .9 # fraction of networks needed to satisfy stop condition to
 clause_bin_size : 4 # number of clauses each threads merges at once
 
 # input
-parity_model_file: 'models/toy.bnet' #'input/fumia.yaml', 'input/toy.yaml' 
+parity_model_file: 'models/toy2.bnet' #'input/fumia.yaml', 'input/toy.yaml' 
 setting_file: 'settings/toy.yaml'
 model_expanded: 'models/toyExp.bnet'
 

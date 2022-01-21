@@ -337,7 +337,7 @@ if __name__ == "__main__":
     else:
         # TODO: clean up this general flow as well (ex ldoi.test())
         params = param.load(sys.argv[1])
-        if 0:
+        if 1:
             print("\n~~~Original LDOI~~~\n")
             G = net.ParityNet(params['parity_model_file'],debug=True)
             init = ldoi.get_const_node_inits(G,params)
@@ -348,12 +348,12 @@ if __name__ == "__main__":
         G = net.DeepNet(params['parity_model_file'],debug=True)
         Gdeep = build_deep(G,2,output_file,minimizer='espresso',debug=True)
         
-        if 1:
+        if 0:
             print("\nDEEP G")
             for node in Gdeep.nodes:
                 print(node.name,node.num,' F=',node.F())
             print('\n')
-        if 0:
+        if 1:
             print("\n~~~Deep LDOI~~~\n")
             init = ldoi.get_const_node_inits(Gdeep,params)
             print('initialization:',[G.nodeNames[num] for num in init])
