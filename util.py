@@ -20,6 +20,11 @@ def istrue(d,keys):
 	else: # assume there is only 1 key then
 		return keys in d and d[keys]
 
+def get_node_dtype(params):
+	if istrue(params,['PBN','active']) and params['PBN']['init'] == 'half':
+		return float 
+	else:
+		return 'bool' 
 
 def import_cp_or_np(try_cupy = True, np_warnings = False):
 	if try_cupy and not TURN_CUPY_OFF_OVERRIDE:
@@ -92,7 +97,7 @@ def load_pickle(file):
 	return data
 
 def rng(x):
-    return range(len(x))
+	return range(len(x))
 
 def avg(x):
 	return sum(x)/len(x)
@@ -118,9 +123,9 @@ def var(x,mean=None):
 
 
 def check_build_dir(dirr):
-    if not os.path.exists(dirr):
-        print("\nCreating new directory for output at: " + str(dirr) + '\n')
-        os.makedirs(dirr)
+	if not os.path.exists(dirr):
+		print("\nCreating new directory for output at: " + str(dirr) + '\n')
+		os.makedirs(dirr)
 
 def safe_div_array(A,B):
 	# a is numerator, b is divisor

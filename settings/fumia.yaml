@@ -1,6 +1,6 @@
 # model file species WHAT to simulate
 
-outputs : ['Apop','Prolif','Quiesc']
+outputs : ['Apoptosis','Proliferation','Quiescence']
 output_thresholds : [0,0,0] 
 # fraction of an attractor with output active must be > threshold for that attractor to be in a phenotype with that output active
 # fumia tends to be robust to choice of output thresholds
@@ -9,7 +9,7 @@ inputs : ['Mutagen','GFs','Hypoxia','Nutrients','TNFalpha']
 # inputs are only relevant for certain sim types
 # for example will try all combinations of inputs ONLY IF mult.py is used
 
-init : {'G1':0, 'G2':0, 'S':0, 'M':0,'Gli':0,'Prolif':0,'Apop':0,'Quiesc':1,"PTEN":1, 'APC':1,'Max':1,'p14':0,'FOXO':1,'ROS':0}
+init : {'G1':0, 'G2':0, 'S':0, 'M':0,'Gli':0,'Proliferation':0,'Apoptosis':0,'Quiescence':1,"PTEN":1, 'APC':1,'Max':1,'p14':0,'FOXO':1,'ROS':0}
 #init : {'G1':0, 'G2':0, 'S':0, 'M':0,'Gli':0,'Prolif':0,'Apop':0,'Quiesc':1}
 # each initial sample is the same for all nodes in init
 # the above are highly recommended init for fumia

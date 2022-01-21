@@ -7,36 +7,59 @@ import itertools, util, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 def step(params, x, G):
+
+	node_dtype = util.get_node_dtype(params)
 	nodes_to_clauses = G.Fmapd['nodes_to_clauses']
 	clauses_to_threads = G.Fmapd['clauses_to_threads'] 
 	threads_to_nodes = G.Fmapd['threads_to_nodes']
 	X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
-	clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
-		
-	x_next = cp.zeros((G.n),dtype=bool)
 
-	# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
-	partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
-	#for j in range(len(clauses_to_threads)): 
-	#	# partial truths must be reordered for their corresponding nodes
-	#	#print(partial_truths[:,j].shape,threads_to_nodes[j].shape,cp.matmul(partial_truths[:,j],threads_to_nodes[j]).shape)
-	#	x_next = x_next + cp.matmul(partial_truths[:,j],threads_to_nodes[j])
+	if not util.istrue(params,['PBN','active']) or params['PBN']['init'] != 'half':
+		clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
+			
+		x_next = cp.zeros((G.n),dtype=node_dtype)
 
-	x_next = cp.sum(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(bool)
+		# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
+		partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
+		#for j in range(len(clauses_to_threads)): 
+		#	# partial truths must be reordered for their corresponding nodes
+		#	#print(partial_truths[:,j].shape,threads_to_nodes[j].shape,cp.matmul(partial_truths[:,j],threads_to_nodes[j]).shape)
+		#	x_next = x_next + cp.matmul(partial_truths[:,j],threads_to_nodes[j])
 
-	# alternative with partial_truths also enclosed in for loop:
-	'''  note that these take IDENTICAL time, so likely unfolded by compiler anyway
-	for j in range(len(clauses_to_threads)): 
-		partial_truths = cp.any(clauses[:,clauses_to_threads[j]],axis=2) 
-		x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
-	'''
+		x_next = cp.sum(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
+
+		# alternative with partial_truths also enclosed in for loop:
+		'''  note that these take IDENTICAL time, so likely unfolded by compiler anyway
+		for j in range(len(clauses_to_threads)): 
+			partial_truths = cp.any(clauses[:,clauses_to_threads[j]],axis=2) 
+			x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
+		'''
+	else:
+		# float version
+		# 	basically, on a vector X, AND is product(X), and OR is 1-(product(1-X))
+		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
+		x_next = cp.zeros((G.n),dtype=node_dtype)
+		partial_truths = 1-cp.prod(1-clauses[:,clauses_to_threads],axis=3)
+		#print('partial_truths =',partial_truths )
+		#print('before matmul =',cp.swapaxes(partial_truths,0,1),threads_to_nodes)
+		#print('after matmul =',cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes))
+		x_next = 1-cp.prod(1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
+		tol = 1e-5
+		assert(cp.all(x_next) < 1.1 and cp.all(x_next) > -0.1)
+
+		x_next[x_next < tol] = 0.0
+		x_next[x_next > 1-tol] = 1.0
+
 	if util.istrue(params,['PBN','active']):
-		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(bool,copy=False)
+		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(node_dtype,copy=False)
 		flip[:,0]=0 #always OFF nodes should still be off
 		#print(cp.sum((cp.logical_not(flip)*x_next | flip*cp.logical_not(x))[:,1])/100)
-		return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
+		if params['PBN']['init'] != 'half':
+			return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
+		else:
+			return 1 - ((1-cp.logical_not(flip)*x_next) * (1-flip*cp.logical_not(x)))
 
 	return x_next
 
@@ -45,8 +68,11 @@ def transient(params,x0, G, fixed_points_only=False):
 	# run network from an initial state 
 	# for sync: if fixed_points=True only return 'finished' for fixed points (and move oscils hopefully passed transient point)
 			# else fixed_points=False return if oscillated back to starting point 
-	x = cp.array(x0,dtype=bool).copy()
-	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
+
+	node_dtype = util.get_node_dtype(params)
+
+	x = cp.array(x0,dtype=node_dtype).copy()
+	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	if params['update_rule']=='sync' and  not util.istrue(params,['PBN','active']):
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
@@ -110,8 +136,9 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	# calculating_var is a recursive flag, just for when this function calls itself again (in order to calc_var, if param['calc_var'])
 	#	and avg is only passed by this function recursively (not from other modules)
 
-	x = cp.array(x0,dtype=bool).copy()
-	x0 = cp.array(x0,dtype=bool).copy() #need for comparisons
+	node_dtype = util.get_node_dtype(params)
+	x = cp.array(x0,dtype=node_dtype).copy()
+	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
 
 	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):

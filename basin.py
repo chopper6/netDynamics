@@ -212,9 +212,13 @@ def calc_basin_size(params, G):
 
 
 def get_init_sample(params, G):
-	p = .5 #prob a given node is off at start
-	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
 	
+	if util.istrue(params,['PBN','active']) and params['PBN']['init'] == 'half':
+		x0 = .5*cp.ones((params['parallelism'],G.n)).astype(float,copy=False)
+	else:
+		p = .5 #prob a given node is off at start
+		x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
+		
 	if 'init' in params.keys():
 		for k in params['init']:
 			node_indx = G.nodeNums[k]

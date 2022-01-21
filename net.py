@@ -44,6 +44,7 @@ class Net:
         self.n_neg = 0 # curr num regular nodes + num negative nodes
 
         self.nodes = [] # object to hold name & number, only regular nodes included
+        self.allNodes = [] #includes complement nodes too
 
         self.nodeNames = [] # num -> name
         self.nodeNums = {} # name -> num
@@ -182,11 +183,13 @@ class Net:
         newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
         self.nodeNames += [nodeName]
         self.nodeNums[nodeName] = self.n_neg
+        self.allNodes += [newNode]
         self.n_neg += 1
         
         if not isNegative:
             self.F[nodeName] = []
             self.nodes += [newNode]
+            self.n+=1
 
     def nodesByName(self,name):
         return self.nodes[self.nodeNums[name]]
@@ -221,7 +224,7 @@ class Net:
 
     def build_Fmapd_and_A(self, params): 
 
-        n = self.n 
+        n = self.n
 
         # building clauses_to_threads, i.e. the index for the function of each node
         #nodes_to_clauses = cp.zeros((self.num_clauses,self.max_literals),dtype=self._get_index_dtype(self.n)) # the literals in each clause
@@ -240,7 +243,7 @@ class Net:
                 for k in range(len(clause)):
                     literal_node = self.nodeNums[clause[k]]
                     clause_fn += [literal_node]
-                    if self.nodes[literal_node].isNegative: 
+                    if self.allNodes[literal_node].isNegative: 
                         self.A[i, literal_node-n] = 1
                     else:
                         self.A[i, literal_node] = 1
