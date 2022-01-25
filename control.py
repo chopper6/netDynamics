@@ -1,5 +1,5 @@
-import ldoi, param, plot, logic, basin, features
-import sys, math, pickle
+import ldoi, param, plot, logic, basin, features, net
+import sys, math, pickle, itertools
 import numpy as np
 import random as rd
 from copy import deepcopy
@@ -334,13 +334,158 @@ def tune_dist(param_file, reps):
 
 	return max_dist*10
 
-if __name__ == "__main__":
-	if len(sys.argv) != 2:
-		sys.exit("Usage: python3 control.py PARAMS.yaml")
-	
-	params = param.load(sys.argv[1])
-	G = Net(model_file=params['model_file'],debug=params['debug'])
-	assert(CONTROL_PARAMS['max_mutator_size']==1 and CONTROL_PARAMS['max_control_size']==1) # debug required before using larger sets
 
-	perturbs = exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
-	print('\n using these control params:',CONTROL_PARAMS)
+###########################################################################################
+
+# TODO:
+#	- add option to run ldoi w/o memoization where each row is diff (2nd run of ldoi will use with diff pinned As)
+#		- and change intersection_LDOI() accordingly
+#	- add a fn to sim from all attrs, to confirm anything this predicts (and later use for exh)
+#	- explicitly debug unmemoized LDOI
+
+def intersect_control(param_file, mutator):
+	# curr singleton mutator & singleton controller
+	# later: generalize to mult mutators, mult controllers
+	#			return an order list of top k controllers
+	params, G = basin.init(param_file)
+
+	G.prepare_for_sim(params) # jp this is nec
+	SS_WT = basin.calc_basin_size(params,G) # only need WT for which inputs corresp to which outputs
+	target_IO = io_pairs(params,SS_WT, G)
+
+	params['mutations'][mutator[0]] = mutator[1] # check this!
+	G.prepare_for_sim(params)
+	SS_M = basin.calc_basin_size(params,G)
+
+	A_intersect = intersection_attractor(params, SS_M, G)
+	ldoi_result = intersection_LDOI(params, A_intersect, G)
+	controllers = score_controller_ldois(params,ldoi_result,target_IO, G)
+
+	return controllers
+
+def io_pairs(params, SS, G):
+	# take dominant output for each input set
+	# returns dict IO = {inputSet: corresp output}
+	IO = {}
+	outpts = np.array([G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))])
+	input_sets,inpts = get_input_sets(params, G)
+
+	largest = {inpt_set:0 for inpt_set in input_sets}
+	for inpt_set in input_sets:
+		for A in SS.attractors.values():
+			A.id = np.array(list(map(int, A.id))) # str to numpy
+			if A.id[inpts] == inpt_set: # may need np.all() here
+				if A.size > largest[inpt_set]:
+					largest[inpt_set] = A.size
+					outpt = A.id[outpts]
+					outpt[outpt > params['output_thresholds']] = 1
+					IO[inpt_set] = A.id[outpts]
+	return IO
+
+
+def intersection_attractor(params, SS_M, G):
+	# for each input set, find the intersection of all attractors
+	# oscils are not included
+	# returns dict {inputSet: attractor}
+	input_sets, inpts = get_input_sets(params, G)
+	A_inter = {inpt_set:np.array([1 for i in range(2*G.n)],dtype=bool) for inpt_set in input_sets}
+
+	for inpt_set in input_sets:
+		for A in SS_M.attractors.values():
+			A.id = np.array(list(map(int, A.id))) # str to numpy
+			if np.all(A.id[inpts] == inpt_set):
+
+				# for async and Gasync these might be slightly off...should fix
+				assert(params['update_rule']=='sync')
+				assert(np.all(A.avg<=1) and np.all(A.avg>=0))
+				fixed_states = np.concatenate((A.avg,1-A.avg)) 
+				# since looking at nodes on Gexp, only look for 1, not 0
+				#	and remove all floats, which indicate oscils
+				fixed_states[fixed_states !=1] = 0 
+				# both a node and its compl should not be on
+				assert(np.all(1-(fixed_states.astype(bool) & np.roll(fixed_states,G.n).astype(bool)))) 
+				A_inter[inpt_set] = np.logical_and(A_inter[inpt_set], fixed_states).astype(int)
+				
+		A_inter[inpt_set] = np.where(A_inter[inpt_set] == 1)[0]
+	return A_inter 
+
+
+def intersection_LDOI(params, A_intersect, G):
+	# run LDOI over each input set, using a controller x the intersection_attr
+	# rm each node in the intersection_attr if it negates itself (controller spc)
+	# run LDOI again with this trimmed intersection_attr (x controller again)
+	# return 2D dict {controller: {input_set: canalized_outputs}}
+
+	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])
+	input_sets, inpts = get_input_sets(params, G)
+
+	ldoi_solns, negates = ldoi.ldoi_sizes_over_all_inputs(params,Gpar,fixed_nodes=A_intersect,negates=True)
+
+	A_intersect_trimd = {}
+	for inpt_set in input_sets:
+		A_intersect_trimd[inpt_set] = {}
+		# should be a faster route
+		for c in range(2*Gpar.n):
+			cname = Gpar.nodeNames[c]
+			A_intersect_trimd[inpt_set][cname] = []
+			for a in A_intersect[inpt_set]:
+				a_name = G.nodeNames[a]
+				#if inpt_set == (1,):
+				#	print(negates[inpt_set][cname])
+				if a_name not in negates[inpt_set][cname]: 
+					A_intersect_trimd[inpt_set][cname] += [a]
+					
+	print('\n\nA TRIMMED:\n',A_intersect_trimd)
+	# a trimmd looks v wrong (jp build easy toy ex), prob is they aren't spc to control
+	assert(0) # before rm'g 1) non memoized ldoi w variable inits per row, 2) explicitly debug "if a in negates[...]""
+	# c vs cname may become a bit of a headache too...
+	# 2nd time fixed_nodes varies by each controller it seems...
+	#	run with fixed_nodes = A_intersect_trimd
+	#  return 2D dict {controller: {input_set: canalized_outputs}}
+
+
+def score_controller_ldois(params, ldoi_result,target,G):
+	# %correct ios
+	scores = {}
+	input_sets = get_input_sets(params, G)
+	for i in range(G.n):
+		for b in [0,1]:
+			if b==0:
+				name = G.nodeNames[i] + '=0'
+				indx = i+G.n
+				assert(indx <= G.n*2)
+			else:
+				name = G.nodeNames[i] + '=1' 
+				indx = i
+			scores[name]=0
+			for inpt_set in input_sets: 
+				if np.all(ldoi_result[inpt_set][indx]==target[inpt_set]):
+					scores[name]+=1
+			scores[name]/=len(input_sets)
+	return scores
+
+def get_input_sets(params, G):
+	inpts = np.array([G.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))])
+	input_sets = itertools.product([0,1],repeat=len(inpts))
+	return list(input_sets), inpts # assume inputs are a managable size
+
+###########################################################################################
+
+if __name__ == "__main__":
+	if len(sys.argv) != 3:
+		sys.exit("Usage: python3 control.py PARAMS.yaml [exh, intersect]")
+	
+	if sys.argv[2] == 'exh':
+		params = param.load(sys.argv[1])
+		G = Net(model_file=params['model_file'],debug=params['debug'])
+		assert(CONTROL_PARAMS['max_mutator_size']==1 and CONTROL_PARAMS['max_control_size']==1) # debug required before using larger sets
+
+		perturbs = exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
+		print('\n using these control params:',CONTROL_PARAMS)
+	
+	elif sys.argv[2] == 'intersect': 
+		mutator='x1'
+		intersect_control(sys.argv[1], mutator)
+
+	else:
+		assert(0) # unrecognized 3rd arg

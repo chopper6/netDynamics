@@ -17,21 +17,35 @@ def test(G,params,init=[]):
 	ldoi_solns = ldoi_sizes_over_all_inputs(params,G,fixed_nodes=init)
 	return ldoi_solns
 
-def convert_solutions(G,ldoi_solns):
-	soln_dict = {}
+def convert_solutions(G,ldoi_solns,negated):	
+
+	# TODO: clean this
+	if isinstance(G,net.ParityNet):
+		n=G.n_neg 
+		n_compl = G.n 
+	elif isinstance(G,net.DeepNet):
+		n=G.n 
+		n_compl = int(G.n/2)
+	else:
+		assert(0) # LDOI should be on a ParityNet or a DeepNet
+
+
+	soln_dict, negated_dict = {},{}
 	for i in range(len(ldoi_solns)):
-		soln_names = ''
+		soln_dict[G.nodeNames[i]] = []
 		for j in range(len(ldoi_solns[i])):
 			if '+' not in G.nodeNames[i] and '&' not in G.nodeNames[i]: #ignore deep nodes
 				if ldoi_solns[i,j]:
 					if '+' not in G.nodeNames[j] and '&' not in G.nodeNames[j]: #ignore deep nodes
-						soln_names += G.nodeNames[j] + ', '
-		if soln_names != '' :
-			#print("LDOI(",G.nodeNames[i],') =',soln_names)
-			soln_dict[G.nodeNames[i]] = soln_names
-		#if negated[i]:
-		#	print('\t',G.nodeNames[i],'negates itself')
-	return soln_dict
+						soln_dict[G.nodeNames[i]] += [G.nodeNames[j]]
+		
+		negated_dict[G.nodeNames[i]] = []
+		for j in range(len(negated[i])):
+			assert(j<=G.n_neg)
+			if negated[i,j]:
+				negated_dict[G.nodeNames[i]] += [G.nodeNames[j]] 
+	return soln_dict, negated_dict
+
 
 def ldoi_bfs(G,pinning=True,init=[]):
 	# A should be adjacency matrix of Gexp
@@ -62,13 +76,24 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	#	print(row)
 
 	X = cp.zeros((N,N),dtype=bool) # the current sent of nodes being considered
-	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
-	negated = cp.zeros(N,dtype=bool) # if negated[i] then the complement of i is in the LDOI of i
+	visited = cp.zeros((N,N),dtype=bool) 
+	# if visited[i,j]=1, then j is in the LDOI of i
+	negated = cp.zeros((N,N),dtype=bool) 
+	# if negated[i,j] then the complement of j is in the LDOI of i, 
+	#	where j=i or some other pinned node (such as from init)
 	D = cp.diag(cp.ones(N,dtype=bool))
-
+	
+	memoize=True
 	if len(init) > 0:
-		init = cp.array(init)
-		D[:,init] = 1 
+		if not isinstance(init[0], list):
+			init = cp.array(init)
+			D[:,init] = 1 
+			assert(cp.all(1-(D & cp.roll(D,n_compl,axis=0)))) # check that initial set is non-contradictory
+		else:
+			memoize=False # if each row has different inits, memoize makes little sense
+			for i in range(len(init)):
+				init[i] = cp.array(init[i])
+				D[i,init[i]] = 1
 	D[cp.arange(n,N)]=0 #don't care about source nodes for complement nodes
 	D_compl = D.copy()
 	D_compl[:n] = cp.roll(D_compl[:n],n_compl,axis=0)
@@ -89,7 +114,9 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	#i.e. the descendants of X, including composite nodes iff X covers all their inputs
 	
 	if pinning:
-		negated = negated | cp.any(X & D_compl,axis=1) 
+		negated = negated | cp.any(X & D_compl,axis=1)  # this axis arg could be issue
+		print('negated[0],X[0],D_compl[0]')
+		print(negated[0][0:G.n].astype(int),'\n',negated[0][G.n:G.n_neg].astype(int),'\n\n\n',X[0][0:G.n].astype(int),'\n',X[0][G.n:G.n_neg].astype(int),'\n\n\n',D_compl[0][0:G.n].astype(int),'\n',D_compl[0][G.n:G.n_neg].astype(int))
 		X = cp.logical_not(D_compl) & X  
 
 	loop=0
@@ -100,16 +127,20 @@ def ldoi_bfs(G,pinning=True,init=[]):
 		if pinning:
 			visited_rolled = visited.copy()
 			visited_rolled[:n] = cp.roll(visited_rolled[:n],n_compl,axis=0)
-			memoX = cp.matmul((visited|D) & cp.logical_not(visited_rolled.T), visited) 
-			# if A has visited B, then add B's visited to A if ~A not in B's visited
-			# otherwise must cut all of B's contribution!
-			X = (counts-cp.matmul(visited|D.astype(index_dtype),A.astype(index_dtype))<=0) | memoX
-			negated = negated | cp.any(X & D_compl,axis=1)
+			X = (counts-cp.matmul(visited|D.astype(index_dtype),A.astype(index_dtype))<=0)
+			if memoize:
+				memoX = cp.matmul((visited|D) & cp.logical_not(visited_rolled.T), visited) 
+				# if A has visited B, then add B's visited to A if ~A not in B's visited
+				# otherwise must cut all of B's contribution!
+				X = X | memoX
+			negated = negated | cp.any(X & D_compl,axis=1) # this axis arg could be issue
 			X = cp.logical_not(visited) & cp.logical_not(D_compl) & X 
 			
 		else:
-			memoX = cp.matmul(visited|D, visited)
-			X = (counts-cp.matmul(visited|D.astype(index_dtype),A.astype(index_dtype))<=0) | memoX
+			X = (counts-cp.matmul(visited|D.astype(index_dtype),A.astype(index_dtype))<=0) 
+			if memoize:
+				memoX = cp.matmul(visited|D, visited)
+				X = X | memoX
 			X = cp.logical_not(visited) & X
 
 		# debugging:
@@ -120,13 +151,16 @@ def ldoi_bfs(G,pinning=True,init=[]):
 			sys.exit("ERROR: infinite loop in ldoi_bfs!")
 
 	if not pinning:
-		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
+		assert(0) #TODO: explicitly debug this before using
+		negated = cp.any(visited & D_compl,axis=0) 
 
-	return visited[:n,:n], negated[:n] 
+	return visited[:n,:n], negated[:n,:n] 
 
 
-def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
-	# fixed_nodes should be a list of names such as ['FOXO3','ERK']
+def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[],negates=False):
+	# curr: fixed_nodes should be list of ints corresp to the state in the expanded net that is pinned 
+	#	can also use as a dict, where indices ae input_sets, but has to match itertool form used here
+	# old: fixed_nodes should be a list of names such as ['FOXO3','ERK']
 	if isinstance(G,net.ParityNet):
 		n=G.n_neg 
 		n_compl = G.n 
@@ -136,21 +170,16 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 	else:
 		assert(0) # LDOI should be on a ParityNet or a DeepNet
 
-	all_solns = {}
-	#output_indices = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
-
-	ldoi_fixed = fixed_nodes # TODO clean
-	#for pair in fixed_nodes: # this used to be pairs {'name':0} for example
-		#indx = G.nodeNums[pair[0]] 
-		#if pair[1]==0:
-		#	indx += n # i.e. the node's complement
-		#ldoi_fixed += [indx]
+	all_solns, all_negated = {},{}
 
 	k = len(params['inputs'])
 	input_indices = [G.nodeNums[params['inputs'][i]] for i in range(k)]
 	input_sets = itertools.product([0,1],repeat=k)
 	for input_set in input_sets:
-		ldoi_inpts = ldoi_fixed.copy()
+		if isinstance(fixed_nodes,dict):
+			ldoi_inpts = fixed_nodes[input_set].copy() # copy prob isn't nec
+		else:
+			ldoi_inpts = fixed_nodes.copy()
 		for i in range(len(input_set)):
 			if input_set[i]==1:
 				ldoi_inpts += [input_indices[i]]
@@ -160,14 +189,18 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
 		ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=ldoi_inpts)
 		if CUPY:
 			ldoi_solns = ldoi_solns.get() #explicitly cast out of cupy
+			negated = negated.get()
 		
-		ldoi_solns = convert_solutions(G,ldoi_solns)
+		ldoi_solns, negated = convert_solutions(G, ldoi_solns, negated)
 		
 		# merge diff input sets into one soln set
-		input_str = str(input_set)
+		all_solns[input_set] = {}
+		all_negated[input_set] = {}
 		for k in ldoi_solns.keys():
-			all_solns[k + ' given ' + input_str] = ldoi_solns[k]
-	return all_solns
+			all_solns[input_set][k] = ldoi_solns[k]
+			all_negated[input_set][k] = negated[k]
+	return all_solns, all_negated
+
 
 def cut_from_ldoi_over_inputs():
 		#avg_sum_ldoi,avg_sum_ldoi_outputs = 0,0

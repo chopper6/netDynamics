@@ -1,4 +1,4 @@
-import main, parse, control
+import basin, control
 import sys, os
 from timeit import default_timer as timer
 
@@ -6,12 +6,12 @@ from timeit import default_timer as timer
 # also print memory info using array.nbytes
 
 def timetest(param_file, print_output=False):
-	params = parse.params(param_file) #for now parsing is not timed
+	params, G = basin.init(param_file)
 	#params['verbose'] = 0 # you really want to hear it every loop?
-	reps = 3
+	reps = 2
 	tstart = timer()
 	for r in range(reps):
-		main.find_attractors(params)
+		steadyStates = basin.calc_basin_size(params,G)
 		print("\n~~~TIMING CODE: Finished rep ",r+1,'~~~\n')
 	tend = timer()
 
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 	
 	if sys.argv[2]=='time':
 		timetest(sys.argv[1], print_output=True)	
-	if sys.argv[2]=='timeControl':
+	elif sys.argv[2]=='timeControl':
 		timetest_control(sys.argv[1], print_output=True)
 	else:
 		sys.exit("Unrecognized optimization_type (arguments 3).")

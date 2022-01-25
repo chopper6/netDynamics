@@ -8,13 +8,31 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # TODO: clean up how var is handled
 
 #########################################################################################################
-
 def main(param_file):
 	params, G = init(param_file)
 	steadyStates = calc_basin_size(params,G)
 	plot.pie(params, steadyStates,G)
-
 	#print('basin.main: phenos=',steadyStates.phenos_str())
+	#print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
+	#temp_print_periodic(steadyStates, G)
+
+def temp_control(param_file):
+	# unfinished!
+	params, G = init(param_file)
+	steadyStates = calc_basin_size(params,G)
+	print('basin.main: initial #A=',len(steadyStates.attractors),'n=',G.n)
+	scores = score_controllers(params, G, steadyStates)
+
+def temp_print_periodic(SS, G):
+	for k in SS.attractors:
+		A=SS.attractors[k]
+		print("\nnext A:")
+		for i in range(len(A.avg)):
+			inputs = ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
+			input_state = [A.avg[G.nodeNums[inpt]] for inpt in inputs]
+			#if A.avg[i] not in [0,1]:
+			if input_state == [0,0,0,0]:
+				print(G.nodeNames[i], 'avg=', A.avg[i])
 
 def init(param_file):
 	params = param.load(param_file)
@@ -236,6 +254,7 @@ def get_init_sample(params, G):
 
 	return x0
 
+
 def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 	if oscil_bin == [] or oscil_bin is None:
 		return
@@ -319,6 +338,88 @@ def cupy_to_numpy(params,result):
 		for k in result.keys():
 			result[k]=result[k].get()
 
+
+
+####################### CNTR RELATED ##########################################
+
+# TODO clean and poss mv elsewhere
+# TODO::: need to reset driver nodes to their driven value each step of lap!
+
+def score_controllers(params, G, init_steadyStates):
+	# largely follows calc_basin_size()
+	# curr assumes all single nodes are control candidates
+	assert(params['update_rule'] == 'sync') # haven't implemented yet for async/Gasync
+	assert(not util.istrue(params,['PBN','active'])) # haven't implemented yet
+	controlled_steadyStates = [SteadyStates(params, G) for _ in range(G.n)] 
+
+	oscil_bin = [] #put all the samples that are unfinished oscillators
+	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
+	
+	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
+
+		for i in range(int(params['num_samples']/params['parallelism'])):
+			x0 = get_attr_x_cntr_sample(params, G, init_steadyStates)
+			result = lap.transient(params,x0, G, fixed_points_only=True)
+			cupy_to_numpy(params,result)
+			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
+			for i in range(G.n):
+				cntr_start, cntr_stop = 0,0
+				assert(0)
+				controlled_steadyStates[i].add_attractors(result[cntr_start, cntr_stop])
+
+		# TRANSIENT OSCILS
+		# run until sure that sample is in the oscil
+		confirmed_oscils = sync_run_oscils(params, oscil_bin, steadyStates, G, transient=True)
+
+
+		# CLASSIFYING OSCILS
+		# calculate period, avg on state, ect
+		if params['verbose'] and confirmed_oscils != []: 
+			print('Finished finding oscillations, now classifying them.')
+
+		sync_run_oscils(params, confirmed_oscils, steadyStates, G, transient=False)
+
+
+	elif params['update_rule'] in ['async','Gasync'] or util.istrue(params,['PBN','active']): 
+		for i in range(int(params['num_samples']/params['parallelism'])):
+			x0 = get_init_sample(params, G)
+
+			x_in_attractor = lap.transient(params,x0, G)
+			result = lap.categorize_attractor(params,x_in_attractor, G)
+			cupy_to_numpy(params,result)
+			steadyStates.add_attractors(result)
+
+	else:
+		sys.exit("ERROR: unrecognized parameter for 'update_rule'")
+
+	steadyStates.normalize_attractors()
+
+	if util.istrue(params,'use_phenos'):
+		steadyStates.build_phenos()
+
+	return steadyStates
+
+
+def get_attr_x_cntr_sample(params, G, SS):
+	# parallelism is just set to num samples for now
+
+	# rebuilds Fmapd since
+	#	1) parallelism has changed
+	#	2) certain nodes have to be pinned
+	samples = []
+	params['parallelism'] = params['num_samples'] = len(SS.attractors)*G.n*2
+	G.prepare_for_sim(params) 
+
+	for i in range(G.n):
+		for b in [0,1]:
+			for k in SS.attractors:
+				A = SS.attractors[k]
+				Aid = [int(A.id[j]) for j in range(len(A.id)) ]
+				init_A[i] = b
+				samples += [init_A]
+	samples = cp.array(samples)
+
+	return samples
 
 ##################################################################################
 

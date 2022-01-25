@@ -204,7 +204,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		expected_num_updates = (params['steps_per_lap']+1)/2
 	else: #sync
 		expected_num_updates = params['steps_per_lap']+1
-	
+
 	avg_states = avg_states/expected_num_updates
 	if params['debug'] and params['update_rule'] == 'sync': #since async and Gasync are based on expected num of updates, they may be slightly off
 		assert (cp.all(avg_states <= 1.001))
