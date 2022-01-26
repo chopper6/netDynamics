@@ -341,7 +341,10 @@ def tune_dist(param_file, reps):
 #	- add option to run ldoi w/o memoization where each row is diff (2nd run of ldoi will use with diff pinned As)
 #		- and change intersection_LDOI() accordingly
 #	- add a fn to sim from all attrs, to confirm anything this predicts (and later use for exh)
-#	- explicitly debug unmemoized LDOI
+#	- explicitly debug unmemoized LDOI w/ more complicated toy model
+
+# LATER:
+#	standardize a whole lot, esp going in and out of ldoi (num or names ect)
 
 def intersect_control(param_file, mutator):
 	# curr singleton mutator & singleton controller
@@ -352,34 +355,43 @@ def intersect_control(param_file, mutator):
 	G.prepare_for_sim(params) # jp this is nec
 	SS_WT = basin.calc_basin_size(params,G) # only need WT for which inputs corresp to which outputs
 	target_IO = io_pairs(params,SS_WT, G)
+	print("target IO =",target_IO)
 
 	params['mutations'][mutator[0]] = mutator[1] # check this!
 	G.prepare_for_sim(params)
 	SS_M = basin.calc_basin_size(params,G)
 
 	A_intersect = intersection_attractor(params, SS_M, G)
+	print("intersect_control: A_intersect=", A_intersect)
 	ldoi_result = intersection_LDOI(params, A_intersect, G)
-	controllers = score_controller_ldois(params,ldoi_result,target_IO, G)
-
-	return controllers
+	print("ldoi final result=",ldoi_result)
+	controller_scores = score_controller_ldois(params,ldoi_result,target_IO, G)
+	print("controller_scores=",controller_scores)
+	return controller_scores
 
 def io_pairs(params, SS, G):
 	# take dominant output for each input set
 	# returns dict IO = {inputSet: corresp output}
+	not_str = '!' # TODO clean/genz
 	IO = {}
 	outpts = np.array([G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))])
 	input_sets,inpts = get_input_sets(params, G)
-
 	largest = {inpt_set:0 for inpt_set in input_sets}
 	for inpt_set in input_sets:
 		for A in SS.attractors.values():
 			A.id = np.array(list(map(int, A.id))) # str to numpy
-			if A.id[inpts] == inpt_set: # may need np.all() here
+			if np.all(A.id[inpts] == inpt_set):
 				if A.size > largest[inpt_set]:
 					largest[inpt_set] = A.size
 					outpt = A.id[outpts]
 					outpt[outpt > params['output_thresholds']] = 1
-					IO[inpt_set] = A.id[outpts]
+					outpt_names = []
+					for o in range(len(outpt)):
+						if outpt[0] == 0:
+							outpt_names += [not_str + params['outputs'][o]]
+						else:
+							outpt_names += [params['outputs'][o]]
+					IO[inpt_set] = outpt_names
 	return IO
 
 
@@ -419,35 +431,38 @@ def intersection_LDOI(params, A_intersect, G):
 	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])
 	input_sets, inpts = get_input_sets(params, G)
 
+	print('\n\nA FULL:\n',A_intersect)
 	ldoi_solns, negates = ldoi.ldoi_sizes_over_all_inputs(params,Gpar,fixed_nodes=A_intersect,negates=True)
 
+	print("\nw full A_inter: solns=\n",ldoi_solns,'\nnegates=\n',negates)
 	A_intersect_trimd = {}
 	for inpt_set in input_sets:
-		A_intersect_trimd[inpt_set] = {}
+		A_intersect_trimd[inpt_set] = [[] for _ in range(2*Gpar.n)]
 		# should be a faster route
 		for c in range(2*Gpar.n):
 			cname = Gpar.nodeNames[c]
-			A_intersect_trimd[inpt_set][cname] = []
 			for a in A_intersect[inpt_set]:
 				a_name = G.nodeNames[a]
-				#if inpt_set == (1,):
-				#	print(negates[inpt_set][cname])
-				if a_name not in negates[inpt_set][cname]: 
-					A_intersect_trimd[inpt_set][cname] += [a]
+				a_name_compl = G.nodeNames[(a+Gpar.n) % (2*Gpar.n)]
+				if a_name not in negates[inpt_set][cname] and a_name_compl not in negates[inpt_set][cname]: 
+					A_intersect_trimd[inpt_set][c] += [a]
+					if inpt_set==(1, 1) and a_name=='x1':
+						print("added ",a_name,"to",cname)
 					
 	print('\n\nA TRIMMED:\n',A_intersect_trimd)
-	# a trimmd looks v wrong (jp build easy toy ex), prob is they aren't spc to control
-	assert(0) # before rm'g 1) non memoized ldoi w variable inits per row, 2) explicitly debug "if a in negates[...]""
 	# c vs cname may become a bit of a headache too...
 	# 2nd time fixed_nodes varies by each controller it seems...
-	#	run with fixed_nodes = A_intersect_trimd
-	#  return 2D dict {controller: {input_set: canalized_outputs}}
+	ldoi_solns, negates = ldoi.ldoi_sizes_over_all_inputs(params,Gpar,fixed_nodes=A_intersect_trimd,negates=True)
+	
+	print("\nw trimmed A_inter: solns=\n",ldoi_solns,'\nnegates=\n',negates)
+
+	return ldoi_solns
 
 
 def score_controller_ldois(params, ldoi_result,target,G):
 	# %correct ios
 	scores = {}
-	input_sets = get_input_sets(params, G)
+	input_sets,inpts = get_input_sets(params, G)
 	for i in range(G.n):
 		for b in [0,1]:
 			if b==0:
@@ -459,7 +474,12 @@ def score_controller_ldois(params, ldoi_result,target,G):
 				indx = i
 			scores[name]=0
 			for inpt_set in input_sets: 
-				if np.all(ldoi_result[inpt_set][indx]==target[inpt_set]):
+				match=True 
+				for output_val in target[inpt_set]:
+					if output_val not in ldoi_result[inpt_set][G.nodeNames[indx]]:
+						match=False 
+						break
+				if match:
 					scores[name]+=1
 			scores[name]/=len(input_sets)
 	return scores
@@ -484,7 +504,7 @@ if __name__ == "__main__":
 		print('\n using these control params:',CONTROL_PARAMS)
 	
 	elif sys.argv[2] == 'intersect': 
-		mutator='x1'
+		mutator=('x1',0)
 		intersect_control(sys.argv[1], mutator)
 
 	else:

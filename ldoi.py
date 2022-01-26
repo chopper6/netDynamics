@@ -4,7 +4,11 @@ import itertools, sys, os, pickle
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # TODO:
+#	figure out whne negated should use cp.any() and rm init part (curr if False'd out)
+#	due to "rm_contras" and "memoize", negated can be wrong...
+#		temp soln is to remove memoize
 #	add an assert than regular and complement aren't both ON
+#	make it bwds compat with directly calling ldoi or w.e.
 
 # TODO:
 # check pinning=False at end of ldoi_bfs()
@@ -48,13 +52,14 @@ def convert_solutions(G,ldoi_solns,negated):
 
 
 def ldoi_bfs(G,pinning=True,init=[]):
+	memoize=False # temp soln
 	# A should be adjacency matrix of Gexp
 	# and the corresponding Vexp to A should be ordered such that:
 	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
 
 	# pinning means that sources cannot drive their complement (they are fixed to be ON)
 	# without pinning the algorithm will run faster, and it is possible that ~A in LDOI(A)
-	
+	init = cp.unique(init) # TODO: clean this (ex if [] is passed for init)
 	# TODO: clean this
 	if isinstance(G,net.ParityNet):
 		n=G.n_neg 
@@ -83,20 +88,27 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	#	where j=i or some other pinned node (such as from init)
 	D = cp.diag(cp.ones(N,dtype=bool))
 	
-	memoize=True
+	#memoize=True # temp set to false at beginning of file
 	if len(init) > 0:
-		if not isinstance(init[0], list):
-			init = cp.array(init)
+		if init[0].ndim < 1: # TODO clean this shit
+			init = cp.array(init) 
+			assert(cp.all(init < N)) # unlike numpy, cupy will wrap if out of bounds
 			D[:,init] = 1 
-			assert(cp.all(1-(D & cp.roll(D,n_compl,axis=0)))) # check that initial set is non-contradictory
+			#assert(cp.all(1-(D & cp.roll(D,n_compl,axis=0)))) # check that initial set is non-contradictory
+			#assert(0)
 		else:
 			memoize=False # if each row has different inits, memoize makes little sense
 			for i in range(len(init)):
 				init[i] = cp.array(init[i])
 				D[i,init[i]] = 1
+
+	# THIS ASSUMES THAT THE DIAG HAS PRECEDENCE OVER INIT
+	rm_contras = cp.roll(cp.diag(cp.ones(N,dtype=bool)), n_compl,axis=0)
+	D = D & (1-rm_contras)
+
 	D[cp.arange(n,N)]=0 #don't care about source nodes for complement nodes
 	D_compl = D.copy()
-	D_compl[:n] = cp.roll(D_compl[:n],n_compl,axis=0)
+	D_compl[:n] = cp.roll(D_compl[:n],n_compl,axis=1)
 
 	max_count = max(cp.sum(A,axis=0))
 	if max_count<128: 
@@ -109,21 +121,31 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	counts = cp.tile(num_to_activate,N).reshape(N,N) # num input nodes needed to activate
 	zero = cp.zeros((N,N))
 
-	X[D] = 1
-	X = counts-cp.matmul(X.astype(index_dtype),A.astype(index_dtype))<=0 
-	#i.e. the descendants of X, including composite nodes iff X covers all their inputs
-	
-	if pinning:
-		negated = negated | cp.any(X & D_compl,axis=1)  # this axis arg could be issue
-		print('negated[0],X[0],D_compl[0]')
-		print(negated[0][0:G.n].astype(int),'\n',negated[0][G.n:G.n_neg].astype(int),'\n\n\n',X[0][0:G.n].astype(int),'\n',X[0][G.n:G.n_neg].astype(int),'\n\n\n',D_compl[0][0:G.n].astype(int),'\n',D_compl[0][G.n:G.n_neg].astype(int))
-		X = cp.logical_not(D_compl) & X  
+	#X[D] = 1 # wait..why did i use this?
+	X = D.copy()
+	if False: # JP THIS IS UNNEC AND CAN RM
+		print("Xbefore=\n",X.astype(int))
+		print("part1=\n",A.astype(index_dtype),'\npart2=\n',cp.matmul(X.astype(index_dtype),A.astype(index_dtype)))
+		X = counts-cp.matmul(X.astype(index_dtype),A.astype(index_dtype))<=0 
+		negated = negated | cp.any(X & D_compl,axis=1) # this axis arg could be issue
+		X = cp.logical_not(visited) & cp.logical_not(D_compl) & X 
+		print("Xafter=\n",X.astype(int))
+		# i.e. the descendants of X, including composite nodes iff X covers all their inputs
+		
+		if pinning:
+			negated = negated | (X & D_compl)  # needs to be ANY in certain cases...
+			print('negated,X,D_compl')
+			print(negated.astype(int),'\n\n\n',negated.astype(int),'\n\n\n',X.astype(int),'\n\n\n',D_compl.astype(int))
+			assert(0)
+			X = cp.logical_not(D_compl) & X  
 
 	loop=0
 	while cp.any(X): 
-		
+		if init[1] == 1:
+			print("\n\nvisited\n",visited.astype(int),"\n\nnegated\n", negated.astype(int),"\n\nX\n", X.astype(int))
 		visited = visited | X #note that D is included, i.e. source nodes
 
+		#print('\nvisited=\n',visited.astype(int), '\nDcompl=\n',D_compl)
 		if pinning:
 			visited_rolled = visited.copy()
 			visited_rolled[:n] = cp.roll(visited_rolled[:n],n_compl,axis=0)
@@ -133,7 +155,7 @@ def ldoi_bfs(G,pinning=True,init=[]):
 				# if A has visited B, then add B's visited to A if ~A not in B's visited
 				# otherwise must cut all of B's contribution!
 				X = X | memoX
-			negated = negated | cp.any(X & D_compl,axis=1) # this axis arg could be issue
+			negated = negated | (X & D_compl) # needs to be ANY in certain cases...
 			X = cp.logical_not(visited) & cp.logical_not(D_compl) & X 
 			
 		else:
@@ -153,7 +175,6 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	if not pinning:
 		assert(0) #TODO: explicitly debug this before using
 		negated = cp.any(visited & D_compl,axis=0) 
-
 	return visited[:n,:n], negated[:n,:n] 
 
 
@@ -176,15 +197,32 @@ def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[],negates=False):
 	input_indices = [G.nodeNums[params['inputs'][i]] for i in range(k)]
 	input_sets = itertools.product([0,1],repeat=k)
 	for input_set in input_sets:
+		list_of_inits = False # TODO: clean this up
 		if isinstance(fixed_nodes,dict):
-			ldoi_inpts = fixed_nodes[input_set].copy() # copy prob isn't nec
+			if isinstance(fixed_nodes[input_set],list):
+				list_of_inits = True
+			ldoi_inpts = fixed_nodes[input_set] # TODO: prev had copy, if not nec match w else below
 		else:
-			ldoi_inpts = fixed_nodes.copy()
+			ldoi_inpts = fixed_nodes.copy() 
+		
 		for i in range(len(input_set)):
 			if input_set[i]==1:
-				ldoi_inpts += [input_indices[i]]
+				inpt_val = input_indices[i]
 			else:
-				ldoi_inpts += [input_indices[i] + n_compl] #i.e. its complement
+				inpt_val = input_indices[i] + n_compl #i.e. its complement
+			
+			# TODO: clean this lists_of_lists shit
+			if list_of_inits:
+				for i in range(len(ldoi_inpts)):
+					ldoi_inpts[i] = cp.append(ldoi_inpts[i],inpt_val)
+			else:
+				ldoi_inpts = cp.append(ldoi_inpts,inpt_val)
+		
+		if list_of_inits:
+			for i in range(len(ldoi_inpts)):				
+				ldoi_inpts[i] = cp.unique(ldoi_inpts[i])
+		else:
+			ldoi_inpts = cp.append(ldoi_inpts,inpt_val)
 
 		ldoi_solns, negated = ldoi_bfs(G,pinning=1,init=ldoi_inpts)
 		if CUPY:
