@@ -1,6 +1,7 @@
 import ldoi, param, plot, logic, basin, features, net
 import sys, math, pickle, itertools
 import numpy as np
+from operator import itemgetter
 import random as rd
 from copy import deepcopy
 from net import Net
@@ -8,11 +9,11 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.2, 	# minimum distance threshold to be considered a mutant 
-	'cnt_thresh':.01, 	# min distance less than the mutation distance to be considered a controller
+	'mut_thresh':.05, 	# minimum distance threshold to be considered a mutant 
+	'cnt_thresh':.05, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1,  
 	'max_control_size':1,
-	'norm':4,			# the norm used to measure distance. Use an integer or 'max'
+	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
 	'verbose':True	# toggle how much is printed to the console
 }
 
@@ -20,7 +21,7 @@ CONTROL_PARAMS = {
 # Using larger sizes will result in some redundant simulations (but will still be correct)
 
 class Perturbations:
-	def __init__(self, params, G,phenosWT,mut_thresh, cnt_thresh,max_control_size,norm):
+	def __init__(self, params, G,SS_WT,mut_thresh, cnt_thresh,max_control_size,norm):
 		self.mutators, self.solutions, self.controllers,self.irreversible = [],{},[],[]
 		# irreversible are mutators without a solution
 
@@ -32,7 +33,8 @@ class Perturbations:
 		self.filtered_nodes = [node.name for node in G.nodes if node.name not in params['outputs'] and node.name not in params['inputs'] and node.name not in params['init'].keys()]
 
 		self.num_solutions=0
-		self.phenosWT = phenosWT
+		self.SS_WT = SS_WT
+		self.phenosWT = SS_WT.phenotypes
 		self.max_control_size = max_control_size
 
 		self.num_inputs = len(params['inputs'])
@@ -130,8 +132,15 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	params['use_inputs_in_pheno']=True 
 	params['use_phenos']=True
 
-	phenosWT = mutate_and_sim(params, G).phenotypes
-	perturbs = Perturbations(params,G,phenosWT,mut_thresh, cnt_thresh, max_control_size,norm)
+	# TODO: clean this double call! i.e. shouldn't have to build perturbs and then remodify
+	SS_WT_init = mutate_and_sim(params, G)
+	perturbs = Perturbations(params,G,SS_WT_init,mut_thresh, cnt_thresh, max_control_size,norm)
+	init_As = basin.get_x0_from_SS(params, perturbs.SS_WT,G)
+	SS_WT = mutate_and_sim(params, G,x0=init_As)
+	perturbs.SS_WT = SS_WT 
+	perturbs.phenosWT = SS_WT.phenotypes
+
+
 	orig_mutated = deepcopy(params['mutations'])
 	if measure:
 		metrics = NetMetrics(params, phenosWT, G)
@@ -162,17 +171,27 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	return perturbs
 
 
-def mutate_and_sim(params_orig, G_orig):
+def mutate_and_sim(params_orig, G_orig,x0=None):
 	G, params = deepcopy(G_orig), deepcopy(params_orig)
+	if x0 is not None:
+		x0=deepcopy(x0)
+		params['num_samples'] = params['parallelism'] = len(x0) 
+		# TODO: don't do this, above
+		# 	mix up is due to basin.py mutating and then building x0. here opposite
+		for mutant in params['mutations']:
+			indx = G.nodeNums[mutant]
+			x0[:,indx] = params['mutations'][mutant]
 	G.prepare_for_sim(params)
-	steadyStates = basin.calc_basin_size(params,G)
+	steadyStates = basin.calc_basin_size(params,G,x0=x0)
 	return steadyStates
 
 ####################################################################################################
 				
-def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_mut_dist, depth,verbose=True):
+def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_mut_dist, depth, verbose=True):
 	if depth == 0:
 		return 
+
+	init_As = basin.get_x0_from_SS(params_orig, perturbs.SS_WT,G)
 
 	params = deepcopy(params_orig)
 	curr_mut_dist_orig = curr_mut_dist
@@ -187,7 +206,31 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 				curr_mutators, curr_mut_dist = deepcopy(curr_mutators_orig), curr_mut_dist_orig
 				params['mutations'] = deepcopy(orig_mutations)
 				params['mutations'][M] = b
-				phenosM = mutate_and_sim(params, G).phenotypes
+				SS_M = mutate_and_sim(params, G,x0=init_As)
+				phenosM = SS_M.phenotypes
+
+				if 0: #can rm debug
+					if M=='TAOK' and b==0: #debugging
+						i=0
+						seen=[]
+						inpt_ind = np.array([G.nodeNums[inpt] for inpt in params['inputs']])
+						for A in init_As:
+							if str(A) not in seen:
+								s=True 
+								for inpt in inpt_ind:
+									if A[inpt]:
+										s= False
+										break
+								if s:
+									print("A|0000=",str(A))
+									seen+=[str(A)]
+
+						for P in [phenosM]:
+							print('Mutated Phenos #',i)
+							i+=1
+							for k in P:
+								print(k,'=',P[k].size)
+						assert(0)
 
 				mut_dist = diff(perturbs.phenosWT,phenosM,perturbs.num_inputs,norm=perturbs.norm)
 				if metrics is not None:
@@ -195,7 +238,8 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 
 				if mut_dist > perturbs.mut_thresh:
 					curr_mutators += [(M,b)]
-					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist}]
+					mut_x0 = basin.get_x0_from_SS(params,SS_M,G)
+					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist,'x0':mut_x0}]
 					if CONTROL_PARAMS['verbose']:
 						print("Added mutator:",curr_mutators,'at dist',round(mut_dist,3))
 					#print([(k,phenosM[k].size) for k in phenosM.keys()])
@@ -234,7 +278,7 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 				prev_groups= perturbs.solutions[str(mutator['mutants'])]['controllers']
 			if should_check(C, b, control_set, prev_groups):
 				params['mutations'][C] = b
-				phenosC = mutate_and_sim(params,G).phenotypes
+				phenosC = mutate_and_sim(params,G,x0=mutator['x0']).phenotypes
 
 				#change = 1-diff(phenosWT,phenosC)/mut_dist
 				cnt_dist = diff(perturbs.phenosWT,phenosC,perturbs.num_inputs,norm=perturbs.norm)
@@ -345,6 +389,8 @@ def tune_dist(param_file, reps):
 
 # LATER:
 #	standardize a whole lot, esp going in and out of ldoi (num or names ect)
+#	handle wider cases such as no inputs
+# 	add warning if curr mutations in settings file
 
 def intersect_control(param_file, mutator):
 	# curr singleton mutator & singleton controller
@@ -355,24 +401,26 @@ def intersect_control(param_file, mutator):
 	G.prepare_for_sim(params) # jp this is nec
 	SS_WT = basin.calc_basin_size(params,G) # only need WT for which inputs corresp to which outputs
 	target_IO = io_pairs(params,SS_WT, G)
-	print("target IO =",target_IO)
+	#print("target IO =",target_IO)
 
-	params['mutations'][mutator[0]] = mutator[1] # check this!
+	params['mutations'][mutator[0]] = mutator[1] 
 	G.prepare_for_sim(params)
 	SS_M = basin.calc_basin_size(params,G)
 
 	A_intersect = intersection_attractor(params, SS_M, G)
-	print("intersect_control: A_intersect=", A_intersect)
+	#print("intersect_control: A_intersect=", A_intersect)
 	ldoi_result = intersection_LDOI(params, A_intersect, G)
-	print("ldoi final result=",ldoi_result)
+	#print("ldoi final result=",ldoi_result)
 	controller_scores = score_controller_ldois(params,ldoi_result,target_IO, G)
-	print("controller_scores=",controller_scores)
+	top=10
+	top_controllers = dict(sorted(controller_scores.items(), key = itemgetter(1), reverse = True)[:top])
+	print("\ntop controller scores=",top_controllers)
+	
 	return controller_scores
 
 def io_pairs(params, SS, G):
 	# take dominant output for each input set
 	# returns dict IO = {inputSet: corresp output}
-	not_str = '!' # TODO clean/genz
 	IO = {}
 	outpts = np.array([G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))])
 	input_sets,inpts = get_input_sets(params, G)
@@ -387,15 +435,15 @@ def io_pairs(params, SS, G):
 					outpt[outpt > params['output_thresholds']] = 1
 					outpt_names = []
 					for o in range(len(outpt)):
-						if outpt[0] == 0:
-							outpt_names += [not_str + params['outputs'][o]]
+						if outpt[o] == 0:
+							outpt_names += [G.not_string + params['outputs'][o]]
 						else:
 							outpt_names += [params['outputs'][o]]
 					IO[inpt_set] = outpt_names
 	return IO
 
 
-def intersection_attractor(params, SS_M, G):
+def intersection_attractor(params, SS_M, G,thresh=1):
 	# for each input set, find the intersection of all attractors
 	# oscils are not included
 	# returns dict {inputSet: attractor}
@@ -413,7 +461,7 @@ def intersection_attractor(params, SS_M, G):
 				fixed_states = np.concatenate((A.avg,1-A.avg)) 
 				# since looking at nodes on Gexp, only look for 1, not 0
 				#	and remove all floats, which indicate oscils
-				fixed_states[fixed_states !=1] = 0 
+				fixed_states[fixed_states < thresh] = 0 
 				# both a node and its compl should not be on
 				assert(np.all(1-(fixed_states.astype(bool) & np.roll(fixed_states,G.n).astype(bool)))) 
 				A_inter[inpt_set] = np.logical_and(A_inter[inpt_set], fixed_states).astype(int)
@@ -430,33 +478,23 @@ def intersection_LDOI(params, A_intersect, G):
 
 	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])
 	input_sets, inpts = get_input_sets(params, G)
+	mutants = get_mutant_indices(params, G)
 
-	print('\n\nA FULL:\n',A_intersect)
-	ldoi_solns, negates = ldoi.ldoi_sizes_over_all_inputs(params,Gpar,fixed_nodes=A_intersect,negates=True)
-
-	print("\nw full A_inter: solns=\n",ldoi_solns,'\nnegates=\n',negates)
-	A_intersect_trimd = {}
-	for inpt_set in input_sets:
-		A_intersect_trimd[inpt_set] = [[] for _ in range(2*Gpar.n)]
-		# should be a faster route
-		for c in range(2*Gpar.n):
-			cname = Gpar.nodeNames[c]
-			for a in A_intersect[inpt_set]:
-				a_name = G.nodeNames[a]
-				a_name_compl = G.nodeNames[(a+Gpar.n) % (2*Gpar.n)]
-				if a_name not in negates[inpt_set][cname] and a_name_compl not in negates[inpt_set][cname]: 
-					A_intersect_trimd[inpt_set][c] += [a]
-					if inpt_set==(1, 1) and a_name=='x1':
-						print("added ",a_name,"to",cname)
-					
-	print('\n\nA TRIMMED:\n',A_intersect_trimd)
-	# c vs cname may become a bit of a headache too...
-	# 2nd time fixed_nodes varies by each controller it seems...
-	ldoi_solns, negates = ldoi.ldoi_sizes_over_all_inputs(params,Gpar,fixed_nodes=A_intersect_trimd,negates=True)
-	
-	print("\nw trimmed A_inter: solns=\n",ldoi_solns,'\nnegates=\n',negates)
-
+	#print('\n\nA FULL:\n',A_intersect)
+	ldoi_solns, negates = ldoi.ldoi_sizes_over_all_inputs(params,Gpar,fixed_nodes=mutants,subsets=A_intersect)
 	return ldoi_solns
+
+def get_mutant_indices(params, G):
+	assert(len(params['mutations'])>0) 
+	inds = []
+	for k in params['mutations']:
+		if params['mutations'][k] == 0:
+			inds+= [G.nodeNums[G.not_string + k]]
+		elif params['mutations'][k] == 1:
+			inds+= [G.nodeNums[k]]
+		else:
+			assert(0) # mutations should always be 0 or 1
+	return inds
 
 
 def score_controller_ldois(params, ldoi_result,target,G):
@@ -476,7 +514,7 @@ def score_controller_ldois(params, ldoi_result,target,G):
 			for inpt_set in input_sets: 
 				match=True 
 				for output_val in target[inpt_set]:
-					if output_val not in ldoi_result[inpt_set][G.nodeNames[indx]]:
+					if G.nodeNames[indx] not in ldoi_result[inpt_set] or output_val not in ldoi_result[inpt_set][G.nodeNames[indx]]:
 						match=False 
 						break
 				if match:
@@ -504,7 +542,7 @@ if __name__ == "__main__":
 		print('\n using these control params:',CONTROL_PARAMS)
 	
 	elif sys.argv[2] == 'intersect': 
-		mutator=('x1',0)
+		mutator=('Myc',1)   #('GAB1',0) #('d',0) #('Cytoc_APAF1',0)
 		intersect_control(sys.argv[1], mutator)
 
 	else:

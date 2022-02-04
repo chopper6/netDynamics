@@ -9,12 +9,78 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 
 #########################################################################################################
 def main(param_file):
+
+	if 0:
+		params, G = init(param_file)
+		steadyStates = calc_basin_size(params,G,x0=None)
+		plot.pie(params, steadyStates,G)
+		print('inputs=',params['inputs'])
+		#print('basin.main: phenos=',steadyStates.phenos_str())
+		print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
+		temp_print_periodic(steadyStates, G,params)
+	else:
+		print("\nRUNNING BASIN WITH CUSTOM MUTATION\n")
+		from_one_basin(param_file)
+
+def from_one_basin(param_file):
+	print("\nRunning mutation test from one basin to mutated basin.\n")
+	MUTATORS = []#('AP1',1),('MEK1_2',1)]#('CycD',1)]#,('p21',0)]
+
 	params, G = init(param_file)
-	steadyStates = calc_basin_size(params,G)
+	steadyStates = calc_basin_size(params,G,x0=None)
+	for mutant in MUTATORS:
+		params['mutations'][mutant[0]] = mutant[1]
+	debug_print(params,G,steadyStates)
+	print('basin 1: #A=',len(steadyStates.attractors),'n=',G.n)	
+	x0=get_x0_from_SS(params, steadyStates,G)
+	G.prepare_for_sim(params) 
+	steadyStates = calc_basin_size(params,G,x0=x0)
+	debug_print(params,G,steadyStates)
+	print('basin 2: #A=',len(steadyStates.attractors),'n=',G.n)	
+	x0=get_x0_from_SS(params, steadyStates,G)
+	steadyStates = calc_basin_size(params,G,x0=x0)
+	debug_print(params,G,steadyStates)
+	print('basin 3: #A=',len(steadyStates.attractors),'n=',G.n)
+	
 	plot.pie(params, steadyStates,G)
 	#print('basin.main: phenos=',steadyStates.phenos_str())
 	#print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
-	#temp_print_periodic(steadyStates, G)
+
+
+def get_x0_from_SS(params, SS,G):
+	# TODO: add prop to their size and match to default num samples ect
+	# somehow control result, but not regular basin, is depd on size_multiplier wtf
+	size_multiplier = 1000
+	x0 = []
+	for A in SS.attractors.values():
+
+		if 0: # debug, can rm
+			inpt_ind = [G.nodeNums[inpt] for inpt in params['inputs']]
+			s=True 
+			for inpt in inpt_ind:
+				if A.id[inpt]==1:
+					s= False
+					break
+			if s:
+				print("in basin A|0000=",str(A.id))
+				print("multiplier = ",int(A.size*size_multiplier))
+
+		mult = int(A.size*size_multiplier) 
+		state = list(A.id)
+		state = [int(s) for s in state]
+		for init in params['init']:
+			ind = G.nodeNums[init]
+			state[ind] = int(params['init'][init])
+		for mutant in params['mutations']:
+			ind = G.nodeNums[mutant]
+			state[ind] = int(params['mutations'][mutant])
+		for j in range(mult):
+			x0+= [state]
+	x0 = cp.array(x0)
+	params['num_samples'] = params['parallelism'] = len(x0)
+	#print("x0 shape=",x0.shape)
+	return x0 
+
 
 def temp_control(param_file):
 	# unfinished!
@@ -23,16 +89,16 @@ def temp_control(param_file):
 	print('basin.main: initial #A=',len(steadyStates.attractors),'n=',G.n)
 	scores = score_controllers(params, G, steadyStates)
 
-def temp_print_periodic(SS, G):
+def temp_print_periodic(SS, G,params):
 	for k in SS.attractors:
 		A=SS.attractors[k]
-		print("\nnext A:")
+		#print("\nnext A:")
 		for i in range(len(A.avg)):
-			inputs = ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
+			inputs = params['inputs']#['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
 			input_state = [A.avg[G.nodeNums[inpt]] for inpt in inputs]
-			#if A.avg[i] not in [0,1]:
-			if input_state == [0,0,0,0]:
-				print(G.nodeNames[i], 'avg=', A.avg[i])
+			if A.avg[i] not in [0,1] and G.nodeNames[i] in params['outputs']:
+			#if input_state == [0,0,0,0]:
+				print('inputs=',input_state,':',G.nodeNames[i], 'avg=', A.avg[i])
 
 def init(param_file):
 	params = param.load(param_file)
@@ -42,13 +108,17 @@ def init(param_file):
 
 def debug_print(params,G,steadyStates):
 	k2 = len(params['outputs'])
-	outpt = cp.array([G.nodeNums[params['outputs'][i]] for i in range(k2)])
+	import numpy as np 
+	outpt = np.array([G.nodeNums[params['outputs'][i]] for i in range(k2)])
 	for k in steadyStates.attractors:
 		A =  steadyStates.attractors[k]
-		if A.phenotype == '0010|010':
-			print('010 found: ',A.size, A.period,A.avg[outpt])
-		if A.phenotype == '0010|000':
-			print('000 found: ',A.size, A.period,A.avg[outpt])
+		inpts = A.phenotype.split('|')[0]
+		if inpts == '0000':
+			print('with input 0000: ','A.size, A.period,A.avg[outpt]\n',A.size, A.period,A.avg[outpt])
+	for k in steadyStates.phenotypes:
+		P =  steadyStates.phenotypes[k]	
+		print('pheno',k,'=',P)
+
 #########################################################################################################
 
 class Attractor:
@@ -174,7 +244,7 @@ class SteadyStates:
 
 ##########################################################################################################
 
-def calc_basin_size(params, G):
+def calc_basin_size(params, G,x0=None):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
 
 	steadyStates = SteadyStates(params, G) 
@@ -188,7 +258,8 @@ def calc_basin_size(params, G):
 		if params['verbose']:
 			print("Starting fixed point search, using", params['num_samples'], "sample initial points.")
 		for i in range(int(params['num_samples']/params['parallelism'])):
-			x0 = get_init_sample(params, G)
+			if x0 is None:
+				x0 = get_init_sample(params, G)
 			# with fixed_points_only = True, will return finished only for fixed points
 			# and help move oscillations past their transient phase
 			result = lap.transient(params,x0, G, fixed_points_only=True)
@@ -210,6 +281,7 @@ def calc_basin_size(params, G):
 
 
 	elif params['update_rule'] in ['async','Gasync'] or util.istrue(params,['PBN','active']): 
+		assert(x0 is None) # not yet implemented
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			x0 = get_init_sample(params, G)
 

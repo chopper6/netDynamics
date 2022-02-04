@@ -194,8 +194,8 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
 
 		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not util.istrue(params,'calc_var'):
-			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
-				return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)
+			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']: 
+				return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
 	# using num steps +1 since init state is also added to the avg
 	if params['update_rule'] == 'async':
@@ -203,18 +203,17 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	elif params['update_rule'] == 'Gasync':
 		expected_num_updates = (params['steps_per_lap']+1)/2
 	else: #sync
-		expected_num_updates = params['steps_per_lap']+1
+		expected_num_updates = 1 #this is handled in exit_sync_categorize_oscil, below
+		# TODO: make this cleaner
+		assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
 
 	avg_states = avg_states/expected_num_updates
-	if params['debug'] and params['update_rule'] == 'sync': #since async and Gasync are based on expected num of updates, they may be slightly off
-		assert (cp.all(avg_states <= 1.001))
-		assert (cp.all(avg_states >= -.001))
 	
 	if calculating_var:
 		var_states = var_states/(expected_num_updates-1) # -1 for unbiased estim
 		assert(expected_num_updates>1) #otherwise variance cannot be well estimated! (if async steps_per_lap should be >> #nodes)
 		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
-			return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states,variance=var_states)
+			return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states,variance=var_states)
 		#else
 		return {'state':ids, 'avg':avg_states, 'var': var_states }	
 
@@ -223,14 +222,18 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		return categorize_attractor(params,x0, G, calculating_var=True, avg=avg_states)
 
 	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
-		return exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states)
+		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 	#else:
 	return {'state':ids, 'avg':avg_states}
 
 
-def exit_sync_categorize_oscil(x0, ids, not_finished, period, avg_states,variance=None):
-	avg_states = avg_states/period[:,cp.newaxis]
+def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states,variance=None):
+	avg_states = avg_states/period[:,cp.newaxis].astype(float)
 	exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x0*not_finished[:,cp.newaxis]
+	if params['debug'] and params['update_rule'] == 'sync': #since async and Gasync are based on expected num of updates, they may be slightly off
+		assert (cp.all(avg_states <= 1.001))
+		assert (cp.all(avg_states >= -.001))
+
 	if variance is not None:
 		return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period, 'avg':avg_states,'var':variance}	
 	#else
