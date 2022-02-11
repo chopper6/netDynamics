@@ -1,8 +1,8 @@
-import main, parse, plot
+import basin, parse, plot
 import sys, os, itertools
 from copy import deepcopy
 
-# TODO: may have to update this since classes overhaul
+# TODO: may have to update this since classes overhaul (oh shit..)
 # add XOR
 
 # LATER:
@@ -10,15 +10,12 @@ from copy import deepcopy
 
 
 def variance_test(param_file):
-	# TODO: fix avg & var calc, organize io/visualize, test net generator
-	# poss bar chart for avg_A [var(x1)], grouping PP, PN, NN's together 
-	# later need variable noise lvls
 	reps=1
 	params = parse.params(param_file)
 	params['net_file'] = 'input/temp_net.txt'
 	params['verbose'] = False
 
-	stats = {'avg':[],'var':[]}
+	stats = {'avg':[],'variance':[]}
 	groups = ['PP_and','NN_and','PN_and','PP_or','NN_or','PN_or','P','N']
 	feats = {'noiseless':{g:deepcopy(stats) for g in groups},'noisy':{g:deepcopy(stats) for g in groups}}
 
@@ -49,14 +46,15 @@ def calc_stats(params, reps, noise_str, loopType, gate, feats):
 	avg_avg_avg = 0
 
 	if params['update_rule'] == 'sync' and not params['PBN']['active']:
-		var_str = 'var' #since not averaged anyway
+		var_str = 'variance' #since not averaged anyway
 		avg_str = 'avg'
 	else:
 		var_str = 'totalVar' #make sure to get the non-averaged form
 		avg_str = 'totalAvg'
 
 	for r in range(reps):
-		attractors, phenos, V = main.find_attractors(params)
+		#SS = basin.calc_basin_size(params,G,x0=None)
+		attractors, phenos, V = basin.find_attractors(params)
 		middle_node = V['name2#']['x1']
 		avg_variance=0 # sum_nodes sum_As var_node_in_A  / #nodes #As
 		avg_avg = 0
@@ -89,10 +87,10 @@ def calc_stats(params, reps, noise_str, loopType, gate, feats):
 
 	if gate is None:
 		feats[noise_str][loopType]['avg'] += [avg_avg_avg]
-		feats[noise_str][loopType]['var'] += [avg_avg_var]	
+		feats[noise_str][loopType]['variance'] += [avg_avg_var]	
 	else:
 		feats[noise_str][loopType+gate]['avg'] += [avg_avg_avg]
-		feats[noise_str][loopType+gate]['var'] += [avg_avg_var]
+		feats[noise_str][loopType+gate]['variance'] += [avg_avg_var]
 
 def generate_coupled_FBL(net_file, AND, E21, E31, E12, E13): 
 	#E's are for edges, so E21=0 -> x2 -| x1
@@ -140,7 +138,7 @@ def loop_type(E21, E12):
 		return 'N'
 
 
-if __name__ == "__main__":
+if __name__ == "__basin__":
 	if len(sys.argv) != 2:
 		sys.exit("Usage: python3 probably.py PARAMS.yaml")
 	if not os.path.isfile(sys.argv[1]):

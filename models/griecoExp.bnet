@@ -4,7 +4,7 @@ FGFR3_stimulus,	FGFR3_stimulus
 DNA_damage,	DNA_damage
 AKT,	(PDK1 & !PTEN)
 AP1,	(JUN & ATF2) | (FOS & JUN)
-Apoptosis,	(!BCL2 & !ERK & FOXO3 & p53)
+Apoptosis,	(!BCL2 & !ERK & FOXO3 & p53) | (Apoptosis & !Growth_Arrest & !Proliferation)
 ATF2,	(JNK) | (p38)
 ATM,	DNA_damage
 BCL2,	(AKT & CREB)
@@ -20,7 +20,7 @@ FRS2,	(FGFR3 & !GRB2 & !SPRY)
 GAB1,	(GRB2) | (PI3K)
 GADD45,	(SMAD) | (p53)
 GRB2,	(EGFR) | (FRS2) | (TGFBR)
-Growth_Arrest,	p21
+Growth_Arrest,	(p21 & !Proliferation & !Apoptosis) | (Growth_Arrest & !Proliferation & !Apoptosis)
 JNK,	(!DUSP1 & MAP3K1_3) | (!DUSP1 & MTK1) | (!DUSP1 & TAK1) | (!DUSP1 & TAOK) | (MTK1 & MAP3K1_3) | (TAK1 & MAP3K1_3) | (TAK1 & MTK1) | (TAOK & MAP3K1_3) | (TAOK & MTK1) | (TAOK & TAK1)
 JUN,	JNK
 MAP3K1_3,	RAS
@@ -40,7 +40,7 @@ PI3K,	(RAS & SOS) | (GAB1)
 PKC,	PLCG
 PLCG,	(EGFR) | (FGFR3)
 PPP2CA,	p38
-Proliferation,	(MYC & !p21 & p70)
+Proliferation,	(MYC & !p21 & p70) | (Proliferation & !Apoptosis & !Growth_Arrest)
 PTEN,	p53
 RAF,	(!AKT & !ERK & PKC) | (!AKT & !ERK & RAS)
 RAS,	(PLCG) | (SOS)
@@ -57,7 +57,7 @@ TGFBR,	TGFBR_stimulus
 !DNA_damage,	!DNA_damage
 !AKT,	(!PDK1) | (PTEN)
 !AP1,	(!FOS & !ATF2) | (!JUN)
-!Apoptosis,	(!FOXO3) | (!p53) | (ERK) | (BCL2)
+!Apoptosis,	(!FOXO3 & !Apoptosis) | (!p53 & !Apoptosis) | (ERK & !Apoptosis) | (BCL2 & !Apoptosis) | (!FOXO3 & Growth_Arrest) | (!p53 & Growth_Arrest) | (ERK & Growth_Arrest) | (BCL2 & Growth_Arrest) | (!FOXO3 & Proliferation) | (!p53 & Proliferation) | (ERK & Proliferation) | (BCL2 & Proliferation)
 !ATF2,	!p38 & !JNK
 !ATM,	!DNA_damage
 !BCL2,	(!AKT) | (!CREB)
@@ -73,7 +73,7 @@ TGFBR,	TGFBR_stimulus
 !GAB1,	!PI3K & !GRB2
 !GADD45,	!p53 & !SMAD
 !GRB2,	!TGFBR & !FRS2 & !EGFR
-!Growth_Arrest,	!p21
+!Growth_Arrest,	(!p21 & Growth_Arrest) | Proliferation | Apoptosis
 !JNK,	(!TAOK & !TAK1 & !MTK1 & !MAP3K1_3) | (DUSP1 & !TAOK & !TAK1 & !MTK1) | (DUSP1 & !TAOK & !TAK1 & !MAP3K1_3) | (DUSP1 & !TAOK & !MTK1 & !MAP3K1_3) | (DUSP1 & !TAK1 & !MTK1 & !MAP3K1_3)
 !JUN,	!JNK
 !MAP3K1_3,	!RAS
@@ -93,7 +93,7 @@ TGFBR,	TGFBR_stimulus
 !PKC,	!PLCG
 !PLCG,	!FGFR3 & !EGFR
 !PPP2CA,	!p38
-!Proliferation,	(!MYC) | (!p70) | (p21)
+!Proliferation,	(!MYC & !Proliferation) | (!p70 & !Proliferation) | (p21 & !Proliferation) | (!MYC & Apoptosis) | (!p70 & Apoptosis) | (p21 & Apoptosis) | (!MYC & Growth_Arrest) | (!p70 & Growth_Arrest) | (p21 & Growth_Arrest)
 !PTEN,	!p53
 !RAF,	(!RAS & !PKC) | (ERK) | (AKT)
 !RAS,	!SOS & !PLCG

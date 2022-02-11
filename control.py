@@ -9,12 +9,16 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.05, 	# minimum distance threshold to be considered a mutant 
-	'cnt_thresh':.05, 	# min distance less than the mutation distance to be considered a controller
+	'mut_thresh':.06, 	# minimum distance threshold to be considered a mutant 
+	'cnt_thresh':.06, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1,  
 	'max_control_size':1,
 	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
-	'verbose':True	# toggle how much is printed to the console
+	'verbose':True,	# toggle how much is printed to the console
+
+	'shuffle_inputs':1, # only works if from_attractors is true
+	'from_attractors': 1,
+	'apply_majority':0
 }
 
 # should_check() if not generalized beyond mutator/control sizes of 2. 
@@ -22,7 +26,7 @@ CONTROL_PARAMS = {
 
 class Perturbations:
 	def __init__(self, params, G,SS_WT,mut_thresh, cnt_thresh,max_control_size,norm):
-		self.mutators, self.solutions, self.controllers,self.irreversible = [],{},[],[]
+		self.mutators, self.solutions, self.controllers,self.irreversible,self.self_reversible = [],{},[],[],[]
 		# irreversible are mutators without a solution
 
 		self.mut_thresh = mut_thresh
@@ -30,10 +34,11 @@ class Perturbations:
 		self.cnt_thresh = cnt_thresh 
 
 		# inputs, inits, and outputs are assumed not to be valid target
-		self.filtered_nodes = [node.name for node in G.nodes if node.name not in params['outputs'] and node.name not in params['inputs'] and node.name not in params['init'].keys()]
+		self.filtered_nodes = [node.name for node in G.nodes if node.name not in params['outputs'] and node.name not in params['inputs']]# and node.name not in params['init'].keys()]
 
 		self.num_solutions=0
 		self.SS_WT = SS_WT
+		self.x0 = None # clean, but idea is to save attractors to start from
 		self.phenosWT = SS_WT.phenotypes
 		self.max_control_size = max_control_size
 
@@ -43,18 +48,20 @@ class Perturbations:
 		else:
 			self.norm = float(norm)
 
-	def __str__(self):
+	def __str__(self,solutions=False):
 		s= '\n# of mutators = ' + str(len(self.mutators))
 		s+= '\n# of controllers = ' + str(len(self.controllers)) 
 		s+= '\n# irreversible mutators = ' + str(len(self.irreversible))
 		s+= '\nIrreversible mutators: ' + str(self.irreversible)
-		s+= '\n\nAll solutions:' 
-		for k in self.solutions.keys():
-			s+= '\n' + str(k) + ' at dist ' + str(round(self.solutions[k]['mut_dist'],3)) + ' reversed by ' 
-			i=0
-			for soln in self.solutions[k]['controllers']:
-				s+='\n\t'+ str(soln) + '\tto dist ' +str(round(self.solutions[k]['cnt_dists'][i],3))
-				i+=1
+		s+= '\n# self reversible mutators: ' + str(len(self.self_reversible))
+		if solutions:
+			s+= '\n\nAll solutions:' 
+			for k in self.solutions.keys():
+				s+= '\n' + str(k) + ' at dist ' + str(round(self.solutions[k]['mut_dist'],3)) + ' reversed by ' 
+				i=0
+				for soln in self.solutions[k]['controllers']:
+					s+='\n\t'+ str(soln) + '\tto dist ' +str(round(self.solutions[k]['cnt_dists'][i],3))
+					i+=1
 
 
 		return s
@@ -79,6 +86,15 @@ class Perturbations:
 			if mutants not in self.solutions.keys():
 				self.irreversible += [mutants]
 
+	def calc_self_reversible(self):
+		for mutator in self.mutators:
+			assert(len(mutator['mutants'])==1) # otherwise not yet implemented
+			compl = deepcopy(mutator['mutants'])
+			compl[0] = (compl[0][0],(compl[0][1]+1) % 2)
+			if str(mutator['mutants']) in self.solutions.keys():
+				if compl in self.solutions[str(mutator['mutants'])]['controllers']:
+					self.self_reversible += [mutator['mutants']]
+
 class NetMetrics:
 	def __init__(self, params, phenosWT,G):
 		self.G=G
@@ -101,6 +117,7 @@ class NetMetrics:
 		s+= '\n#solutions=' + str(metrics.num_solutions) 
 		s+= '\nmutation mag = ' + str(metrics.fragility)
 		s+= '\ncontrol mag = ' + str(metrics.reversibility)
+		s+= '\n'
 		return s
 
 	def finalize(self,perturbs):
@@ -133,10 +150,13 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	params['use_phenos']=True
 
 	# TODO: clean this double call! i.e. shouldn't have to build perturbs and then remodify
-	SS_WT_init = mutate_and_sim(params, G)
-	perturbs = Perturbations(params,G,SS_WT_init,mut_thresh, cnt_thresh, max_control_size,norm)
-	init_As = basin.get_x0_from_SS(params, perturbs.SS_WT,G)
-	SS_WT = mutate_and_sim(params, G,x0=init_As)
+	SS_WT = mutate_and_sim(params, G,apply_majority=CONTROL_PARAMS['apply_majority'])
+	perturbs = Perturbations(params,G,SS_WT,mut_thresh, cnt_thresh, max_control_size,norm)
+	if CONTROL_PARAMS['from_attractors']:
+		perturbs.x0 = basin.get_x0_from_SS(params, perturbs.SS_WT,G,shuffle_inputs=CONTROL_PARAMS['shuffle_inputs'])
+		if CONTROL_PARAMS['shuffle_inputs']:
+			SS_WT = mutate_and_sim(params, G,x0=perturbs.x0,apply_majority=CONTROL_PARAMS['apply_majority'])
+			perturbs.x0 = basin.get_x0_from_SS(params, perturbs.SS_WT,G,shuffle_inputs=False)
 	perturbs.SS_WT = SS_WT 
 	perturbs.phenosWT = SS_WT.phenotypes
 
@@ -148,19 +168,27 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 		metrics = None
 
 	print("\nSearching for mutators...")
-	attempt_mutate(params,G,perturbs, metrics,[],0, max_mutator_size)
+	# returns WT phenotypes of LDOI just so don't have to recompute
+	ldoi_WT = attempt_mutate(params,G,perturbs, metrics,[],0, max_mutator_size)
+	sim_WT = extract_sim_WT(params, [perturbs.SS_WT.attractors[k] for k in perturbs.SS_WT.attractors.keys()])
+	# TODO: add sim_WT as alt for controller eval
 
 	print("\nSearching for controllers...")
+
+	ldoi_eval = {'true positive':0,'true negative':0,'false positive':0,'false negative':0}
 	for mutator in perturbs.mutators:
 		params_orig = deepcopy(params)
 		if CONTROL_PARAMS['verbose']:
 			print('Trying to fix:',mutator['mutants'],'from dist',round(mutator['dist'],3))
 		for mutant in mutator['mutants']:
 			params['mutations'][mutant[0]] = mutant[1]
-		attempt_control(params,deepcopy(G), perturbs, metrics, mutator, [], max_control_size)
+		attempt_control(params,deepcopy(G), perturbs, metrics, mutator, [], max_control_size,ldoi_WT,sim_WT,ldoi_eval)
 		params = params_orig
 
+	ldoi_precision, ldoi_recall = calc_precision_recall(ldoi_eval)
+	print("\nControl LDOI precision =",ldoi_precision,", recall =",ldoi_recall,'\n')
 	perturbs.calc_irrev_mutators()
+	perturbs.calc_self_reversible()
 
 	if measure:
 		metrics.finalize(perturbs)
@@ -171,7 +199,7 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	return perturbs
 
 
-def mutate_and_sim(params_orig, G_orig,x0=None):
+def mutate_and_sim(params_orig, G_orig,x0=None,apply_majority=False):
 	G, params = deepcopy(G_orig), deepcopy(params_orig)
 	if x0 is not None:
 		x0=deepcopy(x0)
@@ -183,6 +211,10 @@ def mutate_and_sim(params_orig, G_orig,x0=None):
 			x0[:,indx] = params['mutations'][mutant]
 	G.prepare_for_sim(params)
 	steadyStates = basin.calc_basin_size(params,G,x0=x0)
+	if apply_majority:
+		apply_majority_A(params, G, steadyStates)
+		for A in steadyStates.attractors.values():
+			print('size=',A.size)
 	return steadyStates
 
 ####################################################################################################
@@ -191,12 +223,20 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 	if depth == 0:
 		return 
 
-	init_As = basin.get_x0_from_SS(params_orig, perturbs.SS_WT,G)
-
 	params = deepcopy(params_orig)
 	curr_mut_dist_orig = curr_mut_dist
 	orig_mutations = deepcopy(params['mutations'])
 	go_further = []
+
+	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])
+	mutant_ldoi = ldoi.test(Gpar,params,init=[]) # TODO: rename ldoi fn someday
+	WT = extract_ldoi_WT(params, G.not_string, mutant_ldoi)
+	#print('attempt_mutate, WT=',WT)
+	ldoi_eval = {'true positive':0,'true negative':0,'false positive':0,'false negative':0}
+	# in M loop: check if mutator is predicted by LDOI (i.e. != WT)
+	# track LDOI false positive, false negative, true positive, true negative
+	# test, then do again with controllers, where init=[mutator]
+
 	for M in perturbs.filtered_nodes:
 		#if verbose:
 		#	print('Testing node',M)
@@ -206,31 +246,15 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 				curr_mutators, curr_mut_dist = deepcopy(curr_mutators_orig), curr_mut_dist_orig
 				params['mutations'] = deepcopy(orig_mutations)
 				params['mutations'][M] = b
-				SS_M = mutate_and_sim(params, G,x0=init_As)
+				SS_M = mutate_and_sim(params, G,x0=perturbs.x0,apply_majority=CONTROL_PARAMS['apply_majority'])
+				if CONTROL_PARAMS['shuffle_inputs']:
+					mut_x0 = basin.get_x0_from_SS(params,SS_M,G,shuffle_inputs=CONTROL_PARAMS['shuffle_inputs'])
+					SS_M = mutate_and_sim(params, G,x0=mut_x0,apply_majority=CONTROL_PARAMS['apply_majority'])
+					
 				phenosM = SS_M.phenotypes
 
-				if 0: #can rm debug
-					if M=='TAOK' and b==0: #debugging
-						i=0
-						seen=[]
-						inpt_ind = np.array([G.nodeNums[inpt] for inpt in params['inputs']])
-						for A in init_As:
-							if str(A) not in seen:
-								s=True 
-								for inpt in inpt_ind:
-									if A[inpt]:
-										s= False
-										break
-								if s:
-									print("A|0000=",str(A))
-									seen+=[str(A)]
-
-						for P in [phenosM]:
-							print('Mutated Phenos #',i)
-							i+=1
-							for k in P:
-								print(k,'=',P[k].size)
-						assert(0)
+				ldoi_predicted_diff = ldoi_diff(params, G.not_string, mutant_ldoi, (M,b), WT)
+				#print('ldoi_predicted_diff=',ldoi_predicted_diff)
 
 				mut_dist = diff(perturbs.phenosWT,phenosM,perturbs.num_inputs,norm=perturbs.norm)
 				if metrics is not None:
@@ -238,15 +262,25 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 
 				if mut_dist > perturbs.mut_thresh:
 					curr_mutators += [(M,b)]
-					mut_x0 = basin.get_x0_from_SS(params,SS_M,G)
-					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist,'x0':mut_x0}]
+					mut_x0 = basin.get_x0_from_SS(params,SS_M,G,shuffle_inputs=False)
+					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist,'x0':mut_x0,'ldoi_diff':ldoi_predicted_diff}]
 					if CONTROL_PARAMS['verbose']:
 						print("Added mutator:",curr_mutators,'at dist',round(mut_dist,3))
 					#print([(k,phenosM[k].size) for k in phenosM.keys()])
-				elif mut_dist > curr_mut_dist + perturbs.mut_greedy_thresh: 
-					curr_mutators += [(M,b)]
-					go_further += [{'curr_mutators':deepcopy(curr_mutators),'mut_dist':mut_dist,'params':deepcopy(params)}]
-	
+					if ldoi_predicted_diff == 0:
+						ldoi_eval['false negative'] += 1
+					else:
+						ldoi_eval['true positive'] += 1
+				#elif mut_dist > curr_mut_dist + perturbs.mut_greedy_thresh: 
+				#	assert(0) # not currently using greedy thresh
+				#	curr_mutators += [(M,b)]
+				#	go_further += [{'curr_mutators':deepcopy(curr_mutators),'mut_dist':mut_dist,'params':deepcopy(params)}]
+				else:
+					if ldoi_predicted_diff == 0:
+						ldoi_eval['true negative'] += 1
+					else:
+						ldoi_eval['false positive'] += 1
+
 	if depth>1:
 		for ele in go_further:
 			if CONTROL_PARAMS['verbose']:
@@ -254,8 +288,11 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 			attempt_mutate(ele['params'], G, perturbs, metrics, ele['curr_mutators'], ele['mut_dist'], depth-1,verbose=False)
 			# recurse attempt mutate at 1 lower depth
 
+	ldoi_precision, ldoi_recall = calc_precision_recall(ldoi_eval)
+	print("\nMutant LDOI precision =",ldoi_precision,", recall =",ldoi_recall,'\n')
+	return WT
 
-def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, depth):
+def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, depth, ldoi_WT, sim_WT, ldoi_eval):
 	# TODO: add similar greedy approach, where if doesn't fix enough, don't continue to recurse
 	# note that mutator and control_set are not yet in perturbs since they are actively build/altered by this function 
 	if depth == 0:
@@ -269,6 +306,19 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 	mut_dist = mutator['dist'] # TODO what if mult mutators?
 	go_further = []
 
+	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])
+
+	assert(len(mutator['mutants'])==1) # assuming singleton mutators
+	this_mutant = mutator['mutants'][0]
+	if this_mutant[1] == 1:
+		init_ind = Gpar.nodeNums[this_mutant[0]]
+	elif this_mutant[1] == 0:
+		init_ind = Gpar.nodeNums[Gpar.not_string + this_mutant[0]]
+	else:
+		assert(0)
+	
+	cntr_ldoi = ldoi.test(Gpar,params,init=[init_ind]) # TODO: rename ldoi fn someday
+
 	for C in perturbs.filtered_nodes:
 		orig_mutations = deepcopy(params['mutations'])
 		for b in [0,1]:
@@ -278,11 +328,25 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 				prev_groups= perturbs.solutions[str(mutator['mutants'])]['controllers']
 			if should_check(C, b, control_set, prev_groups):
 				params['mutations'][C] = b
-				phenosC = mutate_and_sim(params,G,x0=mutator['x0']).phenotypes
+				if CONTROL_PARAMS['from_attractors']:
+					x0 = mutator['x0']
+				else:
+					x0 = None
+				SS_C = mutate_and_sim(params,G,x0=x0,apply_majority=CONTROL_PARAMS['apply_majority'])
+
+				if CONTROL_PARAMS['shuffle_inputs']:
+					x0 = basin.get_x0_from_SS(params,SS_C,G,shuffle_inputs=CONTROL_PARAMS['shuffle_inputs'])
+					SS_C = mutate_and_sim(params, G,x0=x0,apply_majority=CONTROL_PARAMS['apply_majority'])
+
+				phenosC = SS_C.phenotypes
 
 				#change = 1-diff(phenosWT,phenosC)/mut_dist
 				cnt_dist = diff(perturbs.phenosWT,phenosC,perturbs.num_inputs,norm=perturbs.norm)
 				reversibility += max(0,mut_dist-cnt_dist)
+
+				ldoi_predicted_diff = ldoi_diff(params, G.not_string, cntr_ldoi, (C,b), ldoi_WT, sim_WT=sim_WT)
+
+				#print("\t\tC =",C,': C_diff=',ldoi_predicted_diff, 'm_diff=', mutator['ldoi_diff'])
 				if cnt_dist < mut_dist - perturbs.cnt_thresh: 
 					phenosW = perturbs.phenosWT
 					if CONTROL_PARAMS['verbose']:
@@ -290,7 +354,16 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 					perturbs.add_solution(mutator,control_set+[(C,b)],cnt_dist)
 					if (C,b) not in perturbs.controllers:
 						perturbs.controllers +=[(C,b)]
-				else:
+
+					if ldoi_predicted_diff < mutator['ldoi_diff']:
+						ldoi_eval['true positive'] += 1
+					else:
+						ldoi_eval['false negative'] += 1
+				else:					
+					if ldoi_predicted_diff < mutator['ldoi_diff']:
+						ldoi_eval['false positive'] += 1
+					else:
+						ldoi_eval['true negative'] += 1
 					# recurse using this node as a control + another (until reach max_depth)
 					# note that recursed revblty is currently not used
 					go_further += [{'control_set':deepcopy(control_set+[(C,b)]),'params':deepcopy(params)}]
@@ -305,6 +378,95 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 			if CONTROL_PARAMS['verbose']:
 				print("Recursing control search with",ele['control_set'])
 			attempt_control(ele['params'],G, perturbs, metrics, mutator,ele['control_set'], depth-1)
+
+
+def extract_ldoi_WT(params, not_str, ldoi_solns):
+	# this is all very messy, but to find a solution that doesn't have any mutations (i.e. WT),
+	#	take one where the mutator is an input, whose value is the same as the input condition 
+
+	inpt_sets = ldoi_solns[params['inputs'][0]].keys()
+	WT = {}
+	for inpt in inpt_sets:
+		if '(1' in inpt:
+			WT[inpt] = extract_ldoi_outputs(params, not_str, ldoi_solns[params['inputs'][0]][inpt])
+		else:
+			WT[inpt] = extract_ldoi_outputs(params, not_str, ldoi_solns[not_str + params['inputs'][0]][inpt])
+	return WT
+
+def extract_sim_WT(params, As):
+	assert(isinstance(As[0],basin.Attractor))
+	# again very sloppy approach, if decide to keep it, clean it
+	# uses majority attractor for each input condition
+
+	input_indices = [G.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
+	output_indices = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
+	input_sets = list(itertools.product([0,1],repeat=len(params['inputs'])))
+	
+	WT = {}
+	max_sizes = {str(inpt):0 for inpt in input_sets}
+	for inpt in input_sets:
+		for A in As:
+			if A.size > max_sizes[str(inpt)]:
+				incld=True
+				for k in range(len(params['inputs'])):
+					if int(A.id[input_indices[k]]) != int(inpt[k]): # shuold tech be avg
+						incld=False
+						break
+				if incld: 
+					max_sizes[inpt] = A.size
+					WT[str(inpt)] = []
+					for output in output_indices:
+						WT[str(inpt)] += [int(A.id[output])]
+	return WT
+
+def ldoi_diff(params, not_str, ldoi_solns, target, WT,sim_WT=None):
+	# checks if WT and target predict the same pheno
+
+	# this is all very messy, but to find a solution that doesn't have any mutations (i.e. WT),
+	#	take one where the mutator is an input, whose value is the same as the input condition
+
+	# target is (name, value) of the mutator or controller whose ldoi you want to extract 
+
+	if target[1]==0:
+		name = not_str + target[0]
+	elif target[1]==1:
+		name = target[0]
+	else:
+		assert(0)
+	inpt_sets = ldoi_solns[params['inputs'][0]].keys()
+	extract = {}
+
+	diff=0
+	for inpt in inpt_sets:
+		extract[inpt] = extract_ldoi_outputs(params, not_str, ldoi_solns[name][inpt])
+		if extract[inpt] != WT[inpt]:
+			if sim_WT is None or sim_WT[str(inpt)] != extract[inpt]: # i.e. a controller can match EITHER the ldoi_WT or sim_WT
+				diff+=1
+	return diff
+
+def extract_ldoi_outputs(params, not_str, ldoi_soln): 
+	barcode = []
+	for output in params['outputs']:
+		if output in ldoi_soln:
+			barcode +=[1] # driven on
+		elif not_str + output in ldoi_soln:
+			barcode +=[0] # driven off
+		else:
+			barcode +=[2] # not driven
+	return barcode
+
+
+def calc_precision_recall(ldoi_eval):
+	if (ldoi_eval['true positive'] + ldoi_eval['false positive']) == 0:
+		precision = 'NA'
+	else: 
+		precision = ldoi_eval['true positive']/(ldoi_eval['true positive'] + ldoi_eval['false positive'])
+
+	if (ldoi_eval['true positive'] + ldoi_eval['false negative']) == 0:
+		recall = 'NA'
+	else: 
+		recall = ldoi_eval['true positive']/(ldoi_eval['true positive'] + ldoi_eval['false negative'])
+	return precision, recall
 
 
 def should_check(nodeName, b, curr_group, prev_groups, mutants=False):
@@ -322,6 +484,26 @@ def should_check(nodeName, b, curr_group, prev_groups, mutants=False):
 	in_prev_group = [(nodeName,b)] in prev_groups 
 	return not in_prev_recursion and in_alpha_order and not in_prev_group
 
+
+def apply_majority_A(params, G, SS):
+	# prob should move this to basin
+	assert(0) # this part was all messed up
+	input_sets, inpts = get_input_sets(params, G)
+
+	for inpt_set in input_sets:
+		max_size=0
+		for A in SS.attractors.values():
+			match=True
+			for k in range(len(inpts)):
+				if A.id[inpts[k]] != inpt_set[k]:
+					match=False
+					break
+			if match:
+				if A.size > max_size:
+					max_size = A.size 
+					A.size=1
+				else:
+					A.size = 0 
 
 def diff(P1, P2, num_inputs, norm=1):
 	P1_basins, P2_basins = [],[]
@@ -523,6 +705,7 @@ def score_controller_ldois(params, ldoi_result,target,G):
 	return scores
 
 def get_input_sets(params, G):
+	# been forgetting to use this \:
 	inpts = np.array([G.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))])
 	input_sets = itertools.product([0,1],repeat=len(inpts))
 	return list(input_sets), inpts # assume inputs are a managable size

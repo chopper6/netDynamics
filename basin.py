@@ -1,6 +1,7 @@
 import itertools, util, math, sys
 import lap, plot, param
 from net import Net
+from copy import deepcopy
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
 # note that size of a phenotype or attractor refers to its basin size
@@ -17,7 +18,7 @@ def main(param_file):
 		print('inputs=',params['inputs'])
 		#print('basin.main: phenos=',steadyStates.phenos_str())
 		print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
-		temp_print_periodic(steadyStates, G,params)
+		#temp_print_periodic(steadyStates, G,params)
 	else:
 		print("\nRUNNING BASIN WITH CUSTOM MUTATION\n")
 		from_one_basin(param_file)
@@ -25,32 +26,38 @@ def main(param_file):
 def from_one_basin(param_file):
 	print("\nRunning mutation test from one basin to mutated basin.\n")
 	MUTATORS = []#('AP1',1),('MEK1_2',1)]#('CycD',1)]#,('p21',0)]
-
+	laps = 4
+	freq = 2
 	params, G = init(param_file)
-	steadyStates = calc_basin_size(params,G,x0=None)
+	steadyStates,x0 = run_shuffle_inputs(params, G, None)
 	for mutant in MUTATORS:
 		params['mutations'][mutant[0]] = mutant[1]
-	debug_print(params,G,steadyStates)
+	#debug_print(params,G,steadyStates)
 	print('basin 1: #A=',len(steadyStates.attractors),'n=',G.n)	
-	x0=get_x0_from_SS(params, steadyStates,G)
-	G.prepare_for_sim(params) 
-	steadyStates = calc_basin_size(params,G,x0=x0)
-	debug_print(params,G,steadyStates)
-	print('basin 2: #A=',len(steadyStates.attractors),'n=',G.n)	
-	x0=get_x0_from_SS(params, steadyStates,G)
-	steadyStates = calc_basin_size(params,G,x0=x0)
-	debug_print(params,G,steadyStates)
-	print('basin 3: #A=',len(steadyStates.attractors),'n=',G.n)
-	
 	plot.pie(params, steadyStates,G)
-	#print('basin.main: phenos=',steadyStates.phenos_str())
-	#print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
+
+	for l in range(laps):
+		G.prepare_for_sim(params) 
+		steadyStates,x0 = run_shuffle_inputs(params, G, x0)
+		#debug_print(params,G,steadyStates)
+		print('basin lap',l,': #A=',len(steadyStates.attractors),'n=',G.n)	
+		
+		if l%freq==0 or l==laps-1:
+			plot.pie(params, steadyStates,G)
+			#print('basin.main: phenos=',steadyStates.phenos_str())
+			#print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
 
 
-def get_x0_from_SS(params, SS,G):
+def run_shuffle_inputs(params, G,x0):
+	steadyStates = calc_basin_size(params,G,x0=x0)
+	x0=get_x0_from_SS(params, steadyStates,G, shuffle_inputs=True)
+	steadyStates = calc_basin_size(params,G,x0=x0)
+	x0=get_x0_from_SS(params, steadyStates,G, shuffle_inputs=False)
+	return steadyStates, x0
+
+def get_x0_from_SS(params, SS, G, shuffle_inputs=False):
 	# TODO: add prop to their size and match to default num samples ect
-	# somehow control result, but not regular basin, is depd on size_multiplier wtf
-	size_multiplier = 1000
+	size_multiplier = 10000
 	x0 = []
 	for A in SS.attractors.values():
 
@@ -74,8 +81,21 @@ def get_x0_from_SS(params, SS,G):
 		for mutant in params['mutations']:
 			ind = G.nodeNums[mutant]
 			state[ind] = int(params['mutations'][mutant])
-		for j in range(mult):
-			x0+= [state]
+
+		if not shuffle_inputs:
+			for j in range(mult):
+				x0+= [state]
+		else:
+			# esp this could be more effic with some cupy
+			input_indices = [G.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
+			input_sets = itertools.product([0,1],repeat=len(params['inputs']))
+			for input_set in input_sets:
+				this_state = deepcopy(state)
+				for k in range(len(input_indices)):
+					this_state[input_indices[k]] = input_set[k]
+				for j in range(int(mult/(2**len(params['inputs'])))):
+					x0+=[this_state]
+
 	x0 = cp.array(x0)
 	params['num_samples'] = params['parallelism'] = len(x0)
 	#print("x0 shape=",x0.shape)
@@ -221,7 +241,7 @@ class SteadyStates:
 				A.avg/=A.size 
 				if util.istrue(self.params,'calc_var'):
 					A.totalVar = A.var.copy() 
-					A.var/=A.size
+					A.var/=A.size 
 
 		for s in self.attractors:
 			self.attractors[s].size /= self.params['num_samples']
@@ -251,14 +271,18 @@ def calc_basin_size(params, G,x0=None):
 
 	oscil_bin = [] #put all the samples that are unfinished oscillators
 	confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
-	
+	if x0 is None:
+		build_x0 = True 
+	else:
+		build_x0 = False
+
 	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
 
 		# FIXED POINTS & EASY OSCILS
 		if params['verbose']:
 			print("Starting fixed point search, using", params['num_samples'], "sample initial points.")
 		for i in range(int(params['num_samples']/params['parallelism'])):
-			if x0 is None:
+			if build_x0:
 				x0 = get_init_sample(params, G)
 			# with fixed_points_only = True, will return finished only for fixed points
 			# and help move oscillations past their transient phase
@@ -266,6 +290,7 @@ def calc_basin_size(params, G,x0=None):
 			cupy_to_numpy(params,result)
 			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
 			steadyStates.add_attractors(result)
+
 
 		# TRANSIENT OSCILS
 		# run until sure that sample is in the oscil
@@ -281,9 +306,9 @@ def calc_basin_size(params, G,x0=None):
 
 
 	elif params['update_rule'] in ['async','Gasync'] or util.istrue(params,['PBN','active']): 
-		assert(x0 is None) # not yet implemented
 		for i in range(int(params['num_samples']/params['parallelism'])):
-			x0 = get_init_sample(params, G)
+			if build_x0:
+				x0 = get_init_sample(params, G)
 
 			x_in_attractor = lap.transient(params,x0, G)
 			result = lap.categorize_attractor(params,x_in_attractor, G)
