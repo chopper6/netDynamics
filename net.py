@@ -341,6 +341,10 @@ class Net:
             return file.readline().replace('\n','')
 
 
+    def input_indices(self, params):
+        return [self.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
+
+
 ##################################################################################################
 
 

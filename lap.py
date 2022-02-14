@@ -73,7 +73,7 @@ def transient(params,x0, G, fixed_points_only=False):
 
 	x = cp.array(x0,dtype=node_dtype).copy()
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
-	if params['update_rule']=='sync' and  not util.istrue(params,['PBN','active']):
+	if params['update_rule']=='sync' and  not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
 	for i in range(params['steps_per_lap']):
@@ -81,7 +81,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		x_next = step(params, x, G)
 		
 		if params['update_rule']=='sync':
-			if not util.istrue(params,['PBN','active']):
+			if not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 				if fixed_points_only:
 					not_finished = not_finished & cp.any(cp.logical_xor(x_next,x),axis=1)
 				else:
@@ -104,7 +104,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		else:
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
-	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
+	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 		#debug_print_outputs(params,G,x)
 		#assert(0)
 		return exit_sync_transient(x, not_finished)
@@ -141,7 +141,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
 
-	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
+	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']: 
 		period = cp.array([1 for _ in range(params['parallelism'])],dtype=int)
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
@@ -161,12 +161,13 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		x_next = step(params, x, G)
 		if params['update_rule']=='sync':
 			x = x_next
-			if not util.istrue(params,['PBN','active']):
+			if not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 				not_match = cp.any(cp.logical_xor(x,x0),axis=1)
 				period += not_match*not_finished 
 				not_finished = cp.logical_and(not_finished, not_match) 
-
-			which_nodes = cp.ones(x.shape)*not_finished[:,cp.newaxis]
+				which_nodes = cp.ones(x.shape)*not_finished[:,cp.newaxis]
+			else:
+				which_nodes = cp.ones(x.shape)
 		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
 			p=.5
 			which_nodes = cp.random.rand(params['parallelism'], G.n) > p
@@ -193,7 +194,8 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
 
-		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not util.istrue(params,'calc_var'):
+		# oh man these ifs getting messy af
+		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not util.istrue(params,'calc_var') and not params['map_from_A0']:
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']: 
 				return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
@@ -212,7 +214,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 	if calculating_var:
 		var_states = var_states/(expected_num_updates-1) # -1 for unbiased estim
 		assert(expected_num_updates>1) #otherwise variance cannot be well estimated! (if async steps_per_lap should be >> #nodes)
-		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
+		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 			return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states,variance=var_states)
 		#else
 		return {'state':ids, 'avg':avg_states, 'var': var_states }	
@@ -221,7 +223,7 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		# recursively call function to actually calculate it
 		return categorize_attractor(params,x0, G, calculating_var=True, avg=avg_states)
 
-	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']):
+	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 	#else:
 	return {'state':ids, 'avg':avg_states}
