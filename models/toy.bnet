@@ -1,9 +1,12 @@
 i1,	i1
 i2,	i2
-c,	i1
-r,	i2
-b,	i1 & !i2
-d,	!i1 & i2
-a,	b | d
+x,	x
+a,	!i1 | x
+b,	!i2
+c,	!c
+d,	c
+e,	a & d
+f,	a | d
 f1,	f1
-y,	a | c & r
+y1,	e & !y2 | b & !y2 | y1 & !y2 
+y2,	f & !y1 | a & !y1 | y2 & !y1  

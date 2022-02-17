@@ -8,11 +8,15 @@ print_lap : 10 # how many laps before another print statement. only if verbose
 
 parallelism : 10^4 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
 num_samples : 10^4 # number of initial states tested.
-steps_per_lap : 50 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async & Gasync update methods
 update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
+
+steady_basin: 1
+steady_basin_max_steps: 100
+async_trim: .001
 
 PBN : # probabilistic boolean network # seems to req async atm
   active : 0
@@ -31,10 +35,10 @@ setting_file: 'settings/grieco.yaml'
 parity_model_file: 'models/griecoExp.bnet'
 
 # output
-use_inputs_in_pheno: 1 
+use_inputs_in_pheno: 1
 fig_legend : 0
 use_phenos: 1
 
-output_dir : 'output/grieco'
-output_img : 'griecoC_MDM2=0_AP1=0_slices7.png'
+output_dir : 'output/basinRatio/'
+output_img : 'grieco_SBR_sync.png'
 savefig : 1 # as opposed to showing the image

@@ -3,80 +3,74 @@ import lap, plot, param
 from net import Net
 from copy import deepcopy
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
+# anything going into lap.py (i.e. x0) should be cp, but other matrices should be np
+import numpy as np
+
 
 # note that size of a phenotype or attractor refers to its basin size
+
+# shuffling attractors for steady basin runs out of mem (Grieco, Gasync, 10^5 samples)
+#		could implement diff num_samples vs parallelism and/or check if any of the A0 only diff w.r.t inputs (and merge them if so)
 
 # TODO: clean up how var is handled
 
 #########################################################################################################
+
 def main(param_file):
 
-	if 0:
-		params, G = init(param_file)
+	params, G = init(param_file)
+	if not util.istrue(params,['steady_basin']):
 		steadyStates = calc_basin_size(params,G)
-		plot.pie(params, steadyStates,G)
-		#print('basin.main: phenos=',steadyStates.phenos_str())
-		print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
-		#temp_print_periodic(steadyStates, G,params)
 	else:
-		print("\nRUNNING STEADY STATE BASIN\n")
-		num_steps = 2
-		params, G = init(param_file)
-		steadyStates = calc_steady_basin(params, G, num_steps)
-		plot.pie(params, steadyStates,G)
+		steadyStates = calc_steady_basin(params, G, params['steady_basin_max_steps'])
+	plot.pie(params, steadyStates,G)
+	
+	#print('basin.main: phenos=',steadyStates.phenos_str())
+	#print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
+	#temp_print_periodic(steadyStates, G,params)
 
-def calc_steady_basin(params, G, num_steps, A0=None):
-	# calculates the steady basin by updating the inputs for at most num_steps
-	# note that params['parallelism'] and ['num_samples'] will be altered during calc_basin_size()
-	# pass A0 for mutated or control runs (for example)
-	SS = calc_basin_size(params,G,A0=A0,input_shuffle=False) # get steady states from random initial conditions
-	A0 = [SS.attractors[k].id for k in SS.attractor_order]# attractors in ORDERED list, like def within SSs
-	#print('basin 1st attractor=',A0[0],'\nlng of A0=',len(A0))
-	SS = calc_basin_size(params,G,A0=A0,input_shuffle=True) # get steady states from input-shuffled attractors
-	transit_pr = SS.map_A_transition_pr() 
-	steadyBasin = steadyBasin_from_transition_matrix(params, SS, transit_pr, num_steps) # finish this fn
-	return steadyBasin 
+		
+def repeat_test(param_file):
+	print("\nRUNNING REPEAT TEST\n")
+	params, G = init(param_file)
+	repeats=20
 
-def steadyBasin_from_transition_matrix(params, SS, T, num_steps):
-	B = cp.array([SS.attractors[k].size for k in SS.attractor_order]) # starting basin size
-	for i in range(num_steps):
-		print('starting from B=',B,'\nT=',T)
-		B_next = cp.matmul(B,T)
-		print('BxT = ',B_next)
-		assert(0) # check mult 
-		if cp.isclose(B_next,B):
-			print("\nSteady basin fixed point found.")
-			return basin_matrix_to_SS(params, SS, B)
-		B = B_next 
-
-	print("\n\nWARNING: Steady basin fixed point NOT found, returning basin after",num_steps,"steps.\n")
-	return basin_matrix_to_SS(params, SS, B)
-
-def basin_matrix_to_SS(params, SS, B):
-	for k in SS.attractors.keys():
-		A = SS.attractors[k]
-		A.size = B[SS.attractor_order.index(k)]
+	if not params['steady_basin']:
+		base = calc_basin_size(params,G).attractors
+	else:
+		base=calc_steady_basin(params, G, params['steady_basin_max_steps']).attractors
+	As=[base]
+	max_dist=0
+	for k in range(repeats):
+		print('starting repeat #',k+1,'/',repeats)
+		if not params['steady_basin']:
+			repeat = calc_basin_size(params,G).attractors
+		else:
+			repeat=calc_steady_basin(params, G, params['steady_basin_max_steps']).attractors
+		for A in As:
+			d = dist(A,repeat)
+			#print('\nDISTANCE =',d,'\n')
+			max_dist = max(d,max_dist)
+		As += [repeat]
+	print("\n\nMax pairwise distance among",repeats,"repeats =",max_dist,'\n\n')
 
 
-def shuffle_x0_inputs(params, G, A0):
-	# mv this fn elsewhere
-	# called within calc_basin_size if A0s are passed
-	# prob could be more effic with some cupy
-	x0=[]
-	input_indices = G.input_indices(params)
-	input_sets = list(itertools.product([0,1],repeat=len(params['inputs'])))
-	ref_A0=[] # later used to map which x0 come from which A0
-	for A in A0:
-		ref_A0 += [int(a) for a in A] 
-		for input_set in input_sets:
-			state = [int(a) for a in A]
-			for k in range(len(input_indices)):
-				state[input_indices[k]] = input_set[k]
-			x0+=[state]
-	params['num_samples']=params['parallelism']=len(x0)
-	x0=cp.array(x0)
-	ref_A0 = cp.tile(cp.array(ref_A0),int(len(x0)/len(A0))).reshape(x0.shape)
-	return x0, ref_A0
+def dist(A1,A2):
+	d1=0
+	for k in A1:
+		if k in A2:
+			d1+=abs(A1[k].size-A2[k].size)
+		else:
+			d1+=A1[k].size 
+	d2=0
+	for k in A2:
+		if k in A1:
+			d2+=abs(A1[k].size-A2[k].size)
+		else:
+			d2+=A2[k].size
+
+	return (d1+d2)/2
+
 
 #######################################################################################################
 
@@ -116,7 +110,7 @@ class Attractor:
 	def __init__(self, params, G, attractor_id, period, avg, var, A0):
 		self.id = attractor_id
 		self.size = 1
-		if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']):
+		if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 			self.period = period
 		self.avg = avg
 		self.var = var
@@ -198,12 +192,12 @@ class SteadyStates:
 
 
 
-	def add_attractors(self, result, A0, map_from_A0):
+	def add_attractors(self, result, A0s, map_from_A0):
 		# map_from_A0 indicates that transition pr from A_0 -> A_f should be measured
 
 		if map_from_A0:
-			print('while adding A:',len(result['state']),len(A0))
-			assert(len(result['state'])==len(A0))
+			#print('while adding A:',len(result['state']),len(A0))
+			assert(len(result['state'])==len(A0s))
 		for i in range(len(result['state'])):
 			if self.params['update_rule'] != 'sync' or util.istrue(self.params,['PBN','active']) or map_from_A0:
 				finished=True
@@ -218,7 +212,7 @@ class SteadyStates:
 				if not map_from_A0:
 					a0=None
 				else:
-					a0 = A0[i]
+					a0 = A0s[i]
 
 				# TODO: clean up how var is handled
 				if 'var' in result.keys():
@@ -230,7 +224,7 @@ class SteadyStates:
 		if self.params['update_rule'] in ['async','Gasync'] or util.istrue(self.params,['PBN','active']):
 			for s in self.attractors:
 				A = self.attractors[s] 
-				A.totalAvg = A.avg.copy() #TODO see if this causes err, if so, move to attrs
+				A.totalAvg = A.avg.copy() 
 				A.avg/=A.size 
 				if util.istrue(self.params,'calc_var'):
 					A.totalVar = A.var.copy() 
@@ -258,30 +252,27 @@ class SteadyStates:
 		# build transition matrix (a_ij = pr Ai -> Aj)
 		# indexed according to self.attractor_order
 		n = len(self.attractor_order)
-		T = cp.zeros((n,n))
+		T = np.zeros((n,n))
 		for i in range(n):
 			Ai = self.attractor_order[i]
+			found=0
 			for j in range(n):
 				Aj = self.attractor_order[j]
-				print('Ai=',Ai)
-				print(self.attractors[Aj].A0s.keys())
-				assert(0)
 				if Ai in self.attractors[Aj].A0s.keys():
-					print('Ai:',Ai,'found in Aj keys')
-					T[i,j] = self.attractors[Aj].A0s[Ai]
+					T[i,j] = self.attractors[Aj].A0s[Ai] # Aj's A0s[Ai] should be the # times Ai -> Aj
+					found=1
+			if not found: # A0 did not contain all attractors, so try again before mapping transition pr
+				return None, True
 
-		print('shape',T.shape,'divisor=',cp.sum(T,axis=1))
-		T = T/cp.vstack(cp.sum(T,axis=1)) # normalize such that sum_j(pr Ai -> Aj) = 1
-		print('sum of T along rows:', cp.sum(T,axis=1),'vs sum along cols:', cp.sum(T,axis=0))
-		assert(0) # check that normzn is along correct access
-		return T 
+		T = T/np.vstack(np.sum(T,axis=1)) # normalize such that sum_j(pr Ai -> Aj) = 1
+		return T, False
 
 
 	def order_attractors(self):
 		self.attractor_order = list(self.attractors.keys())
+		
 
-
-##########################################################################################################
+##################################### One Basin #############################################################
 
 def calc_basin_size(params, G,A0=None,input_shuffle=False):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
@@ -331,7 +322,6 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			if not params['map_from_A0']:
 				x0 = get_init_sample(params, G)
-
 			x_in_attractor = lap.transient(params, x0, G)
 			result = lap.categorize_attractor(params, x_in_attractor, G)
 			cupy_to_numpy(params,result)
@@ -343,6 +333,11 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 	steadyStates.normalize_attractors()
 	steadyStates.order_attractors()
 
+	# TODO: clean this, for ex, calls order_attractos again
+	if params['update_rule'] != 'sync' and params['async_trim']:
+		trim_As(params,steadyStates,thresh=params['async_trim'])
+
+
 	if util.istrue(params,'use_phenos'):
 		steadyStates.build_phenos()
 	return steadyStates
@@ -350,12 +345,23 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 
 def get_init_sample(params, G):
 	
-	if util.istrue(params,['PBN','active']) and params['PBN']['init'] == 'half':
-		x0 = .5*cp.ones((params['parallelism'],G.n)).astype(float,copy=False)
-	else:
+	if 0:
+		print("basin.get_init_sample() temp")
+		# each x0 over each A
 		p = .5 #prob a given node is off at start
-		x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
-		
+		num_inputs = len(params['inputs'])
+		size = int(params['parallelism']/(2**num_inputs))
+		x0 = cp.random.choice(a=[0,1], size=(size,G.n), p=[p, 1-p]).astype(bool,copy=False)
+		x0 = cp.vstack([x0 for _ in range(2**num_inputs)]) # should be a nicer way to do this natively
+		# tile or repeat(axis=0) goes a,a,b,b,c,c...but need a,b,c,a,b,c,....
+
+	else:
+		if util.istrue(params,['PBN','active']) and params['PBN']['init'] == 'half':
+			x0 = .5*cp.ones((params['parallelism'],G.n)).astype(float,copy=False)
+		else:
+			p = .5 #prob a given node is off at start
+			x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
+			
 	if 'init' in params.keys():
 		for k in params['init']:
 			node_indx = G.nodeNums[k]
@@ -405,8 +411,10 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 
 
 def format_id_str(x):
+	# TODO: this is slower than it should be
 	label=''
-	for ele in x:
+	for i in range(len(x)):
+		ele=x[i]
 		if ele == True:
 			label+='1'
 		elif ele == False:
@@ -459,12 +467,137 @@ def cupy_to_numpy(params,result):
 		for k in result.keys():
 			result[k]=result[k].get()
 
+#################################### STEADY BASIN #####################################################
+
+def calc_steady_basin(params, G, num_steps, A0=None):
+	# calculates the steady basin by updating the inputs for at most num_steps
+	# note that params['parallelism'] and ['num_samples'] will be altered during calc_basin_size()
+	# pass A0 for mutated or control runs (for example)
+	assert(A0 is None) # plz explicitly debug A0!=None case before using
+	SS = calc_basin_size(params,G,A0=A0,input_shuffle=False) # get steady states from random initial conditions
+	if params['debug']:
+		assert(len(SS.attractors)==len(SS.attractor_order))
+	
+	new=True 
+	while new:
+		A0 = [SS.attractors[k].id for k in SS.attractor_order]# attractors in ORDERED list, like def within SSs
+		#print('basin 1st attractor=',A0[0],'\nlng of A0=',len(A0))
+		SS = calc_basin_size(params, G, A0=A0, input_shuffle=True) # get steady states from input-shuffled attractors
+		assert(len(SS.attractors)==len(SS.attractor_order))
+		#debug_ghost_A(SS)
+		print('#As =',len(SS.attractors))
+		#if params['update_rule'] != 'sync':
+		#	trim_As(SS)
+		#	print('after trim #As=',len(SS.attractors))
+		transit_pr, new = SS.map_A_transition_pr() 
+		if new:
+			print('new yessir')
+	print('done escaped that new nonsense')
+	steadyBasin = steadyBasin_from_transition_matrix(params, SS, transit_pr, num_steps) # finish this fn
+	return steadyBasin 
+
+def trim_As(params,SS,thresh=.001):
+	# not that size is NOT renormalized
+	rm_keys = []
+	for A in SS.attractors.values():
+		if A.size < thresh:
+			rm_keys += [A.id] 
+	for k in rm_keys:
+		del SS.attractors[k]
+	if params['map_from_A0']:
+		for A in SS.attractors.values():
+			rm_A0s = []
+			for A0 in A.A0s:
+				if A0 in rm_keys:
+					rm_A0s += [A0]
+			for A0 in rm_A0s:
+				del A.A0s[A0]
+	SS.order_attractors()
+	print('after trim, #As=',len(SS.attractors))
+
+
+def steadyBasin_from_transition_matrix(params, SS, T, num_steps):
+	B = np.array([SS.attractors[k].size for k in SS.attractor_order]) # starting basin size
+	for i in range(num_steps):
+		print('at step',i)
+		#print('starting from B=',B,'\nT=',T)
+		B_next = np.matmul(B,T)
+		#print('BxT = ',B_next)
+		if params['update_rule']=='sync' and params['debug']: # due to attractor trimming, async methods may not actually sum to 1
+			assert(np.isclose(sum(B_next),1))
+		if np.allclose(B_next,B):
+			print("\nSteady basin fixed point found.")
+			return basin_matrix_to_SS(params, SS, B)
+		B = B_next 
+
+	print("\n\nWARNING: Steady basin fixed point NOT found, returning basin after",num_steps,"steps.\n")
+	return basin_matrix_to_SS(params, SS, B)
+
+def debug_ghost_A(steadyStates):
+	SS = steadyStates
+	for target in steadyStates.attractor_order:
+		assert(len(steadyStates.attractors[target].A0s)>0)
+		#for source in steadyStates.attractors[target].A0s:
+		#	assert(source in steadyStates.attractor_order) 
+	n = len(SS.attractor_order)
+	print('curr As:')
+	for i in range(n):
+		print(SS.attractor_order[i])
+	print('~~~\n')
+	for i in range(n):
+		Ai = SS.attractor_order[i]
+		found=0
+		for j in range(n):
+			Aj = SS.attractor_order[j]
+			if Ai in SS.attractors[Aj].A0s.keys():
+				found=1
+		if not found:
+			print(Ai)
+			assert(0)
+		else:
+			print('pass')
+
+def basin_matrix_to_SS(params, SS, B):
+	for k in SS.attractors.keys():
+		A = SS.attractors[k]
+		A.size = B[SS.attractor_order.index(k)]
+	return SS
+
+
+def shuffle_x0_inputs(params, G, A0):
+	# called within calc_basin_size if A0s are passed
+	# prob could be more effic with some more np
+	x0=[]
+	input_indices = G.input_indices(params)
+	input_sets = list(itertools.product([0,1],repeat=len(params['inputs'])))
+	ref_A0=[] # later used to map which x0 come from which A0
+	for A in A0:
+		ref_A0 += [[int(a) for a in A] for i in range(len(input_sets))]
+		for input_set in input_sets:
+			state = [int(a) for a in A]
+			for k in range(len(input_indices)):
+				state[input_indices[k]] = input_set[k]
+			x0+=[state]
+	params['num_samples']=params['parallelism']=len(x0)
+	x0=cp.array(x0)
+	for k in params['init']:
+		indx = G.nodeNums[k]
+		x0[:,indx] = params['init'][k]
+	ref_A0 = np.array(ref_A0)
+	#ref_A0 = cp.tile(cp.array(ref_A0),int(len(x0)/len(A0))).reshape(x0.shape)
+
+	return x0, ref_A0
 
 #############################################################################################
 
 
 if __name__ == "__main__":
-	if len(sys.argv) not in [2]:
+	if len(sys.argv) not in [2,3]:
 		sys.exit("Usage: python3 basin.py PARAMS.yaml")
 	
-	main(sys.argv[1])
+	if len(sys.argv) == 3:
+		if sys.argv[2] != 'repeat':
+			print("Unknown 2nd param...",sys.argv[2])
+		repeat_test(sys.argv[1])
+	else:
+		main(sys.argv[1])

@@ -2,8 +2,6 @@
 
 net_file : 'input/mammCC.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
 
-use_phenos : true # quick way to disable phenotypes and ignore pheno_file
-
 outputs : ['pRB']
 output_thresholds : [0] 
 # will produce output phenotypes in terms of these

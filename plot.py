@@ -276,6 +276,41 @@ def control_exper_scatter(params, node_stats, labels):
 		plt.close()
 
 
+def basin_dist_bars(): 
+	import numpy as np
+	nets = ['Fumia','Grieco','Sahin','Zhang']
+	IBR_sync = [0.0785, 0.0162, 0.00260, 0.225] # Grieco: 0.0162, Fumia: 0.0785, Zhang=0.225, Sahin=.00260
+	SBR_sync = [3.03 * 10**(-7), 2.78*10**(-8), 2.98 * 10**(-8),1.47 * 10**(-7)] # Grieco: 2.78 * 10**(-8), Fumia: 3.03 * 10**(-7), Sahin: 2.98 * 10**(-8), Zhang: 1.47 * 10**(-7)
+	IBR_async = [ 0.115, 0.201, 0.0156, 0.145] # Grieco: 0.201, Fumia: 0.115, Zhang=0.145, Sahin=0.0156
+	#SBR_async = [11**(-3), 11**(-2.9), 11**(-2), 11**(-3.1)] 
+
+	colors = cm.get_cmap('Set2',8)
+
+	x = np.arange(len(nets))  # the label locations
+	width = 0.2  # the width of the bars
+
+	fig, ax = plt.subplots()
+	rects_IBR_sync = ax.bar(x - width/2, IBR_sync, width,label='IBR sync',color=COLORS[10])
+	rects_SBR_sync = ax.bar(x + width/2, SBR_sync, width, label='SBR sync',color=COLORS[11])
+	#rects_IBR_sync = ax.bar(x - width*3/2, IBR_sync, width,label='IBR sync',color=COLORS[10])
+	#rects_SBR_sync = ax.bar(x - width/2, SBR_sync, width, label='SBR sync',color=COLORS[11])
+	#rects_IBR_async = ax.bar(x + width/2, IBR_async , width, label='IBR async',color=COLORS[10],alpha=.5)
+	#rects_SBR_async = ax.bar(x + width*3/2, SBR_async, width, label='SBR async',color=COLORS[11],alpha=.5)
+
+	ax.set_ylabel('Max Distance')
+	ax.set_title('Robustness to Initial Sample')
+
+	ax.set_xticks(x)
+	ax.set_xticklabels(nets)
+	ax.legend()
+	ax.set_yscale('log')
+
+	fig.tight_layout()
+
+	plt.show()
+	plt.clf()
+	plt.close()
+
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers
 
@@ -300,3 +335,8 @@ def init_mpl(params):
 	except ModuleNotFoundError:
 		# fall back to MacOSX lib
 		matplotlib.use('MACOSX')
+
+
+
+if __name__ == "__main__":
+	basin_dist_bars()

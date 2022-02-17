@@ -1,11 +1,11 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
 outputs : ['Apoptosis','Proliferation','Growth_Arrest']
-output_thresholds : [.1,.1,.1] 
+output_thresholds : [.5,.5,.5] 
 # will produce output phenotypes in terms of these
 
-inputs : ['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
-init : {}
+inputs : ['EGFR_stimulus', 'FGFR3_stimulus','TGFBR_stimulus', 'DNA_damage']
+init : {'Apoptosis':0,'Proliferation':0,'Growth_Arrest':0}
 # each sample begins with these states (x0) 
 
 mutations : {}

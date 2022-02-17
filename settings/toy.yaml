@@ -2,14 +2,14 @@
 
 use_phenos : true # quick way to disable outputs
 
-outputs : ['o1']
-output_thresholds : [.5] 
+outputs : ['y1','y2']
+output_thresholds : [.5,.5] 
 # will produce output phenotypes with output=1 if it's average value is > threshold
 
-inputs : ['x1','x2']
+inputs : ['i1','i2']
 # all possible input combinations are evenly sampled
 
-init : {}
+init : {'y1':0, 'y2':0}
 # each sample begins with these states (x0) 
 
 mutations : {}

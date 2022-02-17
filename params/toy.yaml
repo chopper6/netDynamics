@@ -15,10 +15,13 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 use_inputs_in_pheno: 1
 
+steady_basin: True
+steady_basin_max_steps: 100
+
 PBN : # probabilistic boolean network
   active : 0 # PBN is only used if active=True
   flip_pr : .05
-calc_var : 1 # will take 2x as long, adds a per-node variance stat to each attractor
+calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor
 
 # implementation details
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
