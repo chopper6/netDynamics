@@ -204,16 +204,18 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		expected_num_updates = (params['steps_per_lap']+1)/(G.n)
 	elif params['update_rule'] == 'Gasync':
 		expected_num_updates = (params['steps_per_lap']+1)/2
+	elif util.istrue(params,['PBN','active']):
+		expected_num_updates =(params['steps_per_lap']+1)
 	else: #sync
-		expected_num_updates = 1 #this is handled in exit_sync_categorize_oscil, below
-		# TODO: make this cleaner
+		expected_num_updates = period[:,cp.newaxis].astype(float)
 		assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
 
 	avg_states = avg_states/expected_num_updates
 	
 	if calculating_var:
 		var_states = var_states/(expected_num_updates-1) # -1 for unbiased estim
-		assert(expected_num_updates>1) #otherwise variance cannot be well estimated! (if async steps_per_lap should be >> #nodes)
+		if params['debug']:
+			assert(cp.all(cp.array(expected_num_updates)>1)) #otherwise variance cannot be well estimated! (if async steps_per_lap should be >> #nodes)
 		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
 			return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states,variance=var_states)
 		#else

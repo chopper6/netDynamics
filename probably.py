@@ -1,4 +1,5 @@
-import basin, parse, plot
+import basin, param, plot
+from net import Net
 import sys, os, itertools
 from copy import deepcopy
 
@@ -7,13 +8,16 @@ from copy import deepcopy
 
 # LATER:
 # try longer loops, see if more robust
-
+# add confidence intervals, after several runs
+# add XOR
 
 def variance_test(param_file):
 	reps=1
-	params = parse.params(param_file)
-	params['net_file'] = 'input/temp_net.txt'
+	params = param.load(param_file)
+	params['model_file'] = 'models/temp_net.txt'
 	params['verbose'] = False
+	params['inputs'],params['outputs'],params['init']={},{},{} #override
+	params['calc_var'] = True
 
 	stats = {'avg':[],'variance':[]}
 	groups = ['PP_and','NN_and','PN_and','PP_or','NN_or','PN_or','P','N']
@@ -29,24 +33,27 @@ def variance_test(param_file):
 		settings = itertools.product([0,1],repeat=5) 
 		for s in settings:
 			if s[1:] not in [(0,0,0,1),(0,1,0,0),(0,1,0,1),(0,1,1,0),(0,1,1,1),(1,1,0,1)]: #remove symmetries over the middle node's plane
-				generate_coupled_FBL(params['net_file'], s[0], s[1], s[2], s[3], s[4])
+				generate_coupled_FBL(params['model_file'], s[0], s[1], s[2], s[3], s[4])
 				loopType, gate = coupled_loop_type(s[0],s[1], s[2], s[3], s[4])
 				calc_stats(params, reps, noise_str, loopType, gate, feats)
 		for s in [[0,1],[1,1],[0,0],[1,0]]:
-			generate_FBL(params['net_file'], s[0], s[1])
+			generate_FBL(params['model_file'], s[0], s[1])
 			loopType = loop_type(s[0],s[1])
 			calc_stats(params, reps, noise_str, loopType, None, feats)
 
 	plot.probably_bar(params,feats)
 
-	os.remove('input/temp_net.txt')
+	os.remove('models/temp_net.txt')
 
 def calc_stats(params, reps, noise_str, loopType, gate, feats):
 	avg_avg_var = 0
 	avg_avg_avg = 0
 
+	G = Net(model_file=params['model_file'],debug=params['debug'])
+	G.prepare_for_sim(params)
+
 	if params['update_rule'] == 'sync' and not params['PBN']['active']:
-		var_str = 'variance' #since not averaged anyway
+		var_str = 'var' #since not averaged anyway
 		avg_str = 'avg'
 	else:
 		var_str = 'totalVar' #make sure to get the non-averaged form
@@ -54,14 +61,19 @@ def calc_stats(params, reps, noise_str, loopType, gate, feats):
 
 	for r in range(reps):
 		#SS = basin.calc_basin_size(params,G,x0=None)
-		attractors, phenos, V = basin.find_attractors(params)
-		middle_node = V['name2#']['x1']
+		SS = basin.calc_basin_size(params,G)
+		attractors, phenos = SS.attractors, SS.phenotypes
+		middle_node = G.nodeNums['x1']
 		avg_variance=0 # sum_nodes sum_As var_node_in_A  / #nodes #As
 		avg_avg = 0
 
 		for k in attractors.keys():
-			avg_variance += attractors[k][var_str][middle_node]
-			avg_avg += attractors[k][avg_str][middle_node]
+			if params['update_rule'] == 'sync' and not params['PBN']['active']:
+				avg_variance += attractors[k].var[middle_node]
+				avg_avg += attractors[k].avg[middle_node]
+			else:
+				avg_variance += attractors[k].totalVar[middle_node]
+				avg_avg += attractors[k].totalAvg[middle_node]
 
 		if not params['update_rule'] == 'sync' or params['PBN']['active']: 
 			normz = params['num_samples'] 
@@ -138,12 +150,9 @@ def loop_type(E21, E12):
 		return 'N'
 
 
-if __name__ == "__basin__":
+if __name__ == "__main__":
 	if len(sys.argv) != 2:
 		sys.exit("Usage: python3 probably.py PARAMS.yaml")
-	if not os.path.isfile(sys.argv[1]):
-		sys.exit("Can't find parameter file: " + sys.argv[1])
-	if os.path.splitext(sys.argv[1])[-1].lower() != '.yaml':
-		sys.exit("Parameter file must be yaml format")
 	
 	variance_test(sys.argv[1])
+	print("Done.")

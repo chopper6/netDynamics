@@ -486,13 +486,10 @@ def calc_steady_basin(params, G, num_steps, A0=None):
 		assert(len(SS.attractors)==len(SS.attractor_order))
 		#debug_ghost_A(SS)
 		print('#As =',len(SS.attractors))
-		#if params['update_rule'] != 'sync':
-		#	trim_As(SS)
-		#	print('after trim #As=',len(SS.attractors))
 		transit_pr, new = SS.map_A_transition_pr() 
 		if new:
-			print('new yessir')
-	print('done escaped that new nonsense')
+			print('Found new attractors, rerunning.')
+	print('Finished building transition matrix, calculating steady basin.')
 	steadyBasin = steadyBasin_from_transition_matrix(params, SS, transit_pr, num_steps) # finish this fn
 	return steadyBasin 
 
