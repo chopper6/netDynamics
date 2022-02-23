@@ -17,6 +17,8 @@ bottom= cm.get_cmap('Dark2',8)#([i for iin range(8)])
 COLORS= cp.vstack((top(cp.linspace(0, 1, 8)),bottom(cp.linspace(0, 1, 8))))
 
 #COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
+#COLORS = ['#ff3300','#cc0066','#cc00ff','#6600ff','#0000ff','#0099cc','#00cc99','#00cc00','#888844','#cc9900']
+COLORS = ['#ffff00','#ff9933','#ff5050','#ff33cc','#cc66ff','#3366ff','#00ffcc','#00ff00']
 
 def pie(params, steadyStates, G, external_label=None):
 	node_name_to_num = G.nodeNames
@@ -184,7 +186,8 @@ def probably_bar(params, feats):
 	xlabels = list(feats[noises[0]].keys())
 	stats = list(feats[noises[0]][xlabels[0]].keys())
 
-	fig, axs = plt.subplots(len(noises), 2,figsize=(20,8)) # noise(vert) x stats(horz)
+	fig, axs = plt.subplots(len(noises), len(stats),figsize=(32,8)) # noise(vert) x stats(horz)
+	fig.subplots_adjust(hspace=0.3)
 	for h in range(len(stats)):
 		stat = stats[h]
 		ymax = getmax(feats,stat,noises,xlabels)
@@ -197,15 +200,18 @@ def probably_bar(params, feats):
 				X = [i for i in range(x,x+len(data))]
 				xticks += [x+(len(data)-1)/2]
 				x+=len(data) + buffer
-				axs[v,h].bar(X, data, width,color=COLORS[c])
+				axs[v,h].bar(X, data, width,color=COLORS[c],edgecolor='black',linewidth=1)
 				c+=1
+			axs[v,h].grid(alpha=.3,zorder=0,color='grey')
+			axs[v,h].set_axisbelow(True)
 			axs[v,h].set_xticks(xticks)
 			axs[v,h].set_xticklabels(xlabels,fontsize=12)
 			axs[v,h].set_ylim(0,ymax*1.1)
 			axs[v,h].set_title(noise + ' ' + stat,fontsize=16)
 		#fig.suptitle(stat,fontsize=20)
+
 	if params['savefig']:
-		plt.savefig(params['output_dir'] +'/loops.jpg') 	
+		plt.savefig(params['output_dir'] +params['output_img']) 	
 	else:
 		plt.show()
 

@@ -69,7 +69,8 @@ def adjust_for_inputs(params):
 		if params['num_samples'] != actual_num_samples:
 			print("WARNING: num_samples set to", actual_num_samples,"for full parallelism each iteration.\n")
 			params['num_samples'] = actual_num_samples
-	
+
+
 
 if __name__ == "__main__": # just for debugging purposes
 	print("Debugging parse.py")

@@ -21,7 +21,7 @@ def istrue(d,keys):
 		return keys in d and d[keys]
 
 def get_node_dtype(params):
-	if istrue(params,['PBN','active']) and params['PBN']['init'] == 'half':
+	if istrue(params,['PBN','active']) and istrue(params,['PBN','float']):
 		return float 
 	else:
 		return 'bool' 

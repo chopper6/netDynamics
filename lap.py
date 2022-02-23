@@ -5,6 +5,7 @@
 
 import itertools, util, sys
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
+import numpy as np
 
 def step(params, x, G):
 
@@ -16,7 +17,7 @@ def step(params, x, G):
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
 
-	if not util.istrue(params,['PBN','active']) or params['PBN']['init'] != 'half':
+	if not util.istrue(params,['PBN','active']) or not util.istrue(params,['PBN','float']) or params['PBN']['init'] != 'half':
 		clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
 			
 		x_next = cp.zeros((G.n),dtype=node_dtype)
@@ -37,6 +38,7 @@ def step(params, x, G):
 			x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
 		'''
 	else:
+		assert(0) # plz debug, may well be broken
 		# float version
 		# 	basically, on a vector X, AND is product(X), and OR is 1-(product(1-X))
 		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
@@ -54,12 +56,12 @@ def step(params, x, G):
 
 	if util.istrue(params,['PBN','active']):
 		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(node_dtype,copy=False)
-		flip[:,0]=0 #always OFF nodes should still be off
-		#print(cp.sum((cp.logical_not(flip)*x_next | flip*cp.logical_not(x))[:,1])/100)
-		if params['PBN']['init'] != 'half':
-			return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
-		else:
-			return 1 - ((1-cp.logical_not(flip)*x_next) * (1-flip*cp.logical_not(x)))
+
+		#if True: #params['PBN']['init'] != 'half':
+		return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
+		#else:
+		#	assert(0) # seems...broken
+		#	return 1 - ((1-cp.logical_not(flip)*x_next) * (1-flip*cp.logical_not(x)))
 
 	return x_next
 
@@ -73,7 +75,7 @@ def transient(params,x0, G, fixed_points_only=False):
 
 	x = cp.array(x0,dtype=node_dtype).copy()
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
-	if params['update_rule']=='sync' and  not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+	if params['precise_osils']:
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 
 	for i in range(params['steps_per_lap']):
@@ -81,7 +83,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		x_next = step(params, x, G)
 		
 		if params['update_rule']=='sync':
-			if not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+			if util.istrue(params,['precise_oscils']):
 				if fixed_points_only:
 					not_finished = not_finished & cp.any(cp.logical_xor(x_next,x),axis=1)
 				else:
@@ -104,7 +106,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		else:
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
-	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+	if params['precise_osils']:
 		#debug_print_outputs(params,G,x)
 		#assert(0)
 		return exit_sync_transient(x, not_finished)
@@ -113,7 +115,7 @@ def transient(params,x0, G, fixed_points_only=False):
 
 
 def exit_sync_transient(x, not_finished):
-	return {'finished':cp.logical_not(not_finished), 'state':x, 'avg':x, 'period':cp.logical_not(not_finished),'var':cp.zeros(x.shape)}
+	return {'finished':cp.logical_not(not_finished), 'state':x, 'avg':x, 'period':cp.logical_not(not_finished)}
 
 def debug_print_outputs(params,G,x,target=None):
 	k = len(params['inputs'])
@@ -129,39 +131,43 @@ def debug_print_outputs(params,G,x,target=None):
 			print(row[inpt].astype(int),'->',row[outpt].astype(int))
 
 
-def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
+def categorize_attractor(params,x0, G):
 	# assumes x0 is in the oscil
 	# will return a sorted ID for the oscil (max int representation) and the average activity of each node
-
-	# calculating_var is a recursive flag, just for when this function calls itself again (in order to calc_var, if param['calc_var'])
-	#	and avg is only passed by this function recursively (not from other modules)
 
 	node_dtype = util.get_node_dtype(params)
 	x = cp.array(x0,dtype=node_dtype).copy()
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
 
-	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']: 
-		period = cp.array([1 for _ in range(params['parallelism'])],dtype=int)
-		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
+	# should be able to clean and rm these or smthg:
+	avg_ensemble, var_ensemble, var_time, avg_x0,avg_time, var_x0 = [cp.zeros((1)) for _ in range(6)]  # kinda messy, but just if won't be used
+	if util.istrue(params,['track_x0']): # i.e. if calculating lap stats
+		x0_ids = np.unique(x0.get(),return_inverse=True,axis=0)[1] # just get index for each row of x0, where if x0_i = x0_j, they have same index
+		x0_ids = cp.array(x0_ids)
+		num_x0s = int(cp.max(x0_ids))+1
+		avg_ensemble, var_ensemble, avg_x0 = cp.zeros((num_x0s,G.n),dtype=float),cp.zeros((num_x0s,G.n),dtype=float),cp.zeros((num_x0s,G.n),dtype=float)
+		var_time, avg_time = cp.zeros(x0.shape,dtype=float) , cp.zeros(x0.shape,dtype=float) 
+		assert(num_x0s < len(x0)/2) # otherwise really shouldn't be using 'track_x0' param
+
+	if params['precise_osils']:
+		period = cp.ones(params['parallelism'],dtype=int)
+		not_finished = cp.ones(params['parallelism'], dtype=bool)
 
 	index_dtype, thread_dtype = get_dtypes(params, G.n)
-	simple_ind = cp.array([i for i in range(params['parallelism'])],dtype=thread_dtype) 
+	simple_ind = cp.ones(params['parallelism'],dtype=thread_dtype) 
 	larger = cp.zeros((params['parallelism']),dtype=cp.uint8)
 	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
 	avg_states = cp.array(x0,dtype=cp.float16)
-	#avg_states = cp.zeros(x0.shape,dtype=cp.float16)
-	if calculating_var:
-		var_states = cp.array(x0,dtype=cp.float16)
 
 	for i in range(params['steps_per_lap']):
 		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
 		x_next = step(params, x, G)
 		if params['update_rule']=='sync':
 			x = x_next
-			if not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+			if params['precise_osils']:
 				not_match = cp.any(cp.logical_xor(x,x0),axis=1)
 				period += not_match*not_finished 
 				not_finished = cp.logical_and(not_finished, not_match) 
@@ -183,9 +189,20 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		else:
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
-		avg_states += which_nodes*x
-		if calculating_var:
-			var_states += which_nodes*cp.power(x-avg,2)
+		avg_states += which_nodes*x  # TODO: why only update if node changes?
+		if util.istrue(params,['track_x0']):
+			#avg_ensemble += cp.mean(x,axis=0)
+			#var_ensemble += cp.var(x, axis=0)
+			for i in range(num_x0s):
+				subx = x[x0_ids==i]
+				avg_ensemble[i] += cp.mean(subx,axis=0)
+				assert(0) # left off
+				#avg_x0[i] += subx
+				var_ensemble[i] += cp.var(subx,axis=0,ddof=0) 
+					# TODO: should be ddof=1 for unbiased sample, but then divides by 0 sometimes...
+			#var_t += cp.power(x,2) # note that actually calculating <x^2> and will - <x>^2 at the end
+			avg_time += x
+			# TODO: since bool this is actually just var_t += x lol
 
 		# next few lines are just to replace ids with current states that are "larger", where larger is defined by int representation (i.e. first bit that is different)
 		diff = ids-x.astype(cp.int8)
@@ -194,53 +211,68 @@ def categorize_attractor(params,x0, G, calculating_var=False,avg=None):
 		
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
 
-		# oh man these ifs getting messy af
-		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not util.istrue(params,'calc_var') and not params['map_from_A0']:
+		if params['precise_osils']:
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']: 
 				return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
 	# using num steps +1 since init state is also added to the avg
 	if params['update_rule'] == 'async':
-		expected_num_updates = (params['steps_per_lap']+1)/(G.n)
+		expected_num_updates = (params['steps_per_lap'])/(G.n) # apparently this is normalized elsewhere
 	elif params['update_rule'] == 'Gasync':
-		expected_num_updates = (params['steps_per_lap']+1)/2
-	elif util.istrue(params,['PBN','active']):
-		expected_num_updates =(params['steps_per_lap']+1)
+		expected_num_updates = (params['steps_per_lap'])/2 # apparently this is normalized elsewhere
+	elif util.istrue(params,['PBN','active']) or params['map_from_A0'] or util.istrue(params,['skips_precise_oscils']):
+		expected_num_updates =params['steps_per_lap']
 	else: #sync
-		expected_num_updates = period[:,cp.newaxis].astype(float)
-		assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
+		if params['precise_osils']:
+			expected_num_updates = period[:,cp.newaxis].astype(float)
+			assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
+		else:
+			expected_num_updates = params['steps_per_lap']
+
+	if util.istrue(params,['track_x0']):
+		# average over time steps
+		#print('before avg over t:',avg_ensemble)
+		avg_ensemble /= params['steps_per_lap']
+		var_ensemble /= params['steps_per_lap']
+		avg_time /= params['steps_per_lap'] 
+		avg_x0 /= params['steps_per_lap']
+
+		assert(0) # left off...also fix return statement at the end ect
+		var_x0 = 1
+
+		# average over x0
+		#print('before avg over x0:',avg_ensemble)
+		avg_ensemble = cp.sum(avg_ensemble,axis=0) / (num_x0s) #*expected_num_updates)
+		var_ensemble = cp.sum(var_ensemble,axis=0) / (num_x0s) #*expected_num_updates)
+
+		#var_t = cp.mean(var_t - cp.power(avg_ensemble,2),axis=0) # note that avg_ensemble is really just average in general
+		
+		# relies on fact that xi is boolean (so xi^2=xi):
+		#	and since avg_total has not yet been avg'd over instances of x_i, works as avg_time
+		var_time = avg_total - cp.power(avg_total,2) # this gives variance for all x0
+		var_time = cp.mean(var_time, axis=0) # now avg variance for each node
+		assert(params['steps_per_lap']>1) # else shouldn't be measuring temporal variance
+		var_time *= params['steps_per_lap'] / (params['steps_per_lap']-1) # to make it unbiased sample stat
+
+		avg_total = cp.mean(avg_total,axis=0)
+		var_total = avg_total - cp.power(avg_total,2)
+		var_time *= params['steps_per_lap'] / (params['steps_per_lap']-1) # to make it unbiased sample stat
 
 	avg_states = avg_states/expected_num_updates
-	
-	if calculating_var:
-		var_states = var_states/(expected_num_updates-1) # -1 for unbiased estim
-		if params['debug']:
-			assert(cp.all(cp.array(expected_num_updates)>1)) #otherwise variance cannot be well estimated! (if async steps_per_lap should be >> #nodes)
-		if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
-			return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states,variance=var_states)
-		#else
-		return {'state':ids, 'avg':avg_states, 'var': var_states }	
 
-	if util.istrue(params,'calc_var'):
-		# recursively call function to actually calculate it
-		return categorize_attractor(params,x0, G, calculating_var=True, avg=avg_states)
-
-	if params['update_rule']=='sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+	if params['precise_osils']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 	#else:
-	return {'state':ids, 'avg':avg_states}
+	return {'state':ids, 'avg':avg_states,'avg_total':avg_x0, 'var_ensemble':var_ensemble,'var_time':var_time, 'var_total':var_x0}
 
 
-def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states,variance=None):
+def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states):
 	avg_states = avg_states/period[:,cp.newaxis].astype(float)
 	exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x0*not_finished[:,cp.newaxis]
 	if params['debug'] and params['update_rule'] == 'sync': #since async and Gasync are based on expected num of updates, they may be slightly off
 		assert (cp.all(avg_states <= 1.001))
 		assert (cp.all(avg_states >= -.001))
 
-	if variance is not None:
-		return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period, 'avg':avg_states,'var':variance}	
-	#else
 	return {'finished':cp.logical_not(not_finished), 'state':exit_states,'period':period, 'avg':avg_states}	
 
 

@@ -3,27 +3,27 @@ from net import Net
 import sys, os, itertools
 from copy import deepcopy
 
-# TODO: may have to update this since classes overhaul (oh shit..)
-# add XOR
-
 # LATER:
 # try longer loops, see if more robust
 # add confidence intervals, after several runs
-# add XOR
+# add XOR, and larger AND/OR gates (ie less rev'ble)
 
 def variance_test(param_file):
-	reps=1
 	params = param.load(param_file)
+	print("Simulating loops with flip probability=",params['PBN']['flip_pr'],', for',params['loopy_reps'],'repeats.')
 	params['model_file'] = 'models/temp_net.txt'
 	params['verbose'] = False
 	params['inputs'],params['outputs'],params['init']={},{},{} #override
-	params['calc_var'] = True
+	params['temporal_var'] = True
+	params['skips_precise_oscils'] = True
+	reps=params['loopy_reps']
 
-	stats = {'avg':[],'variance':[]}
-	groups = ['PP_and','NN_and','PN_and','PP_or','NN_or','PN_or','P','N']
+	stats = {'average':[],'ensemble variance':[], 'temporal variance':[], 'total variance':[]}
+	groups = ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N']
 	feats = {'noiseless':{g:deepcopy(stats) for g in groups},'noisy':{g:deepcopy(stats) for g in groups}}
 
 	for noise in [False, True]:
+		print("Starting with noise",noise)
 		params['PBN']['active'] = noise
 		if noise:
 			noise_str='noisy'
@@ -35,29 +35,69 @@ def variance_test(param_file):
 			if s[1:] not in [(0,0,0,1),(0,1,0,0),(0,1,0,1),(0,1,1,0),(0,1,1,1),(1,1,0,1)]: #remove symmetries over the middle node's plane
 				generate_coupled_FBL(params['model_file'], s[0], s[1], s[2], s[3], s[4])
 				loopType, gate = coupled_loop_type(s[0],s[1], s[2], s[3], s[4])
-				calc_stats(params, reps, noise_str, loopType, gate, feats)
+				calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
+		print("\tFinished coupled FBLs")
 		for s in [[0,1],[1,1],[0,0],[1,0]]:
 			generate_FBL(params['model_file'], s[0], s[1])
 			loopType = loop_type(s[0],s[1])
-			calc_stats(params, reps, noise_str, loopType, None, feats)
+			calc_stats_v2(params, reps, noise_str, loopType, None, feats)
+		print("\tFinished regular FBLs")
 
 	plot.probably_bar(params,feats)
 
 	os.remove('models/temp_net.txt')
 
-def calc_stats(params, reps, noise_str, loopType, gate, feats):
+
+def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
+	avg_var = 0
+	avg_avg = 0
+	avg_var_time = 0
+	avg_var_total = 0
+
+	G = Net(model_file=params['model_file'],debug=params['debug'])
+	G.prepare_for_sim(params)
+
+	for r in range(reps):
+		#SS = basin.calc_basin_size(params,G,x0=None)
+		SS = basin.calc_basin_size(params,G)
+		middle_node = G.nodeNums['x1']
+		avg_var += SS.stats['ensemble_var'][middle_node] # sum_nodes sum_As var_node_in_A  / #nodes #As
+		avg_avg += SS.stats['total_avg'][middle_node]
+		avg_var_time += SS.stats['temporal_var'][middle_node]
+		avg_var_total += SS.stats['total_var'][middle_node]
+
+	avg_var/=reps
+	avg_avg/=reps
+	avg_var_time /=reps
+	avg_var_total /=reps
+
+	if params['debug'] and params['update_rule']=='sync':
+		assert(-.0001 <= avg_avg <= 1.0001)
+		assert(-.0001 <= avg_var <= 1.0001)
+		assert(-.0001 <= avg_var_time <= 1.0001)
+		assert(-.0001 <= avg_var_total <= 1.0001)
+
+	if gate is None:
+		loop_str = loopType 
+	else:
+		loop_str = loopType+gate
+	feats[noise_str][loop_str]['average'] += [avg_avg]
+	feats[noise_str][loop_str]['ensemble variance'] += [avg_var]	
+	feats[noise_str][loop_str]['temporal variance'] += [avg_var_time]
+	feats[noise_str][loop_str]['total variance'] += [avg_var_total]	
+
+
+
+def calc_stats_old(params, reps, noise_str, loopType, gate, feats):
+	# for reference, can del soon
 	avg_avg_var = 0
 	avg_avg_avg = 0
 
 	G = Net(model_file=params['model_file'],debug=params['debug'])
 	G.prepare_for_sim(params)
 
-	if params['update_rule'] == 'sync' and not params['PBN']['active']:
-		var_str = 'var' #since not averaged anyway
-		avg_str = 'avg'
-	else:
-		var_str = 'totalVar' #make sure to get the non-averaged form
-		avg_str = 'totalAvg'
+	var_str = 'totalVar' #make sure to get the non-averaged form
+	avg_str = 'totalAvg'
 
 	for r in range(reps):
 		#SS = basin.calc_basin_size(params,G,x0=None)

@@ -19,17 +19,18 @@ import numpy as np
 def main(param_file):
 
 	params, G = init(param_file)
-	if not util.istrue(params,['steady_basin']):
-		steadyStates = calc_basin_size(params,G)
-	else:
-		steadyStates = calc_steady_basin(params, G, params['steady_basin_max_steps'])
+	steadyStates = measure(params, G)
 	plot.pie(params, steadyStates,G)
 	
-	#print('basin.main: phenos=',steadyStates.phenos_str())
-	#print('basin.main: #A=',len(steadyStates.attractors),'n=',G.n)
-	#temp_print_periodic(steadyStates, G,params)
 
-		
+def measure(params, G, A0=None):
+	if not util.istrue(params,['steady_basin']):
+		steadyStates = calc_basin_size(params,G,A0=A0)
+	else:
+		steadyStates = calc_steady_basin(params, G,A0=A0)
+	return steadyStates
+
+
 def repeat_test(param_file):
 	print("\nRUNNING REPEAT TEST\n")
 	params, G = init(param_file)
@@ -38,7 +39,7 @@ def repeat_test(param_file):
 	if not params['steady_basin']:
 		base = calc_basin_size(params,G).attractors
 	else:
-		base=calc_steady_basin(params, G, params['steady_basin_max_steps']).attractors
+		base = calc_steady_basin(params, G).attractors
 	As=[base]
 	max_dist=0
 	for k in range(repeats):
@@ -46,7 +47,7 @@ def repeat_test(param_file):
 		if not params['steady_basin']:
 			repeat = calc_basin_size(params,G).attractors
 		else:
-			repeat=calc_steady_basin(params, G, params['steady_basin_max_steps']).attractors
+			repeat=calc_steady_basin(params, G).attractors
 		for A in As:
 			d = dist(A,repeat)
 			#print('\nDISTANCE =',d,'\n')
@@ -107,10 +108,11 @@ def debug_print(params,G,steadyStates):
 #########################################################################################################
 
 class Attractor:
-	def __init__(self, params, G, attractor_id, period, avg, var, A0):
+	def __init__(self, params, G, attractor_id, state, period, avg, var, A0):
 		self.id = attractor_id
+		self.state = state
 		self.size = 1
-		if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+		if params['precise_osils']:
 			self.period = period
 		self.avg = avg
 		self.var = var
@@ -162,6 +164,8 @@ class SteadyStates:
 		self.attractors = {} 
 		self.attractor_order = [] # attractor ids in order 
 		self.phenotypes = {}
+		stat_names = ['total_avg','ensemble_var','temporal_var','total_var']
+		self.stats = {k:np.zeros(G.n, dtype=float) for k in stat_names}
 		self.params = params
 		self.G = G
 
@@ -173,11 +177,12 @@ class SteadyStates:
 			s+=k+':'+str(self.phenotypes[k].size)
 		return s
 
-	def add(self, attractor_id, period, avg, A0=None,var=None): # id should be unique to each attractor
+	def add(self, attractor_id, state, period, avg, A0=None,var_t=None): # id should be unique to each attractor
 		if attractor_id not in self.attractors.keys():
-			self.attractors[attractor_id] = Attractor(self.params, self.G, attractor_id, period, avg, var, A0)
+			self.attractors[attractor_id] = Attractor(self.params, self.G, attractor_id, state, period, avg, var_t, A0)
 		else:
 			self.attractors[attractor_id].size += 1
+
 			if A0 is not None:
 				Astr = format_id_str(A0)
 				if Astr in self.attractors[attractor_id].A0s.keys():
@@ -187,19 +192,20 @@ class SteadyStates:
 
 			if self.params['update_rule'] != 'sync' or util.istrue(self.params,['PBN','active']):
 				self.attractors[attractor_id].avg += avg
-				if var is not None:
-					self.attractors[attractor_id].var += var
+				if var_t is not None:
+					self.attractors[attractor_id].var_t += var_t
 
 
 
-	def add_attractors(self, result, A0s, map_from_A0):
+	def add_attractors(self, params, result, A0s):
 		# map_from_A0 indicates that transition pr from A_0 -> A_f should be measured
+		# TODO clean this mess
 
-		if map_from_A0:
+		if params['map_from_A0']:
 			#print('while adding A:',len(result['state']),len(A0))
 			assert(len(result['state'])==len(A0s))
 		for i in range(len(result['state'])):
-			if self.params['update_rule'] != 'sync' or util.istrue(self.params,['PBN','active']) or map_from_A0:
+			if not params['precise_osils']:
 				finished=True
 				period=None
 			else:
@@ -209,26 +215,24 @@ class SteadyStates:
 			if finished:
 				attractor_id = format_id_str(result['state'][i]) 
 
-				if not map_from_A0:
+				if not params['map_from_A0']:
 					a0=None
 				else:
 					a0 = A0s[i]
 
-				# TODO: clean up how var is handled
-				if 'var' in result.keys():
-					self.add(attractor_id, period, result['avg'][i], a0, result['var'][i]) 
-				else:
-					self.add(attractor_id, period, result['avg'][i], a0)
+				self.add(attractor_id, result['state'][i], period, result['avg'][i], a0)
 
 	def normalize_attractors(self):		
-		if self.params['update_rule'] in ['async','Gasync'] or util.istrue(self.params,['PBN','active']):
+		if self.params['update_rule'] in ['async','Gasync'] or util.istrue(self.params,['PBN','active']) or util.istrue(self.params,['skips_precise_oscils']):
 			for s in self.attractors:
 				A = self.attractors[s] 
 				A.totalAvg = A.avg.copy() 
 				A.avg/=A.size 
-				if util.istrue(self.params,'calc_var'):
-					A.totalVar = A.var.copy() 
-					A.var/=A.size 
+
+				# can rm
+				#if util.istrue(self.params,'calc_var'):
+				#	A.totalVar = A.var.copy() 
+				#	A.var/=A.size 
 
 		for s in self.attractors:
 			self.attractors[s].size /= self.params['num_samples']
@@ -264,12 +268,25 @@ class SteadyStates:
 			if not found: # A0 did not contain all attractors, so try again before mapping transition pr
 				return None, True
 
-		T = T/np.vstack(np.sum(T,axis=1)) # normalize such that sum_j(pr Ai -> Aj) = 1
+		T = np.transpose(T/np.vstack(np.sum(T,axis=1))) # normalize such that sum_j(pr Ai -> Aj) = 1
 		return T, False
 
 
 	def order_attractors(self):
 		self.attractor_order = list(self.attractors.keys())
+
+	def update_stats(self, result):
+		self.stats['total_avg'] += result['avg_total']
+		self.stats['ensemble_var'] += result['var_ensemble']
+		self.stats['temporal_var'] += result['var_time']
+		self.stats['total_var'] += result['var_total']
+
+	def normalize_stats(self):
+		reps = int(self.params['num_samples']/self.params['parallelism'])
+		if reps>1:
+			assert(0) # can rm, just be aware that avg is tech wrong (rather it is an avg of an avg)
+		for k in self.stats.keys():
+			self.stats[k] /= reps
 		
 
 ##################################### One Basin #############################################################
@@ -287,7 +304,10 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 			x0, A0 = shuffle_x0_inputs(params, G, A0)
 		assert(len(x0)==params['num_samples']==params['parallelism']) # otherwise need to change implementation
 
-	if params['update_rule'] == 'sync' and not util.istrue(params,['PBN','active']) and not params['map_from_A0']:
+	params['precise_osils']= (params['update_rule'] == 'sync' and not params['map_from_A0'] and not util.istrue(params,['PBN','active']) and not util.istrue(params,['skips_precise_oscils']))
+	# using from A0 with sync causes complications like when to end oscil (since x0 is no longer nec in oscil)
+
+	if params['precise_osils']:
 		oscil_bin = [] #put all the samples that are unfinished oscillators
 		confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
 		
@@ -295,20 +315,19 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 		if params['verbose']:
 			print("Starting fixed point search, using", params['num_samples'], "sample initial points.")
 		for i in range(int(params['num_samples']/params['parallelism'])):
-			if not params['map_from_A0']: # redundant, since assumes not map_from_A0, see above
+			if not params['map_from_A0']:
 				x0 = get_init_sample(params, G)
 			# with fixed_points_only = True, will return finished only for fixed points
 			# and help move oscillations past their transient phase
 			result = lap.transient(params,x0, G, fixed_points_only=True)
 			cupy_to_numpy(params,result)
 			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
-			steadyStates.add_attractors(result, None, False) # not map from A0 (todo: clean)
+			steadyStates.add_attractors(params, result, None)
 
 
 		# TRANSIENT OSCILS
 		# run until sure that sample is in the oscil
 		confirmed_oscils = sync_run_oscils(params, oscil_bin,steadyStates, G,transient=True)
-
 
 		# CLASSIFYING OSCILS
 		# calculate period, avg on state, ect
@@ -317,26 +336,23 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 
 		sync_run_oscils(params, confirmed_oscils, steadyStates, G, transient=False)
 
-
-	elif params['update_rule'] in ['async','Gasync'] or util.istrue(params,['PBN','active']) or params['map_from_A0']: 
+	else: # async, Gasync, stoch, starting from A0,...
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			if not params['map_from_A0']:
 				x0 = get_init_sample(params, G)
 			x_in_attractor = lap.transient(params, x0, G)
 			result = lap.categorize_attractor(params, x_in_attractor, G)
 			cupy_to_numpy(params,result)
-			steadyStates.add_attractors(result, A0, params['map_from_A0'])
+			steadyStates.update_stats(result)
+			steadyStates.add_attractors(params,result, A0)
 
-	else:
-		sys.exit("ERROR: unrecognized parameter for 'update_rule'")
-
+	steadyStates.normalize_stats()
 	steadyStates.normalize_attractors()
 	steadyStates.order_attractors()
 
 	# TODO: clean this, for ex, calls order_attractos again
 	if params['update_rule'] != 'sync' and params['async_trim']:
 		trim_As(params,steadyStates,thresh=params['async_trim'])
-
 
 	if util.istrue(params,'use_phenos'):
 		steadyStates.build_phenos()
@@ -356,7 +372,8 @@ def get_init_sample(params, G):
 		# tile or repeat(axis=0) goes a,a,b,b,c,c...but need a,b,c,a,b,c,....
 
 	else:
-		if util.istrue(params,['PBN','active']) and params['PBN']['init'] == 'half':
+		if util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float']):
+			assert(0) #plz explicitly debug the float stuff
 			x0 = .5*cp.ones((params['parallelism'],G.n)).astype(float,copy=False)
 		else:
 			p = .5 #prob a given node is off at start
@@ -399,7 +416,7 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 		if transient:
 			confirmed_oscils += list(result['state'][result['finished']==True])
 		else:
-			steadyStates.add_attractors(result,None,False) # assume not mapping from A0
+			steadyStates.add_attractors(params, result,None) 
 
 	params['steps_per_lap'] = orig_steps_per_lap
 	params['fraction_per_lap'] = orig_fraction_per_lap
@@ -469,29 +486,57 @@ def cupy_to_numpy(params,result):
 
 #################################### STEADY BASIN #####################################################
 
-def calc_steady_basin(params, G, num_steps, A0=None):
+def calc_steady_basin(params, G, A0=None):
 	# calculates the steady basin by updating the inputs for at most num_steps
 	# note that params['parallelism'] and ['num_samples'] will be altered during calc_basin_size()
 	# pass A0 for mutated or control runs (for example)
-	assert(A0 is None) # plz explicitly debug A0!=None case before using
+
 	SS = calc_basin_size(params,G,A0=A0,input_shuffle=False) # get steady states from random initial conditions
+	A0 = [SS.attractors[k].id for k in SS.attractor_order]# attractors in ORDERED list, like def within SSs
+
 	if params['debug']:
 		assert(len(SS.attractors)==len(SS.attractor_order))
 	
 	new=True 
 	while new:
-		A0 = [SS.attractors[k].id for k in SS.attractor_order]# attractors in ORDERED list, like def within SSs
 		#print('basin 1st attractor=',A0[0],'\nlng of A0=',len(A0))
 		SS = calc_basin_size(params, G, A0=A0, input_shuffle=True) # get steady states from input-shuffled attractors
 		assert(len(SS.attractors)==len(SS.attractor_order))
 		#debug_ghost_A(SS)
-		print('#As =',len(SS.attractors))
+		if params['verbose']:
+			print('#As =',len(SS.attractors))
 		transit_pr, new = SS.map_A_transition_pr() 
 		if new:
-			print('Found new attractors, rerunning.')
-	print('Finished building transition matrix, calculating steady basin.')
-	steadyBasin = steadyBasin_from_transition_matrix(params, SS, transit_pr, num_steps) # finish this fn
+			A0 += [SS.attractors[k].id for k in SS.attractor_order]
+			if params['verbose'] or True: 
+				print('\tFound new attractors, rerunning with',len(A0),' A0s.')
+
+	if params['verbose']:
+		print('Finished building transition matrix, calculating steady basin.')
+	steadyBasin, eigen_vec = calc_markov_chain_SS(params, transit_pr, SS)
+	if params['debug']:
+		steadyBasin_multpn, basin_vec = steadyBasin_from_transition_matrix(params, SS, transit_pr, 20) # finish this fn
+		assert(np.allclose(eigen_vec,basin_vec))
+		#print('multiplication vs eigen:\n',np.round(basin_vec,6),'vs\n', np.round(eigen_vec,6))
+
 	return steadyBasin 
+
+
+def calc_markov_chain_SS(params, transit_pr, SS):
+	# could add an assert that there are not 2 eigenvals = 0 (implies depd on init)
+
+	eigenvals, eigenvecs = np.linalg.eig(transit_pr)
+	if np.sum(eigenvals == 1) > 1:
+		# TODO: seems that the print statement is wrong (trying np.sum instead of native .sum())
+		print("\n\nWARNING: multiple eigenvalues=1 detected. Eigenvecs = where eigenval =1:\n",eigenvecs[eigenvals==1],"\n\n")
+	if np.sum(eigenvals > 1.1) > 0:
+		print("\n\n\nERROERRRERRERERRORERRROR: an eigenvalue > 1 detected! Eigenvalues:",eigenvals,'\n\n\n')
+	if np.sum(eigenvals == -1) > 0:
+		print("\n\nWARNING: periodic steady state detected! eigenvalues:",eigenvals,'\n\n\n')
+	SS_eigenvec = eigenvecs[:,np.argmax(eigenvals)] # note that eigen vecs are the columns, not the rows
+	SS_eigenvec = SS_eigenvec/np.sum(SS_eigenvec)
+	eigen_steadyBasin = basin_matrix_to_SS(params, SS, SS_eigenvec)
+	return eigen_steadyBasin, SS_eigenvec
 
 def trim_As(params,SS,thresh=.001):
 	# not that size is NOT renormalized
@@ -516,19 +561,21 @@ def trim_As(params,SS,thresh=.001):
 def steadyBasin_from_transition_matrix(params, SS, T, num_steps):
 	B = np.array([SS.attractors[k].size for k in SS.attractor_order]) # starting basin size
 	for i in range(num_steps):
-		print('at step',i)
+		if params['verbose']:
+			print('at step',i)
 		#print('starting from B=',B,'\nT=',T)
-		B_next = np.matmul(B,T)
+		B_next = np.matmul(T,B)
 		#print('BxT = ',B_next)
 		if params['update_rule']=='sync' and params['debug']: # due to attractor trimming, async methods may not actually sum to 1
 			assert(np.isclose(sum(B_next),1))
 		if np.allclose(B_next,B):
-			print("\nSteady basin fixed point found.")
-			return basin_matrix_to_SS(params, SS, B)
+			if params['verbose']:
+				print("\nSteady basin fixed point found.")
+			return basin_matrix_to_SS(params, SS, B), B
 		B = B_next 
 
 	print("\n\nWARNING: Steady basin fixed point NOT found, returning basin after",num_steps,"steps.\n")
-	return basin_matrix_to_SS(params, SS, B)
+	return basin_matrix_to_SS(params, SS, B), B
 
 def debug_ghost_A(steadyStates):
 	SS = steadyStates
