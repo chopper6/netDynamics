@@ -23,10 +23,11 @@ def main(param_file):
 	plot.pie(params, steadyStates,G)
 	
 
-def measure(params, G, A0=None):
-	if not util.istrue(params,['steady_basin']):
-		steadyStates = calc_basin_size(params,G,A0=A0)
+def measure(params, G, A0=None, Aweights=None):
+	if not util.istrue(params,'steady_basin'):
+		steadyStates = calc_basin_size(params,G,A0=A0,Aweights=Aweights)
 	else:
+		# curr assuming that exact ratio of A0 for steady basin is irrelv (only transition pr's matter)
 		steadyStates = calc_steady_basin(params, G,A0=A0)
 	return steadyStates
 
@@ -112,7 +113,7 @@ class Attractor:
 		self.id = attractor_id
 		self.state = state
 		self.size = 1
-		if params['precise_osils']:
+		if params['precise_oscils']:
 			self.period = period
 		self.avg = avg
 		self.var = var
@@ -205,7 +206,7 @@ class SteadyStates:
 			#print('while adding A:',len(result['state']),len(A0))
 			assert(len(result['state'])==len(A0s))
 		for i in range(len(result['state'])):
-			if not params['precise_osils']:
+			if not params['precise_oscils']:
 				finished=True
 				period=None
 			else:
@@ -279,7 +280,7 @@ class SteadyStates:
 		self.stats['total_avg'] += result['avg_total']
 		self.stats['ensemble_var'] += result['var_ensemble']
 		self.stats['temporal_var'] += result['var_time']
-		self.stats['total_var'] += result['var_total']
+		self.stats['total_var'] += result['var_x0']
 
 	def normalize_stats(self):
 		reps = int(self.params['num_samples']/self.params['parallelism'])
@@ -287,11 +288,23 @@ class SteadyStates:
 			assert(0) # can rm, just be aware that avg is tech wrong (rather it is an avg of an avg)
 		for k in self.stats.keys():
 			self.stats[k] /= reps
+
+	def adjust_Aweights(self,A0,Aweights):
+		# normalize the size of each attractor by the weight of its initial attractor
+		total=0
+		print(Aweights)
+		for A in self.attractors.values():
+			incoming_weight=0
+			for k in A.A0s: 
+				incoming_weight += Aweights[k]*A.A0s[k] # weight*# of such A0s that reach this A
+			A.size *= len(A0)*incoming_weight
+			total += A.size 
+		assert(math.isclose(total,1)) 
 		
 
 ##################################### One Basin #############################################################
 
-def calc_basin_size(params, G,A0=None,input_shuffle=False):
+def calc_basin_size(params, G,A0=None,input_shuffle=False,Aweights=None):
 	# overview: run 1 to find fixed points, 2 to make sure in oscil, run 3 to categorize oscils
 
 	steadyStates = SteadyStates(params, G) 
@@ -304,10 +317,10 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 			x0, A0 = shuffle_x0_inputs(params, G, A0)
 		assert(len(x0)==params['num_samples']==params['parallelism']) # otherwise need to change implementation
 
-	params['precise_osils']= (params['update_rule'] == 'sync' and not params['map_from_A0'] and not util.istrue(params,['PBN','active']) and not util.istrue(params,['skips_precise_oscils']))
+	params['precise_oscils']= (params['update_rule'] == 'sync' and not params['map_from_A0'] and not util.istrue(params,['PBN','active']) and not util.istrue(params,['skips_precise_oscils']))
 	# using from A0 with sync causes complications like when to end oscil (since x0 is no longer nec in oscil)
 
-	if params['precise_osils']:
+	if params['precise_oscils']:
 		oscil_bin = [] #put all the samples that are unfinished oscillators
 		confirmed_oscils = [] #put all samples that have oscillated back to their initial state 
 		
@@ -337,6 +350,7 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 		sync_run_oscils(params, confirmed_oscils, steadyStates, G, transient=False)
 
 	else: # async, Gasync, stoch, starting from A0,...
+
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			if not params['map_from_A0']:
 				x0 = get_init_sample(params, G)
@@ -349,6 +363,9 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False):
 	steadyStates.normalize_stats()
 	steadyStates.normalize_attractors()
 	steadyStates.order_attractors()
+	if Aweights is not None:
+		assert(A0 is not None)
+		steadyStates.adjust_Aweights(A0,Aweights)
 
 	# TODO: clean this, for ex, calls order_attractos again
 	if params['update_rule'] != 'sync' and params['async_trim']:

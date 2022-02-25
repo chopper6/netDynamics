@@ -186,8 +186,8 @@ def probably_bar(params, feats):
 	xlabels = list(feats[noises[0]].keys())
 	stats = list(feats[noises[0]][xlabels[0]].keys())
 
-	fig, axs = plt.subplots(len(noises), len(stats),figsize=(32,8)) # noise(vert) x stats(horz)
-	fig.subplots_adjust(hspace=0.3)
+	fig, axs = plt.subplots(len(noises), len(stats),figsize=(48,8)) # noise(vert) x stats(horz)
+	fig.subplots_adjust(hspace=0.4)
 	for h in range(len(stats)):
 		stat = stats[h]
 		ymax = getmax(feats,stat,noises,xlabels)
@@ -202,12 +202,13 @@ def probably_bar(params, feats):
 				x+=len(data) + buffer
 				axs[v,h].bar(X, data, width,color=COLORS[c],edgecolor='black',linewidth=1)
 				c+=1
-			axs[v,h].grid(alpha=.3,zorder=0,color='grey')
+			axs[v,h].grid(alpha=.5,zorder=0,color='grey')
 			axs[v,h].set_axisbelow(True)
 			axs[v,h].set_xticks(xticks)
-			axs[v,h].set_xticklabels(xlabels,fontsize=12)
+			axs[v,h].set_xticklabels(xlabels,fontsize=16)
+			axs[v,h].tick_params(axis='y', which='major', labelsize=12)
 			axs[v,h].set_ylim(0,ymax*1.1)
-			axs[v,h].set_title(noise + ' ' + stat,fontsize=16)
+			axs[v,h].set_title(noise + ' ' + stat,fontsize=22)
 		#fig.suptitle(stat,fontsize=20)
 
 	if params['savefig']:

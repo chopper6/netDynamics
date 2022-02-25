@@ -18,9 +18,9 @@ def variance_test(param_file):
 	params['skips_precise_oscils'] = True
 	reps=params['loopy_reps']
 
-	stats = {'average':[],'ensemble variance':[], 'temporal variance':[], 'total variance':[]}
+	stats = {'average':[],'ensemble variance':[], 'temporal variance':[], 'variance':[]}
 	groups = ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N']
-	feats = {'noiseless':{g:deepcopy(stats) for g in groups},'noisy':{g:deepcopy(stats) for g in groups}}
+	feats = {'no noise':{g:deepcopy(stats) for g in groups},'noisy':{g:deepcopy(stats) for g in groups}}
 
 	for noise in [False, True]:
 		print("Starting with noise",noise)
@@ -28,7 +28,7 @@ def variance_test(param_file):
 		if noise:
 			noise_str='noisy'
 		else:
-			noise_str = 'noiseless'
+			noise_str = 'no noise'
 
 		settings = itertools.product([0,1],repeat=5) 
 		for s in settings:
@@ -72,8 +72,9 @@ def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
 	avg_var_total /=reps
 
 	if params['debug'] and params['update_rule']=='sync':
+		#print(avg_avg,avg_var,avg_var_time,avg_var_total )
 		assert(-.0001 <= avg_avg <= 1.0001)
-		assert(-.0001 <= avg_var <= 1.0001)
+		assert(-.0001 <= avg_var <= 1.0001)                    # TODO: fix ensemble var!
 		assert(-.0001 <= avg_var_time <= 1.0001)
 		assert(-.0001 <= avg_var_total <= 1.0001)
 
@@ -84,7 +85,7 @@ def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
 	feats[noise_str][loop_str]['average'] += [avg_avg]
 	feats[noise_str][loop_str]['ensemble variance'] += [avg_var]	
 	feats[noise_str][loop_str]['temporal variance'] += [avg_var_time]
-	feats[noise_str][loop_str]['total variance'] += [avg_var_total]	
+	feats[noise_str][loop_str]['variance'] += [avg_var_total]	
 
 
 
