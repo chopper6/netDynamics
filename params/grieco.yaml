@@ -14,7 +14,7 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
-steady_basin: 1
+steady_basin: 0
 async_trim: .001
 
 PBN : # probabilistic boolean network # seems to req async atm
