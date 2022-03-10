@@ -5,8 +5,14 @@ from copy import deepcopy
 
 # LATER:
 # try longer loops, see if more robust
+#	curr doing all combos, but should really isolate certain prop into sep imgs
+#	mult bars per net type may also not be nec (or just show 1x)
 # add confidence intervals, after several runs
-# add XOR, and larger AND/OR gates (ie less rev'ble)
+# larger AND/OR gates (ie less rev'ble)
+# pickling and pickle-ploting
+# within vs btwn As
+# consider var of more than just the pivot node?
+# poss build longer regular FBLs
 
 def variance_test(param_file):
 	params = param.load(param_file)
@@ -19,7 +25,8 @@ def variance_test(param_file):
 	reps=params['loopy_reps']
 
 	stats = {'average':[],'ensemble variance':[], 'temporal variance':[], 'variance':[]}
-	groups = ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N']
+	groups = ['P','PP_and','PP_or','PP_xor','PN_and','PN_or','PN_xor','NN_and','NN_or','NN_xor','N']
+	groups += ['PP_and_long','PP_or_long','PP_xor_long','PN_and_long','PN_or_long','PN_xor_long','NN_and_long','NN_or_long','NN_xor_long']
 	feats = {'no noise':{g:deepcopy(stats) for g in groups},'noisy':{g:deepcopy(stats) for g in groups}}
 
 	for noise in [False, True]:
@@ -30,13 +37,19 @@ def variance_test(param_file):
 		else:
 			noise_str = 'no noise'
 
-		settings = itertools.product([0,1],repeat=5) 
-		for s in settings:
-			if s[1:] not in [(0,0,0,1),(0,1,0,0),(0,1,0,1),(0,1,1,0),(0,1,1,1),(1,1,0,1)]: #remove symmetries over the middle node's plane
-				generate_coupled_FBL(params['model_file'], s[0], s[1], s[2], s[3], s[4])
-				loopType, gate = coupled_loop_type(s[0],s[1], s[2], s[3], s[4])
-				calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
-		print("\tFinished coupled FBLs")
+		settings = list(itertools.product([0,1],repeat=4)) 
+
+		for logic in ['AND','OR','XOR']:
+			for s in settings:
+				if s not in [(0,0,0,1),(0,1,0,0),(0,1,0,1),(0,1,1,0),(0,1,1,1),(1,1,0,1)]: #remove symmetries over the middle node's plane
+					generate_coupled_FBL(params['model_file'], logic, s[0], s[1], s[2], s[3])
+					loopType, gate = coupled_loop_type(logic, s[0], s[1], s[2], s[3],longLoop=False)
+					calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
+
+					generate_long_coupled_FBL(params['model_file'], logic, s[0], s[1], s[2], s[3], num_per_loop=4)
+					loopType, gate = coupled_loop_type(logic, s[0], s[1], s[2], s[3],longLoop=True)
+					calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
+			print("\tFinished coupled FBL with",logic)
 		for s in [[0,1],[1,1],[0,0],[1,0]]:
 			generate_FBL(params['model_file'], s[0], s[1])
 			loopType = loop_type(s[0],s[1])
@@ -74,7 +87,7 @@ def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
 	if params['debug'] and params['update_rule']=='sync':
 		#print(avg_avg,avg_var,avg_var_time,avg_var_total )
 		assert(-.0001 <= avg_avg <= 1.0001)
-		assert(-.0001 <= avg_var <= 1.0001)                    # TODO: fix ensemble var!
+		assert(-.0001 <= avg_var <= 1.0001) # know that max var is .25 for bool          # TODO: fix ensemble var!
 		assert(-.0001 <= avg_var_time <= 1.0001)
 		assert(-.0001 <= avg_var_total <= 1.0001)
 
@@ -145,24 +158,61 @@ def calc_stats_old(params, reps, noise_str, loopType, gate, feats):
 		feats[noise_str][loopType+gate]['avg'] += [avg_avg_avg]
 		feats[noise_str][loopType+gate]['variance'] += [avg_avg_var]
 
-def generate_coupled_FBL(net_file, AND, E21, E31, E12, E13): 
+def generate_coupled_FBL(net_file, logic, E21, E31, E12, E13): 
 	#E's are for edges, so E21=0 -> x2 -| x1
 	# AND is if middle node is an AND of the other two nodes (else uses OR)
 	with open(net_file,'w') as file:
 		file.write('DNFsymbolic\n')
-		if AND:
+		if logic == 'AND':
 			joiner = '&'
-		else:
+			file.write('x1\t'+sign(E21)+'x2'+joiner+sign(E31)+'x3\n')
+		elif logic == 'OR':
 			joiner = ' '
-		file.write('x1\t'+sign(E21)+'x2'+joiner+sign(E31)+'x3\n')
+			file.write('x1\t'+sign(E21)+'x2'+joiner+sign(E31)+'x3\n')
+		elif logic == 'XOR':
+			# here
+			file.write('x1\t'+sign((E21+1)%2)+'x2&'+sign(E31)+'x3 ' +sign(E21)+'x2&'+sign((E31+1)%2)+'x3\n')
+		else:
+			assert(0) #unrecognzd fn
 		file.write('x2\t'+sign(E12)+'x1\n')
 		file.write('x3\t'+sign(E13)+'x1')
 
-def coupled_loop_type(logic, E21, E31, E12, E13):
-	if logic:
+
+def generate_long_coupled_FBL(net_file, logic, E21, E31, E12, E13, num_per_loop=8): 
+	#E's are for edges, so E21=0 -> x2 -| x1
+	# AND is if middle node is an AND of the other two nodes (else uses OR)
+	with open(net_file,'w') as file:
+		file.write('DNFsymbolic\n')
+		if logic == 'AND':
+			joiner = '&'
+			file.write('x1\t'+sign(E21)+'x'+str(num_per_loop+1)+joiner+sign(E31)+'x'+str(2*num_per_loop+1)+'\n')
+		elif logic == 'OR':
+			joiner = ' '
+			file.write('x1\t'+sign(E21)+'x'+str(num_per_loop+1)+joiner+sign(E31)+'x'+str(2*num_per_loop+1)+'\n')
+		elif logic == 'XOR':
+			# here
+			file.write('x1\t'+sign((E21+1)%2)+'x'+str(num_per_loop+1)+'&'+sign(E31)+'x'+str(2*num_per_loop+1)+' ' +sign(E21)+'x'+str(num_per_loop+1)+'&'+sign((E31+1)%2)+'x'+str(2*num_per_loop+1)+'\n')
+		else:
+			assert(0) #unrecognzd fn
+		for i in range(2,num_per_loop+1):
+			file.write('x' + str(i+1) + '\t'+'x'+str(i)+'\n')
+			file.write('x' + str(num_per_loop+i+1) + '\t'+'x'+str(num_per_loop+i)+'\n')
+		# x_1 is still the middle node (for backwards compat)
+		file.write('x2\t'+sign(E12)+'x1\n')
+		file.write('x'+str(num_per_loop+2)+'\t'+sign(E13)+'x1')
+
+
+def coupled_loop_type(logic, E21, E31, E12, E13,longLoop=False):
+	if logic=='AND':
 		gate = '_and'
-	else:
+	elif logic=='OR':
 		gate = '_or'
+	elif logic=='XOR':
+		gate = '_xor'
+	else:
+		assert(0)
+	if longLoop:
+		gate += '_long'
 	sign2loop = (E21+E12)%2 #where 0 is P, 1 is N
 	sign3loop = (E31+E13)%2
 	if sign3loop==sign2loop==1:

@@ -19,7 +19,11 @@ import numpy as np
 def main(param_file):
 
 	params, G = init(param_file)
-	steadyStates = measure(params, G)
+	if params['PBN']['active']:
+		print("\nCustom PBN run\n")
+		steadyStates = test_PBN(params, G)
+	else:
+		steadyStates = measure(params, G)
 	plot.pie(params, steadyStates,G)
 	
 
@@ -28,8 +32,39 @@ def measure(params, G, A0=None, Aweights=None):
 		steadyStates = calc_basin_size(params,G,A0=A0,Aweights=Aweights)
 	else:
 		# curr assuming that exact ratio of A0 for steady basin is irrelv (only transition pr's matter)
-		steadyStates = calc_steady_basin(params, G,A0=A0)
+		steadyStates = calc_steady_basin(params, G,A0=A0,Aweights=Aweights)
+	#print("#attractors =",len(steadyStates.attractors))
 	return steadyStates
+
+
+def test_PBN(params, G):
+	mult=1
+	orig_num_samples = params['num_samples']
+	SS = calc_basin_size(params,G)
+	A0, Aweights =  get_A0_and_weights(SS)
+	print("Stoch #A =",np.array(A0).shape)
+	A0 = np.repeat(A0,mult)
+	params['PBN']['active'] = params['PBN']['flip_pr'] = 0
+	params['parallelism'] = params['num_samples'] = len(A0)
+	SS = calc_basin_size(params,G,A0=A0)
+	A0, Aweights =  get_A0_and_weights(SS)
+	A0 = np.array(A0)
+	print("Stoch after det transient =",np.array(A0).shape)
+
+	params['parallelism'] = params['num_samples'] = orig_num_samples
+	SS_det = calc_basin_size(params,G)
+	A0, Aweights =  get_A0_and_weights(SS_det)
+	print("Det #A =",np.array(A0).shape)
+	#A0 = np.vstack([A0 for _ in range(mult)])
+	#print(np.array(A0).shape)
+	params['parallelism'] = params['num_samples'] = len(A0)
+	SS_det = calc_basin_size(params,G,A0=A0)
+	A0, Aweights =  get_A0_and_weights(SS_det)
+	A0 = np.array(A0)
+	print("Det after det transient =",np.array(A0).shape)
+
+	return SS
+
 
 
 def repeat_test(param_file):
@@ -133,9 +168,11 @@ class Attractor:
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
-			assert(not util.istrue(params,['PBN','active'])) # TODO: how to def input thresh? or non stoch inputs
+			thresh=0
+			if util.istrue(params,['PBN','active']):
+				thresh=.5
 			for i in range(len(inputs)):
-				if self.avg[inputs[i]] > 0: 
+				if self.avg[inputs[i]] > thresh: 
 					self.phenotype +='1'
 				else:
 					self.phenotype +='0'	
@@ -201,6 +238,7 @@ class SteadyStates:
 	def add_attractors(self, params, result, A0s):
 		# map_from_A0 indicates that transition pr from A_0 -> A_f should be measured
 		# TODO clean this mess
+		# also i suspect this is a bottleneck of sorts
 
 		if params['map_from_A0']:
 			#print('while adding A:',len(result['state']),len(A0))
@@ -221,6 +259,7 @@ class SteadyStates:
 				else:
 					a0 = A0s[i]
 
+				# having 2 fns to add attr is confusing too
 				self.add(attractor_id, result['state'][i], period, result['avg'][i], a0)
 
 	def normalize_attractors(self):		
@@ -286,20 +325,35 @@ class SteadyStates:
 		reps = int(self.params['num_samples']/self.params['parallelism'])
 		if reps>1:
 			assert(0) # can rm, just be aware that avg is tech wrong (rather it is an avg of an avg)
-		for k in self.stats.keys():
-			self.stats[k] /= reps
+			for k in self.stats.keys():
+				self.stats[k] /= reps
 
 	def adjust_Aweights(self,A0,Aweights):
 		# normalize the size of each attractor by the weight of its initial attractor
 		total=0
-		print(Aweights)
+		assert(self.params['update_rule']=='sync') # else check normzn before using
+		#print('\n\nA0ws=',sum([Aweights[k] for k in Aweights]))
+		#print('Asize sum=',sum([self.attractors[k].size for k in self.attractors]))
+		used = {k:0 for k in Aweights}
 		for A in self.attractors.values():
+			assert(A.size <= 1)
 			incoming_weight=0
 			for k in A.A0s: 
+				used[k]=1
 				incoming_weight += Aweights[k]*A.A0s[k] # weight*# of such A0s that reach this A
-			A.size *= len(A0)*incoming_weight
+			#print("\tAsize adds prod Asize*len(attractors),incoming_weight=",A.size,len(self.attractors),incoming_weight)
+			A.size *= len(self.attractors)*incoming_weight
 			total += A.size 
-		assert(math.isclose(total,1)) 
+		#print('total=',total)
+		#assert(total < 1.1 and total > .9) 
+
+		total2=0
+		for A in self.attractors.values():
+			A.size/=total
+			total2+=A.size 
+		total=total2 
+		if not (math.isclose(total,1)):
+			print("\nWARNING: basin.adjust_Aweights do not sum to 1!\n") 
 		
 
 ##################################### One Basin #############################################################
@@ -315,6 +369,8 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False,Aweights=None):
 		x0=A0
 		if input_shuffle:
 			x0, A0 = shuffle_x0_inputs(params, G, A0)
+		else:
+			x0 = convert_A0_to_x0(params, A0)
 		assert(len(x0)==params['num_samples']==params['parallelism']) # otherwise need to change implementation
 
 	params['precise_oscils']= (params['update_rule'] == 'sync' and not params['map_from_A0'] and not util.istrue(params,['PBN','active']) and not util.istrue(params,['skips_precise_oscils']))
@@ -363,8 +419,7 @@ def calc_basin_size(params, G,A0=None,input_shuffle=False,Aweights=None):
 	steadyStates.normalize_stats()
 	steadyStates.normalize_attractors()
 	steadyStates.order_attractors()
-	if Aweights is not None:
-		assert(A0 is not None)
+	if Aweights is not None and A0 is not None:
 		steadyStates.adjust_Aweights(A0,Aweights)
 
 	# TODO: clean this, for ex, calls order_attractos again
@@ -503,13 +558,15 @@ def cupy_to_numpy(params,result):
 
 #################################### STEADY BASIN #####################################################
 
-def calc_steady_basin(params, G, A0=None):
+def calc_steady_basin(params, G, A0=None, Aweights=None):
 	# calculates the steady basin by updating the inputs for at most num_steps
 	# note that params['parallelism'] and ['num_samples'] will be altered during calc_basin_size()
 	# pass A0 for mutated or control runs (for example)
 
-	SS = calc_basin_size(params,G,A0=A0,input_shuffle=False) # get steady states from random initial conditions
-	A0 = [SS.attractors[k].id for k in SS.attractor_order]# attractors in ORDERED list, like def within SSs
+	# Aweights are likely unnec, since SS is usually indepd of init, but puting here anyhow
+
+	SS = calc_basin_size(params,G,A0=A0,Aweights=Aweights,input_shuffle=False) # get steady states from random initial conditions
+	A0, Aweights =  get_A0_and_weights(SS)
 
 	if params['debug']:
 		assert(len(SS.attractors)==len(SS.attractor_order))
@@ -517,7 +574,7 @@ def calc_steady_basin(params, G, A0=None):
 	new=True 
 	while new:
 		#print('basin 1st attractor=',A0[0],'\nlng of A0=',len(A0))
-		SS = calc_basin_size(params, G, A0=A0, input_shuffle=True) # get steady states from input-shuffled attractors
+		SS = calc_basin_size(params, G, A0=A0,Aweights=Aweights, input_shuffle=True) # get steady states from input-shuffled attractors
 		assert(len(SS.attractors)==len(SS.attractor_order))
 		#debug_ghost_A(SS)
 		if params['verbose']:
@@ -525,27 +582,35 @@ def calc_steady_basin(params, G, A0=None):
 		transit_pr, new = SS.map_A_transition_pr() 
 		if new:
 			A0 += [SS.attractors[k].id for k in SS.attractor_order]
-			if params['verbose'] or True: 
+			A0 = list(set(A0)) #remove duplicates
+			Aweights_new = {A.id:A.size for A in SS.attractors.values()}
+			Aweights = {**Aweights_new, **Aweights}
+			if params['verbose']: 
 				print('\tFound new attractors, rerunning with',len(A0),' A0s.')
 
 	if params['verbose']:
 		print('Finished building transition matrix, calculating steady basin.')
 	steadyBasin, eigen_vec = calc_markov_chain_SS(params, transit_pr, SS)
 	if params['debug']:
-		steadyBasin_multpn, basin_vec = steadyBasin_from_transition_matrix(params, SS, transit_pr, 20) # finish this fn
+		steadyBasin_multpn, basin_vec = steadyBasin_from_transition_matrix(params, SS, transit_pr, 20) 
 		assert(np.allclose(eigen_vec,basin_vec))
 		#print('multiplication vs eigen:\n',np.round(basin_vec,6),'vs\n', np.round(eigen_vec,6))
 
 	return steadyBasin 
 
 
+def get_A0_and_weights(SS):
+	# poss use np.array(A0)
+	A0 = [SS.attractors[k].id for k in SS.attractor_order]# attractors in ORDERED list, like def within SSs
+	Aweights = {A.id:A.size for A in SS.attractors.values()}
+	return A0, Aweights
+
 def calc_markov_chain_SS(params, transit_pr, SS):
 	# could add an assert that there are not 2 eigenvals = 0 (implies depd on init)
 
 	eigenvals, eigenvecs = np.linalg.eig(transit_pr)
 	if np.sum(eigenvals == 1) > 1:
-		# TODO: seems that the print statement is wrong (trying np.sum instead of native .sum())
-		print("\n\nWARNING: multiple eigenvalues=1 detected. Eigenvecs = where eigenval =1:\n",eigenvecs[eigenvals==1],"\n\n")
+		print("WARNING: multiple eigenvalues=1 detected")#. Eigenvecs where eigenval=1:\n",eigenvecs[eigenvals==1])
 	if np.sum(eigenvals > 1.1) > 0:
 		print("\n\n\nERROERRRERRERERRORERRROR: an eigenvalue > 1 detected! Eigenvalues:",eigenvals,'\n\n\n')
 	if np.sum(eigenvals == -1) > 0:
@@ -646,8 +711,12 @@ def shuffle_x0_inputs(params, G, A0):
 		x0[:,indx] = params['init'][k]
 	ref_A0 = np.array(ref_A0)
 	#ref_A0 = cp.tile(cp.array(ref_A0),int(len(x0)/len(A0))).reshape(x0.shape)
-
+	assert(len(x0)==len(ref_A0))
 	return x0, ref_A0
+
+def convert_A0_to_x0(params, A0):
+	return cp.array([[int(a) for a in A] for A in A0])
+
 
 #############################################################################################
 

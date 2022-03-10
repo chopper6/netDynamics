@@ -16,9 +16,10 @@ top = cm.get_cmap('Set2',8)#([i for i in range(8)])
 bottom= cm.get_cmap('Dark2',8)#([i for iin range(8)]) 
 COLORS= cp.vstack((top(cp.linspace(0, 1, 8)),bottom(cp.linspace(0, 1, 8))))
 
-#COLORS = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
-#COLORS = ['#ff3300','#cc0066','#cc00ff','#6600ff','#0000ff','#0099cc','#00cc99','#00cc00','#888844','#cc9900']
-COLORS = ['#ffff00','#ff9933','#ff5050','#ff33cc','#cc66ff','#3366ff','#00ffcc','#00ff00']
+COLORS2 = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
+COLORS3 = ['#ff3300','#cc0066','#cc00ff','#6600ff','#0000ff','#0099cc','#00cc99','#00cc00','#888844','#cc9900']
+
+COLORS = ['#ffff00','#ff9933','#ff5050','#ff33cc','#cc66ff','#3366ff','#00ffcc','#00ff00'] + COLORS2 + COLORS3
 
 def pie(params, steadyStates, G, external_label=None):
 	node_name_to_num = G.nodeNames
@@ -184,9 +185,10 @@ def probably_bar(params, feats):
 	buffer, width = 1,.8
 	noises = list(feats.keys())
 	xlabels = list(feats[noises[0]].keys())
-	stats = list(feats[noises[0]][xlabels[0]].keys())
+	#stats = list(feats[noises[0]][xlabels[0]].keys())
+	stats = ['average','variance']
 
-	fig, axs = plt.subplots(len(noises), len(stats),figsize=(48,8)) # noise(vert) x stats(horz)
+	fig, axs = plt.subplots(len(noises), len(stats),figsize=(100,8)) # noise(vert) x stats(horz)
 	fig.subplots_adjust(hspace=0.4)
 	for h in range(len(stats)):
 		stat = stats[h]
@@ -318,6 +320,62 @@ def basin_dist_bars():
 	plt.clf()
 	plt.close()
 
+
+def SBR_vs_IBR(): 	
+	# since they are different scales, make 1 plot for fragility, 1 for irrev
+	# likely rm Sahin
+	# try to run Zhang at least
+	# rename SBR/IBR ofc
+	import numpy as np
+	nets = ['Fumia','Grieco','Sahin']#,'Zhang']
+
+	IBR = {
+		'fragility_1':[0.08192873330939303, 0.10281994123438908, 0.20833333333333334],
+		'fragility_2':[0.1301388464765027, 0.16422310776793306, 0.44876373392787533],
+		'fragility_4':[0.20403139741296797, 0.24084346466760706, 0.6655244114210065],
+		'fragility_max':[0.549324701417569, 0.569108422939068, 1.0],
+		'irreversibility_1':[0.08192173987945037, 0.07809338557182756, 0],
+		'irreversibility_2':[0.15204742414771638, 0.13581002267105144, 0],
+		'irreversibility_4':[0.2689907569631469, 0.20192796146088193, 0],
+		'irreversibility_max':[0.5970220030349013, 0.004872555321801465*92, 0],
+		}
+		# lil err of Grieco IBR irrev max (hence *92)
+	SBR = {
+		'fragility_1':[0, 0.16560866432960422, 0.2392681364334645],
+		'fragility_2':[0, 0.305228574338808, 0.4527774445465187],
+		'fragility_4':[0, 0.5106032759569129, 0.6654545373178389],
+		'fragility_max':[0, 0.9425651256493479, 0.9997999599919984],
+		'irreversibility_1':[0, 0.04263783695741397, 0.03271524675305437],
+		'irreversibility_2':[0, 0.07105064075299608, 0.05655287150381244],
+		'irreversibility_4':[0, 0.13585347837163547, 0.07491259286055194],
+		'irreversibility_max':[0, 0.003833370181235178 *92, 0.0027866684448000726],
+		}
+	colors = cm.get_cmap('Set2',8)
+
+
+	for feature in ['fragility','irreversibility']:
+		for norm in ['1','2','4','max']:
+			x = np.arange(len(nets))  # the label locations
+			width = 0.2  # the width of the bars
+
+			fig, ax = plt.subplots()
+			rects_IBR = ax.bar(x - width/2, IBR[feature+'_'+norm], width,label='IBR',color=COLORS[10])
+			rects_SBR = ax.bar(x + width/2, SBR[feature+'_'+norm], width, label='SBR',color=COLORS[11])
+
+			ax.set_ylabel(feature +' with norm='+norm)
+			#ax.set_title('Robustness to Initial Sample')
+
+			ax.set_xticks(x)
+			ax.set_xticklabels(nets)
+			ax.legend()
+
+			fig.tight_layout()
+
+			plt.savefig('./output/basins/'+feature+'_norm='+norm+'.png') 
+			plt.clf()
+			plt.close()
+
+
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers
 
@@ -346,4 +404,5 @@ def init_mpl(params):
 
 
 if __name__ == "__main__":
-	basin_dist_bars()
+	print("custom plot")
+	SBR_vs_IBR()

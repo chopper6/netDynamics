@@ -19,7 +19,7 @@ async_trim: 0
 
 PBN : # probabilistic boolean network
   active : 0
-  flip_pr : 0
+  flip_pr : 0.5
   init : 'half' # half or uniform
 calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor
 
@@ -38,5 +38,5 @@ use_phenos: 1
 
 # output
 output_dir : 'output/basinRatio/'
-output_img : 'sahin_IBR_sync.png'
-savefig : 1 # as opposed to showing the image
+output_img : 'sahin_SBR_sync.png'
+savefig : 0 # as opposed to showing the image

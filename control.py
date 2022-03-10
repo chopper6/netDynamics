@@ -9,13 +9,14 @@ from net import Net
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
-	'mut_thresh':.05, 	# minimum distance threshold to be considered a mutant 
-	'cnt_thresh':.05, 	# min distance less than the mutation distance to be considered a controller
+	'mut_thresh':0, 	# minimum distance threshold to be considered a mutant 
+	'cnt_thresh':0, 	# min distance less than the mutation distance to be considered a controller
 	'max_mutator_size':1,  
 	'max_control_size':1,
 	'norm':1,			# the norm used to measure distance. Use an integer or 'max'
 	'verbose':True,	# toggle how much is printed to the console
 
+	'measure':True,
 	'from_A0':True # else mutation and control starts from x0
 }
 
@@ -51,8 +52,8 @@ class Perturbations:
 		s= '\n# of mutators = ' + str(len(self.mutators))
 		s+= '\n# of controllers = ' + str(len(self.controllers)) 
 		s+= '\n# irreversible mutators = ' + str(len(self.irreversible))
-		s+= '\nIrreversible mutators: ' + str(self.irreversible)
 		s+= '\n# self reversible mutators: ' + str(len(self.self_reversible))
+		s+= '\nIrreversible mutators: ' + str(self.irreversible)
 		if solutions:
 			s+= '\n\nAll solutions:' 
 			for k in self.solutions.keys():
@@ -94,44 +95,59 @@ class Perturbations:
 
 
 class NetMetrics:
-	def __init__(self, params, phenosWT,G):
-		self.G=G
-		self.fragility, self.reversibility = 0,0
+	def __init__(self):
+		self.fragility, self.irreversibility = [],[]
 		
-		# TODO: how to clean node level features these features? add back later
-		# mut_pts, cnt_pts, ldoi_mut, ldoi_out_mut, ldoi_cnt, ldoi_out_cnt = [[] for _ in range(6)]
-		# cnt_scores = {C:[] for C in nodes}
+		if 0: # old stuff, prob can del
+			# TODO: how to clean node level features these features? add back later
+			# mut_pts, cnt_pts, ldoi_mut, ldoi_out_mut, ldoi_cnt, ldoi_out_cnt = [[] for _ in range(6)]
+			# cnt_scores = {C:[] for C in nodes}
 
-		corr_nodes, corr_avg = features.check_corr(params, G, phenosWT)
-		self.corr = corr_avg
+			corr_nodes, corr_avg = features.check_corr(params, G, phenosWT)
+			self.corr = corr_avg
 
-		ldoi_stats = ldoi.ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[])
-		self.ldoi_total = ldoi_stats['total']
-		self.ldoi_total_outs = ldoi_stats['total_onlyOuts']
-		# ldoi returns other stuff for indiv nodes, but ignoring for now
+			ldoi_stats = ldoi.ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[])
+			self.ldoi_total = ldoi_stats['total']
+			self.ldoi_total_outs = ldoi_stats['total_onlyOuts']
+			# ldoi returns other stuff for indiv nodes, but ignoring for now
 
 	def __str__(self):
-		s = '#mutators=' + str(metrics.num_mutators)
-		s+= '\n#solutions=' + str(metrics.num_solutions) 
-		s+= '\nmutation mag = ' + str(metrics.fragility)
-		s+= '\ncontrol mag = ' + str(metrics.reversibility)
-		s+= '\n'
+		#s = '#mutators=' + str(metrics.num_mutators)
+		#s+= '\n#solutions=' + str(metrics.num_solutions) 
+		s=''
+		for attr, value in self.__dict__.items():
+			if attr not in ['fragility', 'irreversibility']:
+				s+= str(attr) + ' = ' + str(value) + '\n'
 		return s
 
-	def finalize(self,perturbs):
+	def finalize(self):
 		# adds last few metrics and normalizes
-		self.num_mutators = len(perturbs.mutators)
-		m=self.num_mutators
-		self.num_controllers = len(perturbs.controllers)
-		self.percent_mutators = self.num_mutators/self.G.n_neg 
-		self.percent_solutions = self.num_solutions/max(m*G.n_neg,1) 
-		self.percent_controllers = self.num_controllers/self.G.n_neg  
+		# note that norm normzn to remain in 1 is: /n**(1/ord)
 
-		self.fragility /= self.G.n_neg
-		self.reversibility /= max(m,1) 
+		n=len(self.fragility)
+		self.fragility_1 = np.linalg.norm(self.fragility,ord=1)/n 
+		self.fragility_2 = np.linalg.norm(self.fragility,ord=2)/(n**(1/2))
+		self.fragility_4 = np.linalg.norm(self.fragility,ord=4)/(n**(1/4))
+		self.fragility_max = np.linalg.norm(self.fragility,ord=np.inf)
+		n=len(self.irreversibility)
+		self.irreversibility_1 = np.linalg.norm(self.irreversibility,ord=1)/n
+		self.irreversibility_2 = np.linalg.norm(self.irreversibility,ord=2)/(n**(1/2))
+		self.irreversibility_4 = np.linalg.norm(self.irreversibility,ord=4)/(n**(1/4))
+		self.irreversibility_max = np.linalg.norm(self.irreversibility,ord=np.inf)
+
+		if 0: #old, prob can del
+			self.num_mutators = len(perturbs.mutators)
+			m=self.num_mutators
+			self.num_controllers = len(perturbs.controllers)
+			self.percent_mutators = self.num_mutators/self.G.n_neg 
+			self.percent_solutions = self.num_solutions/max(m*G.n_neg,1) 
+			self.percent_controllers = self.num_controllers/self.G.n_neg  
+
+			self.fragility /= self.G.n_neg
+			self.reversibility /= max(m,1) 
 
 	
-def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max_control_size = 1, measure=False,compare_ldoi=False):
+def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max_control_size = 1,compare_ldoi=False):
 
 	if 'mutations' in params.keys() and len(params['mutations'])!=0:
 		print('\nWARNING: control search starts with existing mutations! Double check the settings file.\n')
@@ -158,9 +174,8 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 		assert(0)
 
 	orig_mutated = deepcopy(params['mutations'])
-	if measure:
-		assert(0) # need to update this before use
-		metrics = NetMetrics(params, phenosWT, G)
+	if CONTROL_PARAMS['measure']:
+		metrics = NetMetrics()#params, phenosWT, G)
 	else:
 		metrics = None
 
@@ -180,7 +195,7 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	for mutator in perturbs.mutators:
 		params_orig = deepcopy(params)
 		if CONTROL_PARAMS['verbose']:
-			print('Trying to fix:',mutator['mutants'],'from dist',round(mutator['dist'],3))
+			print('Controllers for:',mutator['mutants'],'from mutated distance',round(mutator['dist'],3))
 		for mutant in mutator['mutants']:
 			params['mutations'][mutant[0]] = mutant[1]
 		attempt_control(params,deepcopy(G), perturbs, metrics, mutator, [], max_control_size,ldoi_WT,sim_WT,ldoi_eval)
@@ -193,10 +208,9 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	perturbs.calc_irrev_mutators()
 	perturbs.calc_self_reversible()
 
-	if measure:
-		metrics.finalize(perturbs)
-		print(metrics)
-		return metrics, perturbs
+	if CONTROL_PARAMS['measure']:
+		metrics.finalize()
+		print('~~~~~~~METRICS~~~~~~~\n',metrics)
 
 	print(perturbs)
 	return perturbs
@@ -205,15 +219,24 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 def mutate_and_sim(params_orig, G_orig,A0=None, Aweights=None):
 	G, params = deepcopy(G_orig), deepcopy(params_orig)
 	if not CONTROL_PARAMS['from_A0']:
-		A0=None
+		A0,Aweights=None,None
 	if A0 is not None:
-		A0=deepcopy(A0)
+		A0, Aweights=deepcopy(A0),deepcopy(Aweights)
+		assert(params['num_samples'] == params['parallelism']) #otherwise the quickfix below doesn't work
 		params['num_samples'] = params['parallelism'] = len(A0) 
 		# TODO: don't do this, above
 		# 	mix up is due to basin.py mutating and then building A0. here opposite
-		for mutant in params['mutations']:
-			indx = G.nodeNums[mutant]
-			A0[:,indx] = params['mutations'][mutant]
+
+		new_Aweights = {}
+		for key in Aweights:
+			list_key = list(key)
+			for mutant in params['mutations']:
+				indx = G.nodeNums[mutant]
+				A0[:,indx] = params['mutations'][mutant]
+				list_key[indx] = str(params['mutations'][mutant])
+			new_key = "".join(list_key)
+			new_Aweights[new_key] = Aweights[key]
+		Aweights = new_Aweights	
 	G.prepare_for_sim(params)
 	steadyStates = basin.measure(params, G, A0=A0, Aweights=Aweights)
 	return steadyStates
@@ -259,7 +282,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 
 				mut_dist = diff(perturbs.phenosWT,phenosM,perturbs.num_inputs,norm=perturbs.norm)
 				if metrics is not None:
-					metrics.fragility += mut_dist # TODO: this should only be for highest depth. ANd btw rename depth if it counts down
+					metrics.fragility += [mut_dist] 
 
 				if mut_dist > perturbs.mut_thresh:
 					curr_mutators += [(M,b)]
@@ -267,7 +290,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 					mut_Aws = {A.id:A.size for A in SS_M.attractors.values()}
 					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist,'A0':mut_A0,'Aweights':mut_Aws,'ldoi_diff':ldoi_predicted_diff}]
 					if CONTROL_PARAMS['verbose']:
-						print("Added mutator:",curr_mutators,'at dist',round(mut_dist,3))
+						print("Mutator:",curr_mutators,'distance =',round(mut_dist,3))
 					#print([(k,phenosM[k].size) for k in phenosM.keys()])		
 
 					if compare_ldoi:
@@ -303,12 +326,11 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 	if depth == 0:
 		return 
 	
-	reversibility = 0 # TODO: fix for recursion (not sure how to weight pr of larger sets)
-
 	# WARNING: ldoi stats won't work with larger depth
 	#ldoi_stats = ldoi.ldoi_sizes_over_all_inputs(params,F,V,fixed_nodes=[mutator])
 	
-	mut_dist = mutator['dist'] # TODO what if mult mutators?
+	mut_dist = mutator['dist'] 
+	min_cnt_dist = G.n  
 	go_further = []
 
 	if ldoi_eval is not None:
@@ -340,7 +362,7 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 
 				#change = 1-diff(phenosWT,phenosC)/mut_dist
 				cnt_dist = diff(perturbs.phenosWT,phenosC,perturbs.num_inputs,norm=perturbs.norm)
-				reversibility += max(0,mut_dist-cnt_dist)
+				min_cnt_dist = min(min_cnt_dist, cnt_dist)
 
 				if ldoi_eval is not None:
 					assert(0) # if intend to use ldoi, can remove this
@@ -349,7 +371,7 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 				if cnt_dist < mut_dist - perturbs.cnt_thresh: 
 					phenosW = perturbs.phenosWT
 					if CONTROL_PARAMS['verbose']:
-						print("\tControl with",control_set+[(C,b)],'reduces to dist',round(cnt_dist,3))
+						print("\tControl with",control_set+[(C,b)],'results in distance =',round(cnt_dist,3))
 					perturbs.add_solution(mutator,control_set+[(C,b)],cnt_dist)
 					if (C,b) not in perturbs.controllers:
 						perturbs.controllers +=[(C,b)]
@@ -369,10 +391,8 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 					go_further += [{'control_set':deepcopy(control_set+[(C,b)]),'params':deepcopy(params)}]
 
 				params['mutations'] = deepcopy(orig_mutations) # reset (in case orig mutator was tried as a control node)
-
 	if metrics is not None:
-		metrics.reversibility +=  reversibility/(2*len(perturbs.filtered_nodes)-1) # -1 since will not use the orig mutation for control (but will try flipping it)
-
+		metrics.irreversibility += [min_cnt_dist]
 	if depth>1:
 		for ele in go_further:
 			if CONTROL_PARAMS['verbose']:
@@ -499,6 +519,7 @@ def diff(P1, P2, num_inputs, norm=1):
 			# i.e only if skipped before
 			P2_basins += [P2[io].size]
 			P1_basins += [0]
+
 	
 	P1_basins, P2_basins = np.array(P1_basins), np.array(P2_basins)
 

@@ -56,7 +56,6 @@ def step(params, x, G):
 
 	if util.istrue(params,['PBN','active']):
 		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(node_dtype,copy=False)
-
 		#if True: #params['PBN']['init'] != 'half':
 		return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
 		#else:
@@ -233,7 +232,7 @@ def categorize_attractor(params,x0, G):
 
 		# average over x0
 		avg_ensemble = cp.sum(avg_ensemble,axis=0) / params['steps_per_lap']  #*expected_num_updates)
-		var_ensemble = cp.sum(var_ensemble,axis=0) / params['steps_per_lap']  #*expected_num_updates)
+		var_ensemble = cp.mean(var_ensemble,axis=0) / params['steps_per_lap']  #*expected_num_updates)
 
 		#var_t = cp.mean(var_t - cp.power(avg_ensemble,2),axis=0) # note that avg_ensemble is really just average in general
 		
@@ -242,7 +241,7 @@ def categorize_attractor(params,x0, G):
 		var_time = avg_time - cp.power(avg_time,2) # this gives variance for all x0
 		var_time = cp.mean(var_time, axis=0) # now avg variance for each node
 		assert(params['steps_per_lap']>1) # else shouldn't be measuring temporal variance
-		var_time *= params['steps_per_lap'] / (params['steps_per_lap']-1) # to make it unbiased sample stat
+		#var_time *= params['steps_per_lap'] / (params['steps_per_lap']-1) # to make it unbiased sample stat
 
 		avg_x0_total=0
 		var_x0 = cp.zeros(G.n)

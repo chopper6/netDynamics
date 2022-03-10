@@ -6,22 +6,22 @@ debug : true # adds various checks, may cause slow down
 verbose : true # prints out more info 
 print_lap : 10 # how many laps before another print statement. only if verbose 
 
-parallelism : 10^4 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
-num_samples : 10^4 # number of initial states tested. false to turn off (and use only max_laps instead)
-steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+num_samples : 10^2 # number of initial states tested. false to turn off (and use only max_laps instead)
+steps_per_lap : 10^4 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
 update_rule : 'async' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
-loopy_reps: 8
+loopy_reps: 4
 steady_basin: 0
 async_trim: 0
 
 
 PBN : # probabilistic boolean network
   active : 0
-  flip_pr : 0.1  
+  flip_pr : 0.01  
   init : 'uniform' # half or uniform # REMOVE JP
   float : false # represent node states by floats (just broken)
 skips_precise_oscils : True
@@ -43,5 +43,5 @@ use_phenos: 0
 
 # output
 output_dir : 'output/loopy/'
-output_img : 'final_async.png'
+output_img : 'async_lowFlip_long.png'
 savefig : 1 # as opposed to showing the image
