@@ -344,6 +344,10 @@ class Net:
     def input_indices(self, params):
         return [self.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
 
+    def get_input_sets(self, params):
+        # assumes that 2^#inputs can fit in memory
+        input_indices = self.input_indices(params)
+        return list(itertools.product([0,1],repeat=len(params['inputs'])))
 
 ##################################################################################################
 

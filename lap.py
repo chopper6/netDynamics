@@ -10,7 +10,7 @@ import numpy as np
 def step(params, x, G):
 
 	node_dtype = util.get_node_dtype(params)
-	nodes_to_clauses = G.Fmapd['nodes_to_clauses']
+	nodes_to_clauses = G.Fmapd['nodes_to_clauses']        
 	clauses_to_threads = G.Fmapd['clauses_to_threads'] 
 	threads_to_nodes = G.Fmapd['threads_to_nodes']
 	X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
@@ -75,10 +75,19 @@ def transient(params,x0, G, fixed_points_only=False):
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	if params['precise_oscils']:
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
+	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys():
+		input_indx = cp.array(G.input_indices(params))
+		input_array = x[:,input_indx].copy()
+		# since an input flip should not be permanent, but input_t+1 = input_t
 
 	for i in range(params['steps_per_lap']):
-
+		
 		x_next = step(params, x, G)
+		
+		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0: 
+			# reset inputs in case of flip, every other such that input flips still can effect net
+			# slight bias: inputs mutate 1/2 as freq, effectively
+			x[:,input_indx] = input_array
 		
 		if params['update_rule']=='sync':
 			if params['precise_oscils']:
@@ -152,6 +161,11 @@ def categorize_attractor(params,x0, G):
 		period = cp.ones(params['parallelism'],dtype=int)
 		not_finished = cp.ones(params['parallelism'], dtype=bool)
 
+	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys():
+		input_indx = cp.array(G.input_indices(params))
+		input_array = x[:,input_indx].copy()
+		# since an input flip should not be permanent, but input_t+1 = input_t
+
 	index_dtype, thread_dtype = get_dtypes(params, G.n)
 	simple_ind = cp.ones(params['parallelism'],dtype=thread_dtype) 
 	larger = cp.zeros((params['parallelism']),dtype=cp.uint8)
@@ -162,7 +176,13 @@ def categorize_attractor(params,x0, G):
 
 	for i in range(params['steps_per_lap']):
 		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
+		
 		x_next = step(params, x, G)
+		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0: 
+			# reset inputs in case of flip, every other such that input flips still can effect net
+			# slight bias: inputs mutate 1/2 as freq, effectively
+			x[:,input_indx] = input_array
+
 		if params['update_rule']=='sync':
 			x = x_next
 			if params['precise_oscils']:

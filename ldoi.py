@@ -46,17 +46,24 @@ def convert_solutions(G,ldoi_solns):
 		#	print('\t',G.nodeNames[i],'negates itself')
 	return soln_dict
 
-def ldoi_bfs(G,pinning=True,init=[]):
-	# A should be adjacency matrix of Gexp
-	# and the corresponding Vexp to A should be ordered such that:
-	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
 
-	# pinning means that sources cannot drive their complement (they are fixed to be ON)
-	# without pinning the algorithm will run faster, and it is possible that ~A in LDOI(A)
+def ldoi_bfs(G, A0=None):
+	# X is the main array that tracks visited for traditional LDOI
+	# corresponding Vexp to G.A_exp should be ordered such that:
+	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
 	
-	# TODO: clean this
-	if isinstance(G,net.ParityNet):
-		n=G.n_neg 
+	# optionally pass avg states of nodes in an attractor as A0
+
+	# TODO: 
+	# double check that memzn ok for A0LDOI
+	# add assert that node and its complement are both or neither = 2
+	#	and if one is 0, other is 1
+	# break into 2 fns (regular ldoi and contextual), that share init() subfns (and step())
+	#	ldoi.traditional, ldoi.contextual
+	# some explicit debugging...i think the internal step()'s rm any node changes that violate diag, but should check
+	
+	if isinstance(G,net.ParityNet): # TODO: clean this
+		n=G.n_neg          # this is confusing af
 		n_compl = G.n 
 	elif isinstance(G,net.DeepNet):
 		n=G.n 
@@ -65,23 +72,18 @@ def ldoi_bfs(G,pinning=True,init=[]):
 		assert(0) # LDOI should be on a ParityNet or a DeepNet
 
 	N = G.n_exp
-	A = G.A_exp
-	A = cp.array(A, dtype=bool).copy()
-	
-	# Debugging:
-	#Alist = A.astype(int).tolist()
-	#print("\nLDOI.ldoi_bfs: Aexp=")
-	#for row in Alist:
-	#	print(row)
+	A = cp.array(G.A_exp, dtype=bool).copy()
 
-	X = cp.zeros((N,N),dtype=bool) # the current sent of nodes being considered
-	visited = cp.zeros((N,N),dtype=bool) # if visited[i,j]=1, then j is in the LDOI of i
+	if A0 is not None:
+		assert(len(A0)==n_compl) 
+		A0=build_A0(G,A0) 
+		X = cp.array([A0 for _ in range(N)],dtype=cp.int8)
+		changed = cp.zeros((N,N),dtype=bool) # vals in [0,1,2]
+	else:
+		X = cp.zeros((N,N),dtype=bool) # the current sent of nodes being considered
+	
 	negated = cp.zeros(N,dtype=bool) # if negated[i] then the complement of i is in the LDOI of i
 	D = cp.diag(cp.ones(N,dtype=bool))
-
-	if len(init) > 0:
-		init = cp.array(init)
-		D[:,init] = 1 
 	D[cp.arange(n,N)]=0 #don't care about source nodes for complement nodes
 	D_compl = D.copy()
 	D_compl[:n] = cp.roll(D_compl[:n],n_compl,axis=0)
@@ -97,45 +99,146 @@ def ldoi_bfs(G,pinning=True,init=[]):
 	counts = cp.tile(num_to_activate,N).reshape(N,N) # num input nodes needed to activate
 	zero = cp.zeros((N,N))
 
-	X[D] = 1
-	X = counts-cp.matmul(X.astype(index_dtype),A.astype(index_dtype))<=0 
-	#i.e. the descendants of X, including composite nodes iff X covers all their inputs
-	
-	if pinning:
+	#print('ldoiA0=',X.astype(int))
+	X[D] = 1 # cp.fill_diagonal would also work
+
+	#print('ldoiA1=',X.astype(int))
+	# TODO: this line sets X bool, need to adapt it for A0
+	if A0 is None:
+		#i.e. the descendants of X, including composite nodes iff X covers all their inputs
+		X = counts-cp.matmul(X.astype(index_dtype),A.astype(index_dtype))<=0 
 		negated = negated | cp.any(X & D_compl,axis=1) 
-		X = cp.logical_not(D_compl) & X  
+		X = (~D_compl) & X  
+	else:
+		X = init_step_A0(X, changed, index_dtype, counts, A, D_compl)
 
-	loop=0
-	while cp.any(X): 
-		
-		visited = visited | X #note that D is included, i.e. source nodes
+	loop,cont=0,True
+	while cont: 
 
-		if pinning:
-			visited_rolled = visited.copy()
-			visited_rolled[:n] = cp.roll(visited_rolled[:n],n_compl,axis=0)
-			memoX = cp.matmul((visited|D) & cp.logical_not(visited_rolled.T), visited) 
-			# if A has visited B, then add B's visited to A if ~A not in B's visited
-			# otherwise must cut all of B's contribution!
-			X = (counts-cp.matmul(visited|D.astype(index_dtype),A.astype(index_dtype))<=0) | memoX
-			negated = negated | cp.any(X & D_compl,axis=1)
-			X = cp.logical_not(visited) & cp.logical_not(D_compl) & X 
-			
+		if A0 is None:
+			X, negated, cont = step(X, A, D, D_compl, counts, negated, n, n_compl, index_dtype)
 		else:
-			memoX = cp.matmul(visited|D, visited)
-			X = (counts-cp.matmul(visited|D.astype(index_dtype),A.astype(index_dtype))<=0) | memoX
-			X = cp.logical_not(visited) & X
+			X, changed, cont = step_A0(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype)
+		loop = loop_debug(N, loop)
+			
+	return X[:n,:n], negated[:n]
 
-		# debugging:
-		loop+=1
-		if loop>N:
-			print("WARNING: N steps exceeded")
-		if loop > N**4:
-			sys.exit("ERROR: infinite loop in ldoi_bfs!")
 
-	if not pinning:
-		negated = cp.any(visited & D_compl,axis=1) #TODO: check it
+def step(X, A, D, D_compl, counts, negated, n, n_compl, index_dtype): 
+	# assumes all matrices are boolean (except for counts)!
+	for matrix in [X, A, D, D_compl ,negated]: # can rm after a lil
+		assert(matrix.dtype==bool)
+		
+	X_rolled = X.copy()
+	X_rolled[:n] = cp.roll(X_rolled[:n],n_compl,axis=0)
+	memoX = cp.matmul((X|D) & cp.logical_not(X_rolled.T), X) 
+	# if A has visited B, then add B's visited to A if ~A not in B's visited
+	# otherwise must cut all of B's contribution!
+	X_next = (counts-cp.matmul(X|D.astype(index_dtype),A.astype(index_dtype))<=0) | memoX
+	negated = negated | cp.any(X_next & D_compl,axis=1)
+	X_next = cp.logical_not(D_compl) & X_next
+	cont = ~ cp.all(X_next == X) 
 
-	return visited[:n,:n], negated[:n] 
+	return X_next, negated, cont
+
+def loop_debug(N, loop):
+	if loop>N:
+		print("WARNING: N steps exceeded in LDOI")
+	if loop > N**4:
+		sys.exit("ERROR: infinite loop in ldoi_bfs!")
+	return loop+1
+
+
+def init_step_A0(X, changed, index_dtype, counts, A, D_compl):
+	# spc for those compl nodes
+	# TODO: is this...nec?
+	xON = X.copy()
+	xON[xON==2]=0
+	xON = counts-cp.matmul(xON.astype(bool).astype(index_dtype),A.astype(index_dtype))<=0 
+	xON = (~D_compl) & xON 
+	#print('xON=',xON.astype(int))
+	# return step()[0] since only care about the X, not "negated" or "cont"
+
+	xOFF = X.copy()
+	xOFF[xOFF==2]=1
+	xOFF = counts-cp.matmul(xOFF.astype(bool).astype(index_dtype),A.astype(index_dtype))<=0 
+	xOFF = (~D_compl) & xOFF	
+	#print('xOFF=',xOFF.astype(int))
+
+	x_next = X.copy() 
+	x_next[xON==1]=1
+	x_next[xOFF==0]=0  	
+	#x_next[((x_next!=X) & changed).astype(bool)]=2 
+	#changed[x_next!=X]=True
+	print("after init_step_A0():\n",x_next.astype(int))
+	return x_next.astype(cp.int8)
+
+def step_A0(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype):
+	# lingering: # can change 2->1 if 1st change...right?
+
+	#print("ldoi.step_A0\nX[1]=",X[1])
+	xON = X.copy()
+	xON[xON==2]=0
+	xON = step(xON.astype(bool), A, D, D_compl, counts, negated, n, n_compl, index_dtype)[0] 
+	# return step()[0] since only care about the X, not "negated" or "cont"
+
+	xOFF = X.copy()
+	xOFF[xOFF==2]=1
+	xOFF = step(xOFF.astype(bool), A, D, D_compl, counts, negated, n, n_compl, index_dtype)[0]
+
+	x_next = X.copy() 
+	x_next[xON==1]=1
+	x_next[xOFF==0]=0  	
+	x_next[(x_next!=X) & changed]=2 
+	changed[x_next!=X]=True
+	print("\nxPrev\n",X,"\nxON\n",xON.astype(int),'\nxOFF\n',xOFF.astype(int),'\nxNext\n',x_next)
+
+	cont = 1-cp.all(x_next==X)
+	
+	if 1: #debug, can rm later
+		# add assert: pins are what they should be
+		x = x_next[:n,:n]
+		indx2 = cp.argwhere(x==2)
+		indx2_compl = indx2.copy() 
+		indx2_compl[:,1]= (indx2_compl[:,1]+ n_compl)%n 
+		indx1 = cp.argwhere(x==1)
+		indx1_compl = indx1.copy() 
+		indx1_compl[:,1]= (indx1_compl[:,1]+ n_compl)%n 
+		indx0 = cp.argwhere(x==0)
+		indx0_compl = indx0.copy() 
+		indx0_compl[:,1]= (indx0_compl[:,1]+ n_compl)%n 
+		#indx2[0,1]=3
+		#print('ldoiii:X=\n',x)
+		indx2,indx2_compl,indx1,indx1_compl,indx0,indx0_compl = indx2.tolist(),indx2_compl.tolist(),indx1.tolist(),indx1_compl.tolist(),indx0.tolist(),indx0_compl.tolist()
+		indx2.sort()
+		indx2_compl.sort()
+		indx1.sort()
+		indx1_compl.sort()
+		indx0.sort()
+		indx0_compl.sort()
+		assert(indx2==indx2_compl) # i.e. all rows in indx2 are in indx2_compl
+		assert(indx0==indx1_compl)
+		assert(indx1==indx0_compl)
+
+	return x_next, changed, cont
+
+
+
+def build_A0(G,A0_avg):
+	assert(isinstance(G,net.ParityNet))
+	A0 = cp.ones(A0_avg.shape,dtype=cp.int8)*2 # only need 0,1,2, but int8 is smallest avail
+	A0[cp.isclose(A0_avg,0)] = 0 
+	A0[cp.isclose(A0_avg,1)] = 1
+
+	A0not = cp.ones(A0_avg.shape,dtype=cp.int8)*2 
+	A0not[A0==1]=0 
+	A0not[A0==0]=1
+
+	A0exp = cp.zeros(G.n_exp-2*G.n)
+	assert(G.n_exp-2*G.n>=0)
+
+	A0 = cp.hstack([A0,A0not,A0exp])
+	return A0 
 
 
 def ldoi_sizes_over_all_inputs(params,G,fixed_nodes=[]):
@@ -255,4 +358,6 @@ if __name__ == "__main__":
 		params = param.load(sys.argv[1])
 		G = net.ParityNet(params['parity_model_file'],debug=params['debug'])		
 	
-	test(G,params,  init=init,goi=['not p21'])
+	visited, negated = ldoi_bfs(G)
+	print(visited.astype(int))
+	#test(G,params,  init=init,goi=['not p21'])

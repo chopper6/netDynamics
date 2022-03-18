@@ -101,63 +101,6 @@ def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
 	feats[noise_str][loop_str]['variance'] += [avg_var_total]	
 
 
-
-def calc_stats_old(params, reps, noise_str, loopType, gate, feats):
-	# for reference, can del soon
-	avg_avg_var = 0
-	avg_avg_avg = 0
-
-	G = Net(model_file=params['model_file'],debug=params['debug'])
-	G.prepare_for_sim(params)
-
-	var_str = 'totalVar' #make sure to get the non-averaged form
-	avg_str = 'totalAvg'
-
-	for r in range(reps):
-		#SS = basin.calc_basin_size(params,G,x0=None)
-		SS = basin.calc_basin_size(params,G)
-		attractors, phenos = SS.attractors, SS.phenotypes
-		middle_node = G.nodeNums['x1']
-		avg_variance=0 # sum_nodes sum_As var_node_in_A  / #nodes #As
-		avg_avg = 0
-
-		for k in attractors.keys():
-			if params['update_rule'] == 'sync' and not params['PBN']['active']:
-				avg_variance += attractors[k].var[middle_node]
-				avg_avg += attractors[k].avg[middle_node]
-			else:
-				avg_variance += attractors[k].totalVar[middle_node]
-				avg_avg += attractors[k].totalAvg[middle_node]
-
-		if not params['update_rule'] == 'sync' or params['PBN']['active']: 
-			normz = params['num_samples'] 
-		else:
-			normz = len(attractors) #since sync w/o noise only takes 1 'sample', since is deterministic 
-
-		avg_avg_var += avg_variance / normz
-		avg_avg_avg  += avg_avg / normz
-
-		if params['debug'] and params['update_rule'] == 'sync':
-			assert(0 <= avg_avg_avg <= 1)
-
-		if False: #this is for var of all nodes
-			for k in attractors.keys():
-				avg_variance += sum(attractors[k][var_str])
-				avg_avg += sum(attractors[k][avg_str])
-			num_nodes = len(attractors[k][var_str])
-			avg_avg_var += avg_variance / (params['num_samples'] * num_nodes )
-			avg_avg_avg  += avg_avg / (params['num_samples'] * num_nodes )
-
-	avg_avg_var/=reps
-	avg_avg_avg/=reps
-
-	if gate is None:
-		feats[noise_str][loopType]['avg'] += [avg_avg_avg]
-		feats[noise_str][loopType]['variance'] += [avg_avg_var]	
-	else:
-		feats[noise_str][loopType+gate]['avg'] += [avg_avg_avg]
-		feats[noise_str][loopType+gate]['variance'] += [avg_avg_var]
-
 def generate_coupled_FBL(net_file, logic, E21, E31, E12, E13): 
 	#E's are for edges, so E21=0 -> x2 -| x1
 	# AND is if middle node is an AND of the other two nodes (else uses OR)
