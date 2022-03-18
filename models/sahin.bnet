@@ -15,6 +15,6 @@ CycE1,	cMYC
 CDK2,	(CycE1 & !p21 & !p27)
 MEK1,	(IGF1R) | (ErbB2_3) | (ErbB1_3) | (ErbB1_2) | (ErbB1)
 pRB,	(CDK4 & CDK6)
-ErbB3,	1
+ErbB3,	EGF
 ErbB2,	EGF
 ErbB1,	EGF

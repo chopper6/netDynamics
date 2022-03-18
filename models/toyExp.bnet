@@ -1,18 +1,8 @@
-i1,	i1
-i2,	i2
-c,	i1
-r,	i2
-b,	i1 & !i2
-d,	!i1 & i2
-a,	b | d
-f1,	f1
-y,	a | c & r
-!i1,	!i1
-!i2,	!i2
-!c,	!i1
-!r,	!i2
-!b,	!i1 | i2
-!d,	i1 | !i2
-!a,	!b & !d
-!f1,	!f1
-!y,	!a & !c | !a & !r
+i,	i
+x1,	!x1
+x2,	i | x2
+o,	x1 & x2
+!i,	!i
+!x1,	x1
+!x2,	!i & !x2
+!o,	!x1 | !x2

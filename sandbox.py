@@ -1,70 +1,75 @@
 # for making a mess
 # curr mainly with PBNs
 
+import basin
+import sys
+from copy import deepcopy
+
+
+
+
+############################   PBN   #################################################
 
 def test_PBN(params, G):
-	Ps = {}
-	mult=1 # if change this, Aweight normalization also needs to change?
-	orig_num_samples = params['num_samples']
-	SS = calc_basin_size(params,G)
-	A0, Aweights =  get_A0_and_weights(SS)
-	print("Stoch #A =",np.array(A0).shape)
-	A0 = np.repeat(A0,mult)
-	params['PBN']['active'] = params['PBN']['flip_pr'] = 0
-	params['parallelism'] = params['num_samples'] = len(A0)
-	SS = calc_basin_size(params,G,A0=A0)
-	A0, Aweights =  get_A0_and_weights(SS)
-	A0 = np.array(A0)
-	print("Stoch after det transient =",np.array(A0).shape)
+	# TODO: add an optional 'mult' to multiply the number of A0s, async might also use it
 
-	params['parallelism'] = params['num_samples'] = orig_num_samples
-	SS_det = calc_basin_size(params,G)
-	A0, Aweights =  get_A0_and_weights(SS_det)
-	print("Det #A =",np.array(A0).shape)
-	#A0 = np.vstack([A0 for _ in range(mult)])
-	#print(np.array(A0).shape)
-	params['parallelism'] = params['num_samples'] = len(A0)
-	SS_det = calc_basin_size(params,G,A0=A0)
-	A0, Aweights =  get_A0_and_weights(SS_det)
-	A0 = np.array(A0)
-	print("Det after det transient =",np.array(A0).shape)
+	orig_num_samples = params['num_samples']
+	SS = basin.calc_size(params,G)
+	print("Stoch #A =",len(SS.attractors))
+	params['PBN']['active'] = params['PBN']['flip_pr'] = 0
+	#params['parallelism'] = params['num_samples'] = len(SS.A0)
+	SS = basin.calc_size(params,G,SS0=SS)
+	print("Stoch after det transient =",len(SS.attractors))
+
+	params['parallelism'] = params['num_samples'] = orig_num_samples # i don't really like that params changes internally
+	SS_det = basin.calc_size(params,G)
+	print("Det #A =",len(SS_det.attractors))
+	SS_det = basin.calc_size(params,G,SS0=SS_det)
+	print("Det after det transient =",len(SS_det.attractors))
 
 	return SS
 
 
 def stoch_then_det(params_orig, G):
+	# TODO: add an optional 'mult' to multiply the number of A0s, async might also use it
+
 	#print("\nRUNNING STOCHASTIC, THEN DETERMINISTIC\n")
-
-	mult=1
-	# don't care about Aweights? also jp Aweights reqds some debugging...
-
-	params = deepcopy(params_orig)
-	SS = calc_basin_size(params,G)
-	A0, Aweights =  get_A0_and_weights(SS)
-	A0 = np.repeat(A0,mult)
+	params=deepcopy(params_orig)
+	SS = basin.calc_size(params,G)
 	params['PBN']['active'] = params['PBN']['flip_pr'] = 0
-	params['parallelism'] = params['num_samples'] = len(A0)
-	SS = calc_basin_size(params,G,A0=A0,Aweights=Aweights)
+	SS = basin.calc_size(params,G,SS0=SS)
 	return SS
 
+def double_det(params_orig,G):
+	# just to be comparable to stoch_then_det
+	# somehow var is higher than a singular run..jp bug
+	params=deepcopy(params_orig)
+	SS = basin.calc_size(params,G)
+	#print('\n1:',[A.id for A in SS.attractors.values()])
+	#print('\t',[A.size for A in SS.attractors.values()])
+	SS = basin.calc_size(params,G,SS0=SS)
+	#print('2:',[A.id for A in SS.attractors.values()])
+	#print('\t',[A.size for A in SS.attractors.values()])
+	return SS
 
 def repeat_test(param_file):
 	print("\nRUNNING REPEAT TEST\n")
-	params, G = init(param_file)
-	repeats=20
+	params, G = basin.init(param_file) # why is init in basin anyway?
+	repeats=10**1
 
 	if params['PBN']['active']:
 		base=stoch_then_det(params, G).attractors
 	else:
-		base = measure(params,G).attractors
+		base = double_det(params,G).attractors
 	As=[base]
 	max_dist=0
 	for k in range(repeats):
-		print('starting repeat #',k+1,'/',repeats)
+		if (k+1)%int(repeats/10)==0:
+			print('starting repeat #',k+1,'/',repeats)
 		if params['PBN']['active']:
 			repeat=stoch_then_det(params, G).attractors
 		else:
-			repeat = measure(params,G).attractors
+			repeat = double_det(params,G).attractors
 		for A in As:
 			d = dist(A,repeat)
 			#print('\nDISTANCE =',d,'\n')
@@ -92,11 +97,7 @@ def dist(A1,A2):
 
 #######################################################################################################
 
-def init(param_file):
-	params = param.load(param_file)
-	G = Net(model_file=params['model_file'],debug=params['debug'])
-	G.prepare_for_sim(params)
-	return params, G
+# haven't used these in awhile
 
 def temp_print_periodic(SS, G,params):
 	for k in SS.attractors:
@@ -121,3 +122,17 @@ def debug_print(params,G,steadyStates):
 	for k in steadyStates.phenotypes:
 		P =  steadyStates.phenotypes[k]	
 		print('pheno',k,'=',P)
+
+
+#######################################################################################################
+
+if __name__ == "__main__":
+	if len(sys.argv) not in [2,3]:
+		sys.exit("Usage: python3 sandbox.py PARAMS.yaml [runtype]")
+	
+	if len(sys.argv) == 3:
+		if sys.argv[2] != 'repeat':
+			print("Unknown 2nd param...",sys.argv[2])
+		repeat_test(sys.argv[1])
+	else:
+		print("I dunno what the default should be yet \\:")

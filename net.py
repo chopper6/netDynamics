@@ -1,4 +1,4 @@
-import os, sys, yaml, util, math
+import os, sys, yaml, util, math, itertools
 import util, logic, deep
 from copy import deepcopy
 import espresso

@@ -6,8 +6,8 @@ debug : true # adds various checks, may cause slow down
 verbose : true # prints out more info 
 print_lap : 10 # how many laps before another print statement. only if verbose 
 
-parallelism : 10^3 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
-num_samples : 10^3 # number of initial states tested. false to turn off (and use only max_laps instead)
+parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+num_samples : 10^2 # number of initial states tested. false to turn off (and use only max_laps instead)
 steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
 update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
@@ -19,13 +19,13 @@ async_trim: 0
 
 PBN : # probabilistic boolean network
   active : 0
-  flip_pr : 0.5
-  init : 'half' # half or uniform
+  flip_pr : 0
+  init : 'uniform' # half or uniform
 calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor
 
 # implementation details
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
-fraction_per_lap : .9 # fraction of networks needed to satisfy stop condition to exit a lap
+fraction_per_lap : 1 # fraction of networks needed to satisfy stop condition to exit a lap
 clause_bin_size : 4 # number of clauses each threads merges at once
 
 # input
@@ -33,7 +33,7 @@ model_file: 'models/sahin.bnet'
 setting_file: 'settings/sahin.yaml'
 parity_model_file: 'models/sahinExp.bnet'
 use_inputs_in_pheno: 1
-fig_legend : 0
+fig_legend : 1
 use_phenos: 1
 
 # output

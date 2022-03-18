@@ -1,12 +1,4 @@
-i1,	i1
-i2,	i2
-x,	x
-a,	!i1 | x
-b,	!i2
-c,	!c
-d,	c
-e,	a & d
-f,	a | d
-f1,	f1
-y1,	e & !y2 | b & !y2 | y1 & !y2 
-y2,	f & !y1 | a & !y1 | y2 & !y1  
+i,	i
+x1,	!x1
+x2,	i | x2
+o,	x1 & x2

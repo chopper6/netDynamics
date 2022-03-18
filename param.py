@@ -11,6 +11,8 @@ def load(param_file):
 	if 'setting_file' in params.keys():
 		params= load_model_file(params) # apparently reassigning params within file does not update unless explicitly returned
 
+	assert(params['fraction_per_lap']==1) # poss odd behavior otherwise...spc in async style sims...debug before using
+
 	return params
 
 def check_file(file_path,name):
