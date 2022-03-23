@@ -29,7 +29,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 
 
 class Net:
-    def __init__(self, model_file=None, G=None, debug=False):
+    def __init__(self, model_file=None, G=None, debug=False, PBN=False):
         # complete will also apply any mutations in params and build Fmapd [TODO rename complete]
         
         # use a model_file OR an existing net
@@ -55,6 +55,10 @@ class Net:
         self.num_clauses=0 # total number of clauses
         self.max_literals=0 # max literals per clause
         self.max_clauses=0 # max clauses per node
+
+        if PBN:
+            self.add_node('OFF',debug=debug)
+            self.F['OFF'] = [['OFF']]
 
         if G is not None: 
             self.copy_from_net(G)

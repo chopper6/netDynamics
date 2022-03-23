@@ -106,7 +106,7 @@ def unfair_compare(params):
 	avg_combo_percent = 0
 
 	for A0 in SS.attractors.values():
-		print('\nA0=',A0.avg)
+		#print('\nA0=',A0.avg)
 		num_missed = 0
 		canal_soln = ldoi.ldoi_bfs(Gpar,A0=A0.avg)[0]
 		if not (cp.all(cp.isin(canal_soln[ldoi_soln], cp.array([1,2])))):
@@ -115,7 +115,7 @@ def unfair_compare(params):
 					if ldoi_soln[i,j]==1 and canal_soln[i,j]==0:
 						print("\nerror on",Gpar.nodeNames[j],"when pinning",Gpar.nodeNames[i],'indices=',i,j,'\n')
 						assert(0)
-		num_missed += cp.sum(canal_soln[canal_soln!=1])/2 # since all = 2 this is just counting 
+		num_missed += cp.sum(ldoi_soln[canal_soln!=1])/2 # since all = 2 this is just counting 
 
 		avg_canal_percent += cp.sum(canal_soln[canal_soln!=2])/((2*G.n)**2)
 		avg_combo_percent += (cp.sum(canal_soln[canal_soln!=2]) + num_missed)/((2*G.n)**2)
@@ -125,6 +125,7 @@ def unfair_compare(params):
 
 	print("Survived. Ldoi score=",ldoi_percent,"vs canal=",avg_canal_percent)
 	print("Combined ldoi and canal score =",avg_combo_percent)
+	# note that some nodes are oscillating, so need exhaustive sim to check
 
 if __name__ == "__main__":
 	import random as rd

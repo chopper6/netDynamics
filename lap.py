@@ -17,13 +17,13 @@ def step(params, x, G):
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
 
-	if not util.istrue(params,['PBN','active']) or not util.istrue(params,['PBN','float']) or params['PBN']['init'] != 'half':
+	if not util.istrue(params,['PBN','active']) or not util.istrue(params,['PBN','float']):
 		clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
 			
-		x_next = cp.zeros((G.n),dtype=node_dtype)
-
 		# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
 		partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
+
+		#x_next = cp.zeros((G.n),dtype=node_dtype)
 		#for j in range(len(clauses_to_threads)): 
 		#	# partial truths must be reordered for their corresponding nodes
 		#	#print(partial_truths[:,j].shape,threads_to_nodes[j].shape,cp.matmul(partial_truths[:,j],threads_to_nodes[j]).shape)
@@ -36,31 +36,40 @@ def step(params, x, G):
 		for j in range(len(clauses_to_threads)): 
 			partial_truths = cp.any(clauses[:,clauses_to_threads[j]],axis=2) 
 			x = x + cp.matmul(partial_truths[:,],threads_to_nodes[j])
-		'''
+		'''	
+		if util.istrue(params,['PBN','active']): # already know that float=False
+			flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(node_dtype,copy=False)
+
+			x_next = ((~flip) & x_next) | (flip & (~x_next))		
+
 	else:
-		assert(0) # plz debug, may well be broken
 		# float version
 		# 	basically, on a vector X, AND is product(X), and OR is 1-(product(1-X))
+		#print('\n\n\nlap.step(): X=',X)
+		#print('nodes_to_clauses=',nodes_to_clauses)
 		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
+		#print('clauses =',clauses )
 		x_next = cp.zeros((G.n),dtype=node_dtype)
 		partial_truths = 1-cp.prod(1-clauses[:,clauses_to_threads],axis=3)
-		#print('partial_truths =',partial_truths )
-		#print('before matmul =',cp.swapaxes(partial_truths,0,1),threads_to_nodes)
-		#print('after matmul =',cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes))
+		#print('partial_truths =',partial_truths[:20,:20])
+		#print('before matmul =',cp.swapaxes(partial_truths,0,1)[:20,:20],threads_to_nodes[:20,:20])
+		#print('after matmul =',1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes)[:20,:20])
 		x_next = 1-cp.prod(1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
-		tol = 1e-5
-		assert(cp.all(x_next) < 1.1 and cp.all(x_next) > -0.1)
+		
+		# matrix mult is the problem...
+		#print("x_next before flip=",x_next)#[:20,:20])
+		#assert(0)
+		flip_pr = params['PBN']['flip_pr']
+		x_next = x_next*(1-flip_pr) + (1-x_next)*flip_pr
 
-		x_next[x_next < tol] = 0.0
-		x_next[x_next > 1-tol] = 1.0
+		# make sure the OFF nodes are not flipped
+		x_next[:,0] = 0
+		
+		tol=1e-5
 
-	if util.istrue(params,['PBN','active']):
-		flip = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[1-params['PBN']['flip_pr'], params['PBN']['flip_pr']]).astype(node_dtype,copy=False)
-		#if True: #params['PBN']['init'] != 'half':
-		return cp.logical_not(flip)*x_next | flip*cp.logical_not(x)
-		#else:
-		#	assert(0) # seems...broken
-		#	return 1 - ((1-cp.logical_not(flip)*x_next) * (1-flip*cp.logical_not(x)))
+		#print("x_next over=",x_next[x_next>1+tol])
+		#print("x_next under=",np.where(x_next<0-tol))
+		assert(cp.all(x_next<1+tol) & cp.all(x_next>0-tol))
 
 	return x_next
 
@@ -75,7 +84,8 @@ def transient(params,x0, G, fixed_points_only=False):
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	if params['precise_oscils']:
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
-	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys():
+	
+	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
 		input_indx = cp.array(G.input_indices(params))
 		input_array = x[:,input_indx].copy()
 		# since an input flip should not be permanent, but input_t+1 = input_t
@@ -84,11 +94,11 @@ def transient(params,x0, G, fixed_points_only=False):
 		
 		x_next = step(params, x, G)
 		
-		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0: 
+		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0 and len(params['inputs'])>0: 
 			# reset inputs in case of flip, every other such that input flips still can effect net
 			# slight bias: inputs mutate 1/2 as freq, effectively
 			x[:,input_indx] = input_array
-		
+			
 		if params['update_rule']=='sync':
 			if params['precise_oscils']:
 				if fixed_points_only:
@@ -148,6 +158,7 @@ def categorize_attractor(params,x0, G):
 	ids = cp.array(x0,dtype=bool).copy()
 
 	# should be able to clean and rm these or smthg:
+	total_avg_check = cp.zeros(x0.shape)
 	avg_ensemble, var_ensemble, var_time,avg_time, var_x0,avg_x0 = [cp.zeros((1)) for _ in range(6)]  # kinda messy, but just if won't be used
 	if util.istrue(params,'track_x0'): # i.e. if calculating lap stats
 		x0_ids = np.unique(x0.get(),return_inverse=True,axis=0)[1] # just get index for each row of x0, where if x0_i = x0_j, they have same index
@@ -155,13 +166,14 @@ def categorize_attractor(params,x0, G):
 		num_x0s = int(cp.max(x0_ids))+1
 		avg_ensemble, var_ensemble = cp.zeros((num_x0s,G.n),dtype=float),cp.zeros((num_x0s,G.n),dtype=float)
 		var_time, avg_time = cp.zeros(x0.shape,dtype=float) , cp.zeros(x0.shape,dtype=float) 
-		assert(num_x0s < len(x0)/2) # otherwise really shouldn't be using 'track_x0' param
+		if not (num_x0s < len(x0)/2): # otherwise really shouldn't be using 'track_x0' param
+			print("\nReminder to change track_x0 to general stats (lap.py)!!")
 
 	if params['precise_oscils']:
 		period = cp.ones(params['parallelism'],dtype=int)
 		not_finished = cp.ones(params['parallelism'], dtype=bool)
 
-	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys():
+	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
 		input_indx = cp.array(G.input_indices(params))
 		input_array = x[:,input_indx].copy()
 		# since an input flip should not be permanent, but input_t+1 = input_t
@@ -178,7 +190,7 @@ def categorize_attractor(params,x0, G):
 		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
 		
 		x_next = step(params, x, G)
-		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0: 
+		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0 and len(params['inputs'])>0: 
 			# reset inputs in case of flip, every other such that input flips still can effect net
 			# slight bias: inputs mutate 1/2 as freq, effectively
 			x[:,input_indx] = input_array
@@ -209,6 +221,7 @@ def categorize_attractor(params,x0, G):
 
 		avg_states += which_nodes*x  # TODO: why only update if node changes?
 		if util.istrue(params,'track_x0'):
+			total_avg_check += x
 			#avg_ensemble += cp.mean(x,axis=0)
 			#var_ensemble += cp.var(x, axis=0)
 			for i in range(num_x0s):
@@ -232,19 +245,19 @@ def categorize_attractor(params,x0, G):
 
 	# using num steps +1 since init state is also added to the avg
 	if params['update_rule'] == 'async':
-		expected_num_updates = (params['steps_per_lap'])/(G.n) # apparently this is normalized elsewhere
+		expected_num_updates = (params['steps_per_lap']+1)/(G.n) # apparently this is normalized elsewhere
 	elif params['update_rule'] == 'Gasync':
-		expected_num_updates = (params['steps_per_lap'])/2 # apparently this is normalized elsewhere
+		expected_num_updates = (params['steps_per_lap']+1)/2 # apparently this is normalized elsewhere
 	elif util.istrue(params,['PBN','active']) or params['map_from_A0'] or util.istrue(params,'skips_precise_oscils'):
-		expected_num_updates =params['steps_per_lap']
+		expected_num_updates =params['steps_per_lap']+1 # +1 def needed
 	else: #sync
 		if params['precise_oscils']:
 			expected_num_updates = period[:,cp.newaxis].astype(float)
 			assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
 		else:
-			expected_num_updates = params['steps_per_lap']
+			expected_num_updates = params['steps_per_lap']+1
 
-	if util.istrue(params,'track_x0'):
+	if util.istrue(params,'track_x0'): # TODO: clean this and put in a sep fn
 		# average over time steps
 		#print('before avg over t:',avg_ensemble)
 		avg_x0 = cp.copy(avg_time)
@@ -278,6 +291,10 @@ def categorize_attractor(params,x0, G):
 		avg_x0 = avg_x0_total #cp.mean(avg_x0,axis=0)/params['steps_per_lap']
 
 	avg_states = avg_states/expected_num_updates
+	total_avg_check = total_avg_check/params['steps_per_lap']
+	total_avg_check = cp.sum(total_avg_check,axis=0)/params['num_samples']
+	#print("total avg=\n",total_avg_check,'\nvs avg_x0=\n',avg_x0)
+	assert(cp.allclose(total_avg_check,avg_x0))
 
 	if params['precise_oscils']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)

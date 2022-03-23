@@ -21,11 +21,13 @@ import numpy as np
 def main(param_file):
 
 	params, G = init(param_file)
-	if params['PBN']['active']:
+	if params['PBN']['active'] and False:
 		print("\nCustom PBN run\n")
 		steadyStates = sandbox.test_PBN(params, G)
 	else:
 		steadyStates = measure(params, G)
+		if params['track_x0']:
+			print('basin, total avg=\n',steadyStates.stats['total_avg'])#[1:])
 	plot.pie(params, steadyStates,G)
 	
 
@@ -41,7 +43,8 @@ def measure(params, G, SS0=None):
 
 def init(param_file):
 	params = param.load(param_file)
-	G = Net(model_file=params['model_file'],debug=params['debug'])
+	PBN = util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float'])
+	G = Net(model_file=params['model_file'],debug=params['debug'],PBN=PBN)
 	G.prepare_for_sim(params)
 	return params, G
 
@@ -73,9 +76,7 @@ class Attractor:
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
-			thresh=0
-			if util.istrue(params,['PBN','active']):
-				thresh=.5
+			thresh=.5
 			for i in range(len(inputs)):
 				if self.avg[inputs[i]] > thresh: 
 					self.phenotype +='1'
@@ -195,25 +196,6 @@ class SteadyStates:
 				self.phenotypes[A.phenotype].size += A.size 
 				self.phenotypes[A.phenotype].attractors[k] = A
 
-	def map_A_transition_pr(self):
-		# build transition matrix (a_ij = pr Ai -> Aj)
-		# indexed according to self.attractor_order
-		n = len(self.attractor_order)
-		T = np.zeros((n,n))
-		for i in range(n):
-			Ai = self.attractor_order[i]
-			found=0
-			for j in range(n):
-				Aj = self.attractor_order[j]
-				if Ai in self.attractors[Aj].A0s.keys():
-					T[i,j] = self.attractors[Aj].A0s[Ai] # Aj's A0s[Ai] should be the # times Ai -> Aj
-					found=1
-			if not found: # A0 did not contain all attractors, so try again before mapping transition pr
-				return None, True
-
-		T = np.transpose(T/np.vstack(np.sum(T,axis=1))) # normalize such that sum_j(pr Ai -> Aj) = 1
-		return T, False
-
 
 	def update_stats(self, result):
 		self.stats['total_avg'] += result['avg_total']
@@ -286,6 +268,11 @@ class SteadyStates:
 		self.A0_source = cp.array(ref_A0)
 		self.Aweights = {k:self.Aweights[k]/len(input_sets) for k in self.Aweights.keys()}
 
+	def __str__(self):
+		s="Attractors of SS=\n"
+		s+= str([A.avg for A in self.attractors.values()])
+		return s
+
 ##################################### One Basin #############################################################
 
 def calc_size(params, G, SS0=None):
@@ -330,19 +317,21 @@ def calc_size(params, G, SS0=None):
 		# calculate period, avg on state, ect
 		sync_run_oscils(params, confirmed_oscils, steadyStates, G, transient=False)
 
-	else: # async, Gasync, stoch, starting from A0,...increasingly becoming the main method
+	else: # async, Gasync, stoch, starting from A0,...increasingly becoming the main method due to simplicity
 
 		for i in range(int(params['num_samples']/params['parallelism'])):
 			if not params['map_from_A0']:
 				x0 = get_init_sample(params, G)
 				A0=None
+			if util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float']):
+				x0 = recast_Fmapd_and_x0(params, G, x0)
 			x_in_attractor = lap.transient(params, x0, G)
 			result = lap.categorize_attractor(params, x_in_attractor, G)
 			cupy_to_numpy(params,result)
 			steadyStates.update_stats(result)
 			steadyStates.add_attractors(params,result, A0)
+		steadyStates.normalize_stats()
 
-	steadyStates.normalize_stats()
 	steadyStates.normalize_attractors()
 	steadyStates.build_A0(SS0) #also renormalizes if SS0!=None
 	#print('end of basin:',[A.size for A in steadyStates.attractors.values()])
@@ -425,13 +414,9 @@ def run_oscils_extract(params, result, oscil_bin, cutoff, loop):
 
 def get_init_sample(params, G):
 	
-	if util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float']):
-		assert(0) #plz explicitly debug the float stuff
-		x0 = .5*cp.ones((params['parallelism'],G.n)).astype(float,copy=False)
-	else:
-		p = .5 #prob a given node is off at start
-		x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
-		
+	p = .5 #prob a given node is off at start
+	x0 = cp.random.choice(a=[0,1], size=(params['parallelism'],G.n), p=[p, 1-p]).astype(bool,copy=False)
+	
 	if 'init' in params.keys():
 		for k in params['init']:
 			node_indx = G.nodeNums[k]
@@ -457,7 +442,39 @@ def cupy_to_numpy(params,result):
 		for k in result.keys():
 			result[k]=result[k].get()
 
+def recast_Fmapd_and_x0(params, G,x0):
+	# for PBN!
+	# adds ON and OFF nodes at indices n and n+1
+	# and reshapes arrays accordingly
+	# also need to init them properly...maybe move to after x0 is picked?
+	# and while we're adding ON and OFF nodes, also use for input nodes (rather than a self-loop)
+	#	or maybe just for all self-loop nodes? even if not considered input
 
+	# TODO: this should be only for floats actually, same for changes in net.py
+
+	OFF_indx=0
+	ON_indx=G.n
+	x0[:,0] = 0 # make sure OFF node is off 
+
+	# usually to make a sq matrix, use repeats of clauses, nodes ect since 1*1=1, 0*0=0 ect
+	# but this doesn't hold for PBN, so need to use ON/OFF nodes instead
+	#print('\nbefore:\n',G.Fmapd['threads_to_nodes'].astype(int))
+	G.Fmapd['nodes_to_clauses'] = replace_row_duplicates(G.Fmapd['nodes_to_clauses'],ON_indx,1) # used in an AND gate, so turn duplicates ON
+	for i in range(len(G.Fmapd['clauses_to_threads'])): # laaazy, should fix replace_row_duplicates() instead
+		G.Fmapd['clauses_to_threads'][i] = replace_row_duplicates(G.Fmapd['clauses_to_threads'][i],OFF_indx,1) # used in an OR gate, so turn duplicates OFF
+	
+	# jp SHOULDN'T change threads_to_nodes, but will see
+	#for i in range(len(G.Fmapd['threads_to_nodes'])):
+	#	G.Fmapd['threads_to_nodes'][i] = replace_row_duplicates(G.Fmapd['threads_to_nodes'][i],OFF_indx,1) # used in an OR gate, so turn duplicates OFF
+	#print('\nafter:\n',G.Fmapd['threads_to_nodes'].astype(int))
+	
+	return x0
+
+def replace_row_duplicates(a,val,axis):
+	unique = cp.sort(a,axis=axis)
+	duplicates = unique[:,  1:] == unique[:, :-1]
+	unique[:, 1:][duplicates] = val 
+	return unique
 
 #############################################################################################
 
