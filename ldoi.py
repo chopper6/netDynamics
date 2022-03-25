@@ -75,7 +75,7 @@ def ldoi_bfs(G, A0=None):
 	if A0 is not None:
 		assert(len(A0)==n_compl) 
 		A0=build_A0(G,A0) 
-		print("transformed A0=",A0)
+		#print("transformed A0=",A0)
 		X = cp.array([A0 for _ in range(N)],dtype=cp.int8)
 		changed = cp.zeros((N,N),dtype=bool) # vals in [0,1,2]
 	else:
@@ -159,7 +159,7 @@ def init_step_A0(X, changed, index_dtype, counts, A, D, D_compl, n):
 	#xON = (~D_compl) & xON 
 	#print('xOn|D=',(xON.astype(bool).astype(index_dtype)&(~D_compl))|D.astype(index_dtype),'\nA=',A.astype(index_dtype))
 
-	print('initX=',X.astype(int))
+	#print('initX=',X.astype(int))
 	#print('xON=',xON.astype(int))
 	#assert(0) #clean that mess above
 	# return step()[0] since only care about the X, not "negated" or "cont"
@@ -182,7 +182,7 @@ def init_step_A0(X, changed, index_dtype, counts, A, D, D_compl, n):
 	# TODO: add back 2 and changed for init?
 	#x_next[((x_next!=X) & changed).astype(bool)]=2 
 	#changed[x_next!=X]=True
-	print("after init_step_A0():\n",X.astype(int))
+	#print("after init_step_A0():\n",X.astype(int))
 	return X.astype(cp.int8)
 
 def step_A0(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype):
@@ -241,9 +241,11 @@ def debug_A0(x, n, n_compl):
 	indx0_compl.sort()
 	assert(indx0!=indx1)
 	assert(indx0_compl!=indx1_compl)
-	assert(indx2==indx2_compl) # i.e. all rows in indx2 are in indx2_compl
-	assert(indx0==indx1_compl)
-	assert(indx1==indx0_compl)
+	assert(indx1!=indx1_compl)
+	assert(indx0!=indx0_compl)
+	#assert(indx2==indx2_compl) # i.e. all rows in indx2 are in indx2_compl
+	#assert(indx0==indx1_compl)
+	#assert(indx1==indx0_compl)
 
 
 def build_A0(G,A0_avg):

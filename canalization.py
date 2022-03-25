@@ -104,10 +104,9 @@ def unfair_compare(params):
 	SS = basin.measure(params, G)
 	avg_canal_percent = 0
 	avg_combo_percent = 0
-
+	total_num_missed  = 0
 	for A0 in SS.attractors.values():
 		#print('\nA0=',A0.avg)
-		num_missed = 0
 		canal_soln = ldoi.ldoi_bfs(Gpar,A0=A0.avg)[0]
 		if not (cp.all(cp.isin(canal_soln[ldoi_soln], cp.array([1,2])))):
 			for i in range(len(canal_soln)):
@@ -115,16 +114,18 @@ def unfair_compare(params):
 					if ldoi_soln[i,j]==1 and canal_soln[i,j]==0:
 						print("\nerror on",Gpar.nodeNames[j],"when pinning",Gpar.nodeNames[i],'indices=',i,j,'\n')
 						assert(0)
-		num_missed += cp.sum(ldoi_soln[canal_soln!=1])/2 # since all = 2 this is just counting 
+		num_missed = int(cp.sum(ldoi_soln[canal_soln!=1]))
 
+		total_num_missed += num_missed/((2*G.n)**2)
 		avg_canal_percent += cp.sum(canal_soln[canal_soln!=2])/((2*G.n)**2)
 		avg_combo_percent += (cp.sum(canal_soln[canal_soln!=2]) + num_missed)/((2*G.n)**2)
 
 	avg_canal_percent/=len(SS.attractors)
 	avg_combo_percent/=len(SS.attractors)
+	total_num_missed/=len(SS.attractors)
 
 	print("Survived. Ldoi score=",ldoi_percent,"vs canal=",avg_canal_percent)
-	print("Combined ldoi and canal score =",avg_combo_percent)
+	print("Combined ldoi and canal score =",avg_combo_percent," canal missed avg",total_num_missed,"of LDOI")
 	# note that some nodes are oscillating, so need exhaustive sim to check
 
 if __name__ == "__main__":
