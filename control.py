@@ -6,6 +6,8 @@ import random as rd
 from copy import deepcopy
 from net import Net
 
+# note that is attractor is cyclic, SS0 will start all copies of that attractor from same point
+
 # run time is approximately O(t*n^(c+m))
 #	where c=max_control_size,m=max_mutator_size,t=simulation time
 CONTROL_PARAMS = {
@@ -37,8 +39,6 @@ class Perturbations:
 
 		self.num_solutions=0
 		self.SS_WT = SS_WT
-		self.A0 = np.array([A.state for A in SS_WT.attractors.values()]) # note that if cyclic, all start from same point
-		self.Aweights = {A.id:A.size for A in SS_WT.attractors.values()}
 		self.phenosWT = SS_WT.phenotypes
 		self.max_control_size = max_control_size
 
@@ -168,7 +168,7 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 
 	# USEFUL BASELINE DEBUG
 	if 0:
-		p2 = mutate_and_sim(params, G,A0=perturbs.A0, Aweights=perturbs.Aweights).phenotypes
+		p2 = mutate_and_sim(params, G,SS0=perturbs.SS_WT).phenotypes
 		d = diff(perturbs.phenosWT,p2,perturbs.num_inputs,norm=perturbs.norm)
 		print('DEBUGGING 1st: self diff=',d) #then can rm this check
 		assert(0)
@@ -216,18 +216,22 @@ def exhaustive(params, G, mut_thresh, cnt_thresh, norm=1,max_mutator_size=1, max
 	return perturbs
 
 
-def mutate_and_sim(params_orig, G_orig,A0=None, Aweights=None):
+def mutate_and_sim(params_orig, G_orig,SS0=None):
 	G, params = deepcopy(G_orig), deepcopy(params_orig)
 	if not CONTROL_PARAMS['from_A0']:
-		A0,Aweights=None,None
-	if A0 is not None:
-		A0, Aweights=deepcopy(A0),deepcopy(Aweights)
+		SS0=None
+	if SS0 is not None:
+		# note that having a 0,1 would make mutation simpler
+		# since just change G.F, but pass same SS0
+		SS0 = deepcopy(SS0)
+		A0, A0_source, Aweights = SS0.A0, SS0.A0_source, SS0.Aweights
 		assert(params['num_samples'] == params['parallelism']) #otherwise the quickfix below doesn't work
 		params['num_samples'] = params['parallelism'] = len(A0) 
 		# TODO: don't do this, above
 		# 	mix up is due to basin.py mutating and then building A0. here opposite
 
 		new_Aweights = {}
+		new_As = []
 		for key in Aweights:
 			list_key = list(key)
 			for mutant in params['mutations']:
@@ -236,9 +240,13 @@ def mutate_and_sim(params_orig, G_orig,A0=None, Aweights=None):
 				list_key[indx] = str(params['mutations'][mutant])
 			new_key = "".join(list_key)
 			new_Aweights[new_key] = Aweights[key]
-		Aweights = new_Aweights	
+			new_As += [[int(k) for k in new_key]]
+		SS0.Aweights = new_Aweights
+		SS0.A0 = new_As
+		print('Control',SS0.A0,SS0.Aweights.keys())
+
 	G.prepare_for_sim(params)
-	steadyStates = basin.measure(params, G, A0=A0, Aweights=Aweights)
+	steadyStates = basin.measure(params, G, SS0=SS0)
 	return steadyStates
 
 ####################################################################################################
@@ -271,7 +279,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 				curr_mutators, curr_mut_dist = deepcopy(curr_mutators_orig), curr_mut_dist_orig
 				params['mutations'] = deepcopy(orig_mutations)
 				params['mutations'][M] = b
-				SS_M = mutate_and_sim(params, G,A0=perturbs.A0, Aweights=perturbs.Aweights)
+				SS_M = mutate_and_sim(params, G,SS0=perturbs.SS_WT)
 					
 				phenosM = SS_M.phenotypes
 
@@ -286,9 +294,7 @@ def attempt_mutate(params_orig, G, perturbs, metrics, curr_mutators_orig, curr_m
 
 				if mut_dist > perturbs.mut_thresh:
 					curr_mutators += [(M,b)]
-					mut_A0 = np.array([A.state for A in SS_M.attractors.values()])
-					mut_Aws = {A.id:A.size for A in SS_M.attractors.values()}
-					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist,'A0':mut_A0,'Aweights':mut_Aws,'ldoi_diff':ldoi_predicted_diff}]
+					perturbs.mutators += [{'mutants':curr_mutators,'dist':mut_dist,'SS0':SS_M,'ldoi_diff':ldoi_predicted_diff}]
 					if CONTROL_PARAMS['verbose']:
 						print("Mutator:",curr_mutators,'distance =',round(mut_dist,3))
 					#print([(k,phenosM[k].size) for k in phenosM.keys()])		
@@ -357,7 +363,7 @@ def attempt_control(params,G, perturbs, metrics, mutator, control_set_orig, dept
 				prev_groups= perturbs.solutions[str(mutator['mutants'])]['controllers']
 			if should_check(C, b, control_set, prev_groups):
 				params['mutations'][C] = b
-				SS_C = mutate_and_sim(params,G,A0=mutator['A0'], Aweights=mutator['Aweights'])
+				SS_C = mutate_and_sim(params,G,SS0=mutator['SS0'])
 				phenosC = SS_C.phenotypes
 
 				#change = 1-diff(phenosWT,phenosC)/mut_dist

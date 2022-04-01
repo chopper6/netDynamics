@@ -14,13 +14,15 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
-steady_basin: 1
+steady_basin: 0
 async_trim: 0
+track_x0: 0
 
 PBN : # probabilistic boolean network # seems to req async atm
   active : 0
-  flip_pr : 0.1
-  init : 'half' # half or uniform
+  flip_pr : 0
+  float : 0
+  init : 'uniform' # half or uniform
 calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor
 
 # implementation details

@@ -415,7 +415,9 @@ class ParityNet(Net):
         composites = []
 
         for node in self.parityNodes:
-            assert(node.F() == self.F[node.name]) # TODO rm this safety check (or only w debug)
+            if debug:
+                assert(node.F() == self.F[node.name]) 
+
             for clause in node.F():
                 if len(clause)>1: # make a composite node
                     self.A_exp[self.n_exp,node.num]=1
@@ -423,7 +425,10 @@ class ParityNet(Net):
                         self.A_exp[self.nodeNums[clause[j]],self.n_exp]=1
                     self.n_exp+=1
                 elif clause not in ['0','1']: # ignore tautologies
+                    # wouldn't tautologies be [['0'],['1']] instead??
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
+                else:
+                    print("net.py build_Aexp(): tautology ignored")
         
         if debug:
             assert(N==self.n_exp)
@@ -452,7 +457,7 @@ class ParityNet(Net):
         # just to make compatible with default net def
         pass 
 
-    def write_to_file(self, output_file,parity=False):
+    def write_to_file(self, output_file):
         # parity is an extra switch to treat the network like it is a Parity Net
         #   for ex when building a parity net from a regular net
 
@@ -464,7 +469,7 @@ class ParityNet(Net):
             # note this overwrites
         node_fn_split, clause_split, literal_split, not_str, strip_from_clause, strip_from_node = get_file_format(self.encoding)
         
-        for node in self.parityNodes:
+        for node in self.parityNodes: # pretty sure this will throw an err on regular net...
             fn=node.F()
             with open(output_file,'a') as ofile:
                 ofile.write(node.name + node_fn_split + self._fn_to_str(fn) + '\n')

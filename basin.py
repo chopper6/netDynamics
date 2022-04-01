@@ -214,7 +214,9 @@ class SteadyStates:
 		# normalize the size of each attractor by the weight of its initial attractor
 		total=0
 		assert(self.params['update_rule']=='sync') # else check normzn before using, but should be ok
-		
+		print('basin:',self.attractors.keys(),SS0.Aweights.keys())
+		#assert(0)
+
 		Aweights = SS0.Aweights
 		assert(math.isclose(sum([A.size for A in self.attractors.values()]),1))
 		#assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled

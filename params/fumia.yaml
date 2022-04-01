@@ -16,7 +16,7 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
-steady_basin: 1
+steady_basin: 0
 async_trim: 0 #.0001
 
 # implementation details
@@ -33,7 +33,7 @@ calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attra
 # input
 model_file: 'models/fumia.txt' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
 setting_file: 'settings/fumia.yaml'
-parity_model_file: 'models/fumiaExp2.txt'
+parity_model_file: 'models/fumiaExp3.txt'
 use_inputs_in_pheno: 1
 use_phenos: 1
 fig_legend: 0
