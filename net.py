@@ -259,7 +259,7 @@ class Net:
                 curr_clause += 1
 
         nodes_to_clauses = cp.array(nodes_to_clauses,dtype=self._get_index_dtype(self.n)) # the literals in each clause
-        
+
         if self.num_clauses>0:
             assert(nodes_to_clauses.shape == (self.num_clauses,self.max_literals))
 
@@ -281,11 +281,12 @@ class Net:
             sorted_keys = sorted(nodes_clause, key=lambda k: len(nodes_clause[k]), reverse=True)
             nodes_clause = {k:nodes_clause[k] for k in sorted_keys}
             node_indx = 0
+            prev_take_from_node = take_from_node = sorted_keys[node_indx]
 
             for j in range(n):
-                take_from_node = sorted_keys[node_indx]
-                threads_to_nodes[i][j,take_from_node]=1
-                if sum([len(nodes_clause[i2]) for i2 in range(n)]) > 0: 
+                if sum([len(nodes_clause[i2]) for i2 in range(n)]) > 0:
+                    take_from_node = sorted_keys[node_indx]
+                    threads_to_nodes[i][j,take_from_node]=1 
                     if len(nodes_clause[take_from_node]) >= m:
                         this_set[j] = nodes_clause[take_from_node][:m]
                         if len(nodes_clause[take_from_node]) == m:
@@ -293,23 +294,25 @@ class Net:
                         del nodes_clause[take_from_node][:m]
                     else:
                         top = len(nodes_clause[take_from_node])
-                        this_set[j] = nodes_clause[take_from_node][:top]
+                        this_set[j] = nodes_clause[take_from_node][:top] # why is [:top] nec?
                         rem = m-(top)
                         for k in range(rem):
                             this_set[j] += [this_set[j][-1]] #use a copy of prev clause to make matrix square (assuming DNF)
                         del nodes_clause[take_from_node][:top]
                         node_indx += 1
                 else: #finished, just need to filll up the array
+                    threads_to_nodes[i][j,prev_take_from_node]=1 
                     this_set[j] = this_set[j-1]
+                prev_take_from_node = take_from_node
 
             clauses_to_threads += [this_set]    
             i+=1
             if i>1000000:
                 sys.exit("ERROR: infinite loop likely in net.build_Fmapd_and_A()")
         
-        if params['parallelism']<256:
+        if params['parallelism']<256 and self.num_clauses<256:
             thread_dtype = cp.uint8
-        elif params['parallelism']<65535:
+        elif params['parallelism']<65535 and self.num_clauses<65535:
             thread_dtype = cp.uint16
         else:
             thread_dtype = cp.uint32

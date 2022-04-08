@@ -224,26 +224,26 @@ def mutate_and_sim(params_orig, G_orig,SS0=None):
 		# note that having a 0,1 would make mutation simpler
 		# since just change G.F, but pass same SS0
 		SS0 = deepcopy(SS0)
-		A0, A0_source, Aweights = SS0.A0, SS0.A0_source, SS0.Aweights
 		assert(params['num_samples'] == params['parallelism']) #otherwise the quickfix below doesn't work
-		params['num_samples'] = params['parallelism'] = len(A0) 
+		params['num_samples'] = params['parallelism'] = len(SS0.A0) 
 		# TODO: don't do this, above
 		# 	mix up is due to basin.py mutating and then building A0. here opposite
 
 		new_Aweights = {}
 		new_As = []
-		for key in Aweights:
+		for key in SS0.Aweights:
 			list_key = list(key)
 			for mutant in params['mutations']:
 				indx = G.nodeNums[mutant]
-				A0[:,indx] = params['mutations'][mutant]
+				SS0.A0[:,indx] = params['mutations'][mutant]
+				SS0.A0_source[:,indx] = params['mutations'][mutant]
 				list_key[indx] = str(params['mutations'][mutant])
 			new_key = "".join(list_key)
-			new_Aweights[new_key] = Aweights[key]
-			new_As += [[int(k) for k in new_key]]
+			if new_key in new_Aweights:
+				new_Aweights[new_key] += SS0.Aweights[key]
+			else:
+				new_Aweights[new_key] = SS0.Aweights[key]
 		SS0.Aweights = new_Aweights
-		SS0.A0 = new_As
-		print('Control',SS0.A0,SS0.Aweights.keys())
 
 	G.prepare_for_sim(params)
 	steadyStates = basin.measure(params, G, SS0=SS0)

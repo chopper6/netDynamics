@@ -16,10 +16,9 @@ def step(params, x, G):
 	X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
-
 	if not util.istrue(params,['PBN','active']) or not util.istrue(params,['PBN','float']):
 		clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
-			
+
 		# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
 		partial_truths = cp.any(clauses[:,clauses_to_threads],axis=3)
 
@@ -30,7 +29,7 @@ def step(params, x, G):
 		#	x_next = x_next + cp.matmul(partial_truths[:,j],threads_to_nodes[j])
 
 		x_next = cp.sum(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
-
+		#print('lap.step next=',x_next.astype(int))
 		# alternative with partial_truths also enclosed in for loop:
 		'''  note that these take IDENTICAL time, so likely unfolded by compiler anyway
 		for j in range(len(clauses_to_threads)): 
@@ -184,7 +183,9 @@ def categorize_attractor(params,x0, G):
 	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
-	avg_states = cp.array(x0,dtype=cp.float16)
+	which_nodes_count = cp.zeros(x0.shape,dtype=int)
+
+	avg_states = cp.array(x0,dtype=int)
 
 	for i in range(params['steps_per_lap']):
 		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
@@ -219,7 +220,8 @@ def categorize_attractor(params,x0, G):
 		else:
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
 
-		avg_states += which_nodes*x  # TODO: why only update if node changes?
+		avg_states += x 
+
 		if util.istrue(params,'track_x0'):
 			total_avg_check += x
 			#avg_ensemble += cp.mean(x,axis=0)
@@ -240,22 +242,27 @@ def categorize_attractor(params,x0, G):
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
 
 		if params['precise_oscils']:
-			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']: 
+			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
+				avg_states = avg_states/(i+2) #+1 for init, +1 since #laps = i+1
 				return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
 	# using num steps +1 since init state is also added to the avg
-	if params['update_rule'] == 'async':
-		expected_num_updates = (params['steps_per_lap']+1)/(G.n) # apparently this is normalized elsewhere
-	elif params['update_rule'] == 'Gasync':
-		expected_num_updates = (params['steps_per_lap']+1)/2 # apparently this is normalized elsewhere
-	elif util.istrue(params,['PBN','active']) or params['map_from_A0'] or util.istrue(params,'skips_precise_oscils'):
-		expected_num_updates =params['steps_per_lap']+1 # +1 def needed
-	else: #sync
-		if params['precise_oscils']:
-			expected_num_updates = period[:,cp.newaxis].astype(float)
-			assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
-		else:
-			expected_num_updates = params['steps_per_lap']+1
+	# TODO: this normalization is different in different places...
+	# when checking canalization with Gasync, needed to divide avg by expected # updates, NOT just steps per lap
+	if 0: # TODO: rm all this, just added every node at every step now
+		# only problem is async will artificially have less variance (find normz factor analytically?)
+		if params['update_rule'] == 'async':
+			expected_num_updates = (params['steps_per_lap']+1)/(G.n) # apparently this is normalized elsewhere
+		elif params['update_rule'] == 'Gasync':
+			expected_num_updates = (params['steps_per_lap']+1)/2 # apparently this is normalized elsewhere
+		elif util.istrue(params,['PBN','active']) or params['map_from_A0'] or util.istrue(params,'skips_precise_oscils'):
+			expected_num_updates =params['steps_per_lap']+1 # +1 def needed
+		else: #sync
+			if params['precise_oscils']:
+				expected_num_updates = period[:,cp.newaxis].astype(float)
+				assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
+			else:
+				expected_num_updates = params['steps_per_lap']+1
 
 	if util.istrue(params,'track_x0'): # TODO: clean this and put in a sep fn
 		# average over time steps
@@ -264,8 +271,8 @@ def categorize_attractor(params,x0, G):
 		avg_time /= params['steps_per_lap'] 
 
 		# average over x0
-		avg_ensemble = cp.sum(avg_ensemble,axis=0) / params['steps_per_lap']  #*expected_num_updates)
-		var_ensemble = cp.mean(var_ensemble,axis=0) / params['steps_per_lap']  #*expected_num_updates)
+		avg_ensemble = cp.sum(avg_ensemble,axis=0) / (params['steps_per_lap']+1)
+		var_ensemble = cp.mean(var_ensemble,axis=0) / (params['steps_per_lap']+1)
 
 		#var_t = cp.mean(var_t - cp.power(avg_ensemble,2),axis=0) # note that avg_ensemble is really just average in general
 		
@@ -290,7 +297,7 @@ def categorize_attractor(params,x0, G):
 
 		avg_x0 = avg_x0_total #cp.mean(avg_x0,axis=0)/params['steps_per_lap']
 
-	avg_states = avg_states/expected_num_updates
+	avg_states = avg_states/(params['steps_per_lap']+1)
 	total_avg_check = total_avg_check/params['steps_per_lap']
 	total_avg_check = cp.sum(total_avg_check,axis=0)/params['num_samples']
 	#print("total avg=\n",total_avg_check,'\nvs avg_x0=\n',avg_x0)
@@ -303,7 +310,8 @@ def categorize_attractor(params,x0, G):
 
 
 def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states):
-	avg_states = avg_states/period[:,cp.newaxis].astype(float)
+	# avg already divided by # steps before this
+	#avg_states = avg_states/period[:,cp.newaxis].astype(float)
 	exit_states = ids*cp.logical_not(not_finished)[:,cp.newaxis]+x0*not_finished[:,cp.newaxis]
 	if params['debug'] and params['update_rule'] == 'sync': #since async and Gasync are based on expected num of updates, they may be slightly off
 		assert (cp.all(avg_states <= 1.001))

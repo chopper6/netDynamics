@@ -213,40 +213,37 @@ class SteadyStates:
 	def renormz_by_A0(self,SS0):
 		# normalize the size of each attractor by the weight of its initial attractor
 		total=0
-		assert(self.params['update_rule']=='sync') # else check normzn before using, but should be ok
-		print('basin:',self.attractors.keys(),SS0.Aweights.keys())
+		#assert(self.params['update_rule']=='sync') # else check normzn before using, but should be ok
+		#print('basin:',self.attractors.keys(),SS0.Aweights.keys())
 		#assert(0)
 
 		Aweights = SS0.Aweights
 		assert(math.isclose(sum([A.size for A in self.attractors.values()]),1))
-		#assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled
+		assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled
 		for A in self.attractors.values():
 			assert(A.size <= 1)
 			incoming_weight=0
 			for k in A.A0s:
-				assert(A.A0s[k]==1) # should be okay if not, just double check
-				incoming_weight += Aweights[k]*A.A0s[k]
-			#print("\tAsize adds prod Asize*len(attractors),incoming_weight=",A.size,len(self.attractors),incoming_weight)
+				incoming_weight += Aweights[k] #*A.A0s[k] #gotta think more about why this works...
 			A.size = incoming_weight
 			total += A.size 
 
-
 		if not math.isclose(total,1):
-			print('basin.renormz_by_A0: total=',total)
+			print('\nbasin.renormz_by_A0 is not correct! total=',total) # curr occurs w A.A0s[k]>1
 			assert(0)
 
-		
-
-	def build_A0(self, SS0):
+	def build_A0(self, SS0=None):
 		self.attractor_order = list(self.attractors.keys())
 		A_ids = [self.attractors[k].id for k in self.attractor_order]# attractors in ORDERED list, like def within SSs
 		self.A0 = cp.array([[int(a) for a in A] for A in A_ids])
 		self.A0_source = self.A0.copy()
 		self.Aweights = {A.id:A.size for A in self.attractors.values()}
+		assert(math.isclose(1,sum(self.Aweights.values())))
 		if SS0 is not None:
 			self.renormz_by_A0(SS0)
 
 	def shuffle_A0_inputs(self,params,G):
+		# only called from steady basin
 		# prob could be more effic with some more np
 		# normalizes Aweights accordingly
 		x0=[]

@@ -57,6 +57,11 @@ def copy_to_larger_dim(x, num_copies):
 	return cp.tile(x,num_copies).reshape(tuple([num_copies])+x.shape)
 
 
+def char_in_str(strg,indx,new):
+	tmp = list(strg)
+	tmp[indx]=str(new)
+	return "".join(tmp)
+
 ###### FROM LIGHT SIMULATION #########
 
 

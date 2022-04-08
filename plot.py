@@ -321,6 +321,45 @@ def basin_dist_bars():
 	plt.close()
 
 
+def LDOIvsCC(): 
+	import numpy as np
+	nets = ['Fumia','Grieco','Sahin']#,'Zhang']
+	LDOI = [0.029,.086,.236]
+	CC = [0.985,.762,.993]
+	#BOTH = [0.985,.768,.994]
+
+	colors = cm.get_cmap('Set2',8)
+
+	x = np.arange(len(nets))  # the label locations
+	width = 0.2  # the width of the bars
+
+	fig, ax = plt.subplots()
+	ax.grid(alpha=.2)
+	ax.set_axisbelow(True)
+	rects_LDOI = ax.bar(x - width/2, LDOI, width,label='LDOI',color=COLORS[10])
+	rects_CC = ax.bar(x + width/2, CC, width, label='CC',color=COLORS[11])
+	#rects_BOTH = ax.bar(x + width, CC, width, label='both',color=COLORS[12])
+	#rects_IBR_sync = ax.bar(x - width*3/2, IBR_sync, width,label='IBR sync',color=COLORS[10])
+	#rects_SBR_sync = ax.bar(x - width/2, SBR_sync, width, label='SBR sync',color=COLORS[11])
+	#rects_IBR_async = ax.bar(x + width/2, IBR_async , width, label='IBR async',color=COLORS[10],alpha=.5)
+	#rects_SBR_async = ax.bar(x + width*3/2, SBR_async, width, label='SBR async',color=COLORS[11],alpha=.5)
+
+	ax.set_ylabel('Percent of Fixed Nodes Identified',fontsize=14)
+	ax.set_title('Contextual Canalization (CC) compared with LDOI',fontsize=14)
+	ax.set_ylim(0,1)
+
+	ax.set_xticks(x)
+	ax.set_xticklabels(nets,fontsize=14)
+	ax.legend()
+	ax.legend(prop={'size': 15})
+	#ax.set_yscale('log')
+
+	fig.tight_layout()
+
+	plt.show()
+	plt.clf()
+	plt.close()
+
 def SBR_vs_IBR(): 	
 	# TODO: increase axis labels and legend size 
 
@@ -405,4 +444,4 @@ def init_mpl(params):
 
 if __name__ == "__main__":
 	print("custom plot")
-	SBR_vs_IBR()
+	LDOIvsCC()

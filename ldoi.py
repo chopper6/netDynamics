@@ -121,7 +121,7 @@ def step(X, A, D, D_compl, counts, negated, n, n_compl, index_dtype):
 	for matrix in [X, A, D, D_compl ,negated]: # can rm after a lil
 		assert(matrix.dtype==bool)
 	
-	if 0:	
+	if 0:	# memoization, currently off to be safe
 		X_rolled = X.copy()
 		X_rolled[:n] = cp.roll(X_rolled[:n],n_compl,axis=0)
 		memoX = cp.matmul((X|D) & cp.logical_not(X_rolled.T), X) 
