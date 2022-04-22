@@ -10,7 +10,7 @@ print_lap : 10 # how many laps before another print statement. only if verbose
 
 parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
 num_samples : 10^2 # number of initial states tested.
-steps_per_lap : 20 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
 update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync

@@ -73,7 +73,7 @@ TGFBR,	TGFBR_stimulus
 !GAB1,	!PI3K & !GRB2
 !GADD45,	!p53 & !SMAD
 !GRB2,	!TGFBR & !FRS2 & !EGFR
-!Growth_Arrest,	(!p21 & Growth_Arrest) | Proliferation | Apoptosis
+!Growth_Arrest,	(!p21 & !Growth_Arrest) | Proliferation | Apoptosis
 !JNK,	(!TAOK & !TAK1 & !MTK1 & !MAP3K1_3) | (DUSP1 & !TAOK & !TAK1 & !MTK1) | (DUSP1 & !TAOK & !TAK1 & !MAP3K1_3) | (DUSP1 & !TAOK & !MTK1 & !MAP3K1_3) | (DUSP1 & !TAK1 & !MTK1 & !MAP3K1_3)
 !JUN,	!JNK
 !MAP3K1_3,	!RAS

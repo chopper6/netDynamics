@@ -1,5 +1,5 @@
 import os, sys, yaml, util, math, itertools
-import util, logic, deep
+import util, logic, deep, PBN
 from copy import deepcopy
 import espresso
 
@@ -56,9 +56,11 @@ class Net:
         self.max_literals=0 # max literals per clause
         self.max_clauses=0 # max clauses per node
 
+        self.PBN = False
         if PBN:
             self.add_node('OFF',debug=debug)
             self.F['OFF'] = [['OFF']]
+            self.PBN=True
 
         if G is not None: 
             self.copy_from_net(G)
@@ -240,23 +242,20 @@ class Net:
         curr_clause = 0
 
         for i in range(n):
-            clauses = self.nodes[i].F()
-            for j in range(len(clauses)):
-                clause = clauses[j]
-                clause_fn = []
-                for k in range(len(clause)):
-                    literal_node = self.nodeNums[clause[k]]
-                    clause_fn += [literal_node]
-                    if self.allNodes[literal_node].isNegative: 
-                        self.A[i, literal_node-n] = 1
-                    else:
-                        self.A[i, literal_node] = 1
-                for k in range(len(clause), self.max_literals): # filling to make sq matrix
-                    clause_fn += [literal_node]
+            numbered_clauses = [self._clause_num_and_add_to_A(c) for c in self.nodes[i].F()]
+            if self.PBN:
+                numbered_clauses, clauses_mult = get_node_float_clauses(numbered_clauses, n)
+                self.max_clauses = max(self.max_clauses, len(numbered_clauses))
+                # TODO: add clauses_mult to some larger list
+            for k in len(numbered_clauses):
+                nodes_to_clauses[curr_clause+k] = numbered_clauses[k]
+                # TODO: jp need to make nodes_to_clauses sq here, in terms of literals per clause
+            nodes_clause[i] = [z for z in range(curr_clause, curr_clause+len(numbered_clauses))]
+            curr_clause += len(numbered_clauses)
 
-                nodes_to_clauses[curr_clause] = clause_fn
-                nodes_clause[i] += [curr_clause]
-                curr_clause += 1
+        ######### left off round here ###########
+        # need to replace max_literals with the 1 node above too...
+        # need to make ... something sq later too...
 
         nodes_to_clauses = cp.array(nodes_to_clauses,dtype=self._get_index_dtype(self.n)) # the literals in each clause
 
@@ -324,6 +323,19 @@ class Net:
         #print('nodes->clauses\n',nodes_to_clauses,'\n\nclauses->threads\n',clauses_to_threads,'\n\nthreads->nodes\n',threads_to_nodes)
         self.Fmapd = clause_mapping
 
+    def _clause_num_and_add_to_A(clause):
+                    
+        clause_fn = []
+        for k in range(len(clause)):
+            literal_node = self.nodeNums[clause[k]]
+            clause_fn += [literal_node]
+            if self.allNodes[literal_node].isNegative: 
+                self.A[i, literal_node-n] = 1
+            else:
+                self.A[i, literal_node] = 1
+        for k in range(len(clause), self.max_literals): # filling to make sq matrix
+            clause_fn += [literal_node]
+        return clause_fn
 
     def _get_index_dtype(self, max_n):
         if max_n<256: 
