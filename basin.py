@@ -35,6 +35,7 @@ def measure(params, G, SS0=None):
 	if not util.istrue(params,'steady_basin'):
 		steadyStates = calc_size(params,G,SS0=SS0)
 	else:
+		assert(not params['PBN']['active']) # haven't implemented yet
 		# curr assuming that exact ratio of A0 for steady basin is irrelv (only transition pr's matter)
 		steadyStates = basin_steady.calc_size(params, G,SS0=SS0)
 	#print("#attractors =",len(steadyStates.attractors))

@@ -135,7 +135,7 @@ class Net:
         
         self.build_negative_nodes(debug=debug) # this is just a pass function for Parity & DeepNet
 
-        self.count_clauses_and_lits()
+        #self.count_clauses_and_lits()
 
 
     def write_to_file(self, output_file,parity=False):
@@ -220,6 +220,8 @@ class Net:
 
 
     def count_clauses_and_lits(self):
+        assert(0) # can rm, just checking if this fn is still used
+        assert(not self.PBN) # otherwise wrong
         for node in self.nodes:
             if not node.isNegative:
                 self.num_clauses += len(node.F()) 
@@ -229,45 +231,47 @@ class Net:
 
 
     def build_Fmapd_and_A(self, params): 
-
+        # TODO: check for repeat clauses?
+        
+        # Fmapd is a clause index with which to compress the clauses -> nodes
+        #   nodes_to_clauses: computes which nodes are inputs (literals) of which clauses
+        #   clauses_to_threads: maps which clauses will be processed by which threads (and #threads = #nodes)
+        #   threads_to_nodes: maps which threads are functions of which nodes
+        
         n = self.n
 
-        # building clauses_to_threads, i.e. the index for the function of each node
-        #nodes_to_clauses = cp.zeros((self.num_clauses,self.max_literals),dtype=self._get_index_dtype(self.n)) # the literals in each clause
-        nodes_to_clauses = [[] for i in range(self.num_clauses)]
+        nodes_to_clauses = []        
+        clauses_to_threads = []
+        threads_to_nodes = [] 
         nodes_clause = {i:[] for i in range(n)}
+        if self.PBN:
+            clauses_multiplier = []
 
         # ADJACENCY MATRIX, unsigned
         self.A = cp.zeros((n,n),dtype=bool)
-        curr_clause = 0
+        self.num_clauses = 0
 
+        # BUILDING NODES->CLAUSES
         for i in range(n):
-            numbered_clauses = [self._clause_num_and_add_to_A(c) for c in self.nodes[i].F()]
+            numbered_clauses = [self._clause_num_and_add_to_A(i,c) for c in self.nodes[i].F()]
             if self.PBN:
-                numbered_clauses, clauses_mult = get_node_float_clauses(numbered_clauses, n)
-                self.max_clauses = max(self.max_clauses, len(numbered_clauses))
-                # TODO: add clauses_mult to some larger list
-            for k in len(numbered_clauses):
-                nodes_to_clauses[curr_clause+k] = numbered_clauses[k]
-                # TODO: jp need to make nodes_to_clauses sq here, in terms of literals per clause
-            nodes_clause[i] = [z for z in range(curr_clause, curr_clause+len(numbered_clauses))]
-            curr_clause += len(numbered_clauses)
+                numbered_clauses, clauses_mult = PBN.get_node_float_clauses(numbered_clauses, n)
+                self.max_literals = max([self.max_literals]+ [len(x) for x in numbered_clauses])
+                clauses_multiplier += clauses_mult
+            self.max_clauses = max(self.max_clauses, len(numbered_clauses))
+            nodes_to_clauses += numbered_clauses
+            nodes_clause[i] = [z for z in range(self.num_clauses, self.num_clauses+len(numbered_clauses))]
+            self.num_clauses += len(numbered_clauses)
 
-        ######### left off round here ###########
-        # need to replace max_literals with the 1 node above too...
-        # need to make ... something sq later too...
-
+        self._make_square_clauses(nodes_to_clauses) 
         nodes_to_clauses = cp.array(nodes_to_clauses,dtype=self._get_index_dtype(self.n)) # the literals in each clause
+        if self.PBN:
+            clauses_multiplier = cp.array(clauses_multiplier,dtype=cp.int8) # the literals in each clause
 
         if self.num_clauses>0:
             assert(nodes_to_clauses.shape == (self.num_clauses,self.max_literals))
 
-        # bluid clause index with which to compress the clauses -> nodes
-        #   nodes_to_clauses: computes which nodes are inputs (literals) of which clauses
-        #   clauses_to_threads: maps which clauses will be processed by which threads (and #threads = #nodes)
-        #   threads_to_nodes: maps which threads are functions of which nodes
-        clauses_to_threads = []
-        threads_to_nodes = [] 
+        # BUILDING CLAUSES->THREADS
         m=min(params['clause_bin_size'],self.max_clauses) 
 
         i=0
@@ -296,12 +300,25 @@ class Net:
                         this_set[j] = nodes_clause[take_from_node][:top] # why is [:top] nec?
                         rem = m-(top)
                         for k in range(rem):
-                            this_set[j] += [this_set[j][-1]] #use a copy of prev clause to make matrix square (assuming DNF)
+                            if not self.PBN:
+                                this_set[j] += [this_set[j][-1]] #use a copy of prev clause to make matrix square (assuming DNF)
+                            else:
+                                this_set[j] += [0] # add the OFF node instead (since sum in PBN)
+                                # note that BOTH the 0th clause and 0th node are corresp to OFF node
+
                         del nodes_clause[take_from_node][:top]
                         node_indx += 1
+
                 else: #finished, just need to filll up the array
-                    threads_to_nodes[i][j,prev_take_from_node]=1 
-                    this_set[j] = this_set[j-1]
+                    if not PBN:
+                        threads_to_nodes[i][j,prev_take_from_node]=1 
+                        this_set[j] = this_set[j-1]
+                    else:
+                        # need to add onto the OFF node with its OFF clause
+                        threads_to_nodes[i][j,0]=1 
+                        this_set[j] = [0 for _ in range(m)]
+
+
                 prev_take_from_node = take_from_node
 
             clauses_to_threads += [this_set]    
@@ -319,23 +336,32 @@ class Net:
         threads_to_nodes = cp.array(threads_to_nodes,dtype=bool)
         # nodes_to_clauses already converted
         clause_mapping = {'nodes_to_clauses':nodes_to_clauses, 'clauses_to_threads':clauses_to_threads, 'threads_to_nodes':threads_to_nodes}
-        
+        if self.PBN:
+            clause_mapping['clauses_multiplier'] = clauses_multiplier
         #print('nodes->clauses\n',nodes_to_clauses,'\n\nclauses->threads\n',clauses_to_threads,'\n\nthreads->nodes\n',threads_to_nodes)
         self.Fmapd = clause_mapping
 
-    def _clause_num_and_add_to_A(clause):
-                    
+    def _clause_num_and_add_to_A(self, source_node_num, clause):            
         clause_fn = []
         for k in range(len(clause)):
+            self.max_literals = max(self.max_literals, len(clause))
             literal_node = self.nodeNums[clause[k]]
             clause_fn += [literal_node]
             if self.allNodes[literal_node].isNegative: 
-                self.A[i, literal_node-n] = 1
+                self.A[source_node_num, literal_node-self.n] = 1
             else:
-                self.A[i, literal_node] = 1
-        for k in range(len(clause), self.max_literals): # filling to make sq matrix
-            clause_fn += [literal_node]
+                self.A[source_node_num, literal_node] = 1
+        #for k in range(len(clause), self.max_literals): # filling to make sq matrix
+        #    clause_fn += [literal_node]
         return clause_fn
+
+    def _make_square_clauses(self, nodes_to_clauses):
+        for clause in nodes_to_clauses:
+            for k in range( len(clause), self.max_literals ):
+                if not self.PBN:
+                    clause += [clause[-1]]
+                else:
+                    clause += [self.n] # this is the '1' node
 
     def _get_index_dtype(self, max_n):
         if max_n<256: 
@@ -367,6 +393,17 @@ class Net:
         # assumes that 2^#inputs can fit in memory
         input_indices = self.input_indices(params)
         return list(itertools.product([0,1],repeat=len(params['inputs'])))
+
+    def print_matrix_names(self,X):
+        # assumes X is a set of network states
+        print('\nnetwork state:')
+        for x in X: # one network state
+            s=''
+            for i in range(len(x)):
+                s+=self.nodeNames[i] + ":" + str(x[i]) + " "
+            print(s)
+        print('\n')
+
 
 ##################################################################################################
 

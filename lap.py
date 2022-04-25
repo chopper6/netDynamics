@@ -13,10 +13,10 @@ def step(params, x, G):
 	nodes_to_clauses = G.Fmapd['nodes_to_clauses']        
 	clauses_to_threads = G.Fmapd['clauses_to_threads'] 
 	threads_to_nodes = G.Fmapd['threads_to_nodes']
-	X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
 	# add the not nodes
 	# for x (state vector) axis 0 is parallel nets, axis 1 is nodes
 	if not util.istrue(params,['PBN','active']) or not util.istrue(params,['PBN','float']):
+		X = cp.concatenate((x,cp.logical_not(x[:,:G.n])),axis=1)
 		clauses = cp.all(X[:,nodes_to_clauses],axis=2) #this is gonna to a bitch to change when clause_index has mult, diff copies
 
 		# partial truths are sufficient for a node to be on (ie they are some but not all clauses)
@@ -42,21 +42,21 @@ def step(params, x, G):
 			x_next = ((~flip) & x_next) | (flip & (~x_next))		
 
 	else:
-		# float version
-		# 	basically, on a vector X, AND is product(X), and OR is 1-(product(1-X))
-		#print('\n\n\nlap.step(): X=',X)
-		#print('nodes_to_clauses=',nodes_to_clauses)
+		# PBN float version
+
+		X = cp.concatenate((x,1-x),axis=1) # append NOT x to the states
+		#print('\n\n\nlap.step():')
+		#G.print_matrix_names(X)
 		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
-		#print('clauses =',clauses )
-		x_next = cp.zeros((G.n),dtype=node_dtype)
-		partial_truths = 1-cp.prod(1-clauses[:,clauses_to_threads],axis=3)
+		clauses *= G.Fmapd['clauses_multiplier']
+		partial_truths = cp.sum(clauses[:,clauses_to_threads],axis=3)
 		#print('partial_truths =',partial_truths[:20,:20])
 		#print('before matmul =',cp.swapaxes(partial_truths,0,1)[:20,:20],threads_to_nodes[:20,:20])
 		#print('after matmul =',1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes)[:20,:20])
-		x_next = 1-cp.prod(1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
+		x_next = cp.sum(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
 		
-		# matrix mult is the problem...
-		#print("x_next before flip=",x_next)#[:20,:20])
+		#print("x_next before flip=")#[:20,:20])
+		#G.print_matrix_names(x_next)
 		#assert(0)
 		flip_pr = params['PBN']['flip_pr']
 		x_next = x_next*(1-flip_pr) + (1-x_next)*flip_pr
@@ -183,9 +183,11 @@ def categorize_attractor(params,x0, G):
 	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
 
-	which_nodes_count = cp.zeros(x0.shape,dtype=int)
+	if not G.PBN:
+		avg_states = cp.array(x0,dtype=int)
+	else:
+		avg_states = cp.array(x0,dtype=float)
 
-	avg_states = cp.array(x0,dtype=int)
 
 	for i in range(params['steps_per_lap']):
 		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
