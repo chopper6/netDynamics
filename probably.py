@@ -1,6 +1,6 @@
-import basin, param, plot
+import basin, param, plot, util
 from net import Net
-import sys, os, itertools
+import sys, os, itertools, pickle
 from copy import deepcopy
 
 # LATER:
@@ -16,17 +16,43 @@ from copy import deepcopy
 
 def variance_test(param_file):
 	params = param.load(param_file)
-	print("Simulating loops with flip probability=",params['PBN']['flip_pr'],', for',params['loopy_reps'],'repeats.')
+
+
+	reps=params['loopy_reps']
+	all_loops = 1 
+	longloops=1
+	xorr = 0
+
+	print("Simulating loops with flip probability=",params['PBN']['flip_pr'])#,', for',params['loopy_reps'],'repeats.')
 	params['model_file'] = 'models/temp_net.txt'
 	params['verbose'] = False
 	params['inputs'],params['outputs'],params['init']={},{},{} #override
-	params['temporal_var'] = True
 	params['skips_precise_oscils'] = True
-	reps=params['loopy_reps']
+	assert(params['var_window'])
+	assert(not params['PBN']['float'])
 
-	stats = {'average':[],'ensemble variance':[], 'temporal variance':[], 'variance':[]}
-	groups = ['P','PP_and','PP_or','PP_xor','PN_and','PN_or','PN_xor','NN_and','NN_or','NN_xor','N']
-	groups += ['PP_and_long','PP_or_long','PP_xor_long','PN_and_long','PN_or_long','PN_xor_long','NN_and_long','NN_or_long','NN_xor_long']
+	stats = {'average':[],'slow variance':[],'fast variance':[]}
+	#groups = ['P','N']
+	groups = ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N']
+	logics = ['AND','OR']
+	if all_loops:
+		logics = ['AND','OR','XOR']
+		groups = ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N']
+		groups += ['PP_and_long','PN_and_long','NN_and_long','PP_or_long','PN_or_long','NN_or_long']
+		groups += ['PP_xor','PN_xor','NN_xor','PP_xor_long','PN_xor_long','NN_xor_long']
+	elif longloops:
+		logics = ['AND']
+		groups = ['PP_and','PN_and','NN_and']
+		groups += ['PP_and_long','PN_and_long','NN_and_long']
+	elif xorr:
+		logics = ['AND','XOR']
+		groups = ['P','PP_and','PP_xor','PN_and','PN_xor','NN_and','NN_xor','N']
+	else: # xor and longloops
+		logics = ['AND','XOR']
+		groups = ['PP_xor','PN_xor','NN_xor']
+		groups += ['PP_xor_long','PN_xor_long','NN_xor_long']
+
+	
 	feats = {'no noise':{g:deepcopy(stats) for g in groups},'noisy':{g:deepcopy(stats) for g in groups}}
 
 	for noise in [False, True]:
@@ -39,66 +65,70 @@ def variance_test(param_file):
 
 		settings = list(itertools.product([0,1],repeat=4)) 
 
-		for logic in ['AND','OR','XOR']:
+		for logic in logics:
 			for s in settings:
 				if s not in [(0,0,0,1),(0,1,0,0),(0,1,0,1),(0,1,1,0),(0,1,1,1),(1,1,0,1)]: #remove symmetries over the middle node's plane
 					generate_coupled_FBL(params['model_file'], logic, s[0], s[1], s[2], s[3])
 					loopType, gate = coupled_loop_type(logic, s[0], s[1], s[2], s[3],longLoop=False)
 					calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
 
-					generate_long_coupled_FBL(params['model_file'], logic, s[0], s[1], s[2], s[3], num_per_loop=4)
-					loopType, gate = coupled_loop_type(logic, s[0], s[1], s[2], s[3],longLoop=True)
-					calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
+					if longloops:
+						generate_long_coupled_FBL(params['model_file'], logic, s[0], s[1], s[2], s[3], num_per_loop=2)
+						loopType, gate = coupled_loop_type(logic, s[0], s[1], s[2], s[3],longLoop=True)
+						calc_stats_v2(params, reps, noise_str, loopType, gate, feats)
 			print("\tFinished coupled FBL with",logic)
-		for s in [[0,1],[1,1],[0,0],[1,0]]:
-			generate_FBL(params['model_file'], s[0], s[1])
-			loopType = loop_type(s[0],s[1])
-			calc_stats_v2(params, reps, noise_str, loopType, None, feats)
-		print("\tFinished regular FBLs")
+		if not longloops or all_loops:
+			for s in [[0,1],[1,1],[0,0],[1,0]]:
+				generate_FBL(params['model_file'], s[0], s[1])
+				loopType = loop_type(s[0],s[1])
+				calc_stats_v2(params, reps, noise_str, loopType, None, feats)
+			print("\tFinished regular FBLs")
+
+	pickle_file = (params['output_dir'] +params['output_img']).replace('.png','.pickle')
+	with open(pickle_file,'wb') as f:
+		pickle.dump({'params':params,'feats':feats},f)
 
 	plot.probably_bar(params,feats)
 
 	os.remove('models/temp_net.txt')
 
+def from_pickle(param_file):
+	params = param.load(param_file)
+	pickle_file = (params['output_dir'] +params['output_img']).replace('.png','.pickle')
+	with open(pickle_file,'rb') as f:
+		data = pickle.load(f)
+	plot.probably_bar(data['params'],data['feats'])
+
 
 def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
-	avg_var = 0
-	avg_avg = 0
-	avg_var_time = 0
-	avg_var_total = 0
+	avg_stats = {s:0 for s in ['total_avg','total_var','windowed_var']}
 
-	G = Net(model_file=params['model_file'],debug=params['debug'])
+	PBN = util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float'])
+	G = Net(model_file=params['model_file'],debug=params['debug'], PBN=PBN)
 	G.prepare_for_sim(params)
 
 	for r in range(reps):
-		#SS = basin.calc_basin_size(params,G,x0=None)
-		SS = basin.calc_basin_size(params,G)
+		SS = basin.measure(params,G)
 		middle_node = G.nodeNums['x1']
-		avg_var += SS.stats['ensemble_var'][middle_node] # sum_nodes sum_As var_node_in_A  / #nodes #As
-		avg_avg += SS.stats['total_avg'][middle_node]
-		avg_var_time += SS.stats['temporal_var'][middle_node]
-		avg_var_total += SS.stats['total_var'][middle_node]
+		for s in avg_stats.keys():
+			avg_stats[s] += SS.stats[s][middle_node]
 
-	avg_var/=reps
-	avg_avg/=reps
-	avg_var_time /=reps
-	avg_var_total /=reps
+	for s in avg_stats.keys():
+		avg_stats[s]/=reps
 
 	if params['debug'] and params['update_rule']=='sync':
 		#print(avg_avg,avg_var,avg_var_time,avg_var_total )
-		assert(-.0001 <= avg_avg <= 1.0001)
-		assert(-.0001 <= avg_var <= 1.0001) # know that max var is .25 for bool          # TODO: fix ensemble var!
-		assert(-.0001 <= avg_var_time <= 1.0001)
-		assert(-.0001 <= avg_var_total <= 1.0001)
+		assert(-.0001 <= avg_stats['total_avg'] <= 1.0001)
+		assert(-.0001 <= avg_stats['total_var'] <= 0.2501) # know that max var is .25 for bool
+		assert(-.0001 <= avg_stats['windowed_var'] <= 0.2501) 
 
 	if gate is None:
 		loop_str = loopType 
 	else:
 		loop_str = loopType+gate
-	feats[noise_str][loop_str]['average'] += [avg_avg]
-	feats[noise_str][loop_str]['ensemble variance'] += [avg_var]	
-	feats[noise_str][loop_str]['temporal variance'] += [avg_var_time]
-	feats[noise_str][loop_str]['variance'] += [avg_var_total]	
+	feats[noise_str][loop_str]['average'] += [avg_stats['total_avg']]
+	feats[noise_str][loop_str]['fast variance'] += [avg_stats['windowed_var']]
+	feats[noise_str][loop_str]['slow variance'] += [avg_stats['total_var'] - avg_stats['windowed_var']]	
 
 
 def generate_coupled_FBL(net_file, logic, E21, E31, E12, E13): 
@@ -121,7 +151,7 @@ def generate_coupled_FBL(net_file, logic, E21, E31, E12, E13):
 		file.write('x3\t'+sign(E13)+'x1')
 
 
-def generate_long_coupled_FBL(net_file, logic, E21, E31, E12, E13, num_per_loop=8): 
+def generate_long_coupled_FBL(net_file, logic, E21, E31, E12, E13, num_per_loop=4): 
 	#E's are for edges, so E21=0 -> x2 -| x1
 	# AND is if middle node is an AND of the other two nodes (else uses OR)
 	with open(net_file,'w') as file:
@@ -185,8 +215,14 @@ def loop_type(E21, E12):
 
 
 if __name__ == "__main__":
-	if len(sys.argv) != 2:
-		sys.exit("Usage: python3 probably.py PARAMS.yaml")
+	if len(sys.argv) != 3:
+		sys.exit("Usage: python3 probably.py PARAMS.yaml [run|pickle]")
 	
-	variance_test(sys.argv[1])
+	if sys.argv[2]=='pickle':
+		from_pickle(sys.argv[1])
+	elif sys.argv[2]=='run':
+		variance_test(sys.argv[1])
+	else:
+		print("Unrecognized 2nd argument:",sys.argv[2])
+		sys.exit()
 	print("Done.")

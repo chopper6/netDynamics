@@ -20,6 +20,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 #   debug changes to G.F and node.F()
 #   passing net file sep is awk af
 
+
 # TODO LATER:
 #   add time-reverse net (and inheritance with it)
 #       then later higher order Gexp's
@@ -31,7 +32,8 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 class Net:
     def __init__(self, model_file=None, G=None, debug=False, PBN=False):
         # complete will also apply any mutations in params and build Fmapd [TODO rename complete]
-        
+        # TODO: don't like that PBN has to be passed here...
+
         # use a model_file OR an existing net
         assert(model_file is not None or G is not None)
         assert(model_file is None or G is None)
@@ -388,10 +390,14 @@ class Net:
 
     def input_indices(self, params):
         return [self.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
+    
+    
+    def output_indices(self, params):
+        return [self.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
 
     def get_input_sets(self, params):
         # assumes that 2^#inputs can fit in memory
-        input_indices = self.input_indices(params)
+        #input_indices = self.input_indices(params)
         return list(itertools.product([0,1],repeat=len(params['inputs'])))
 
     def print_matrix_names(self,X):
@@ -449,6 +455,7 @@ class ParityNet(Net):
         self.n_neg += 1
         
         self.F[nodeName] = []
+        self.allNodes += [newNode]
 
         if not isNegative:
             self.nodes += [newNode]

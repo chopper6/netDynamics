@@ -1,4 +1,10 @@
-i,	o
-o,	i
-!i,	!o
-!o,	!i
+i,	i
+a,	i
+b,	!i
+c,	a & b
+d,	b | a
+!i,	!i
+!a,	!i
+!b,	i
+!c,	!a | !b
+!d,	!b & !a

@@ -7,6 +7,9 @@ import numpy as np # may have to replace w cp
 #		anYwhere that F is modified (self loops, mutations...) will need to use this, not just during init
 #		then a whole lot more test based debug
 
+#		try and fix version 2 (avoids needing to rewrite clauses and use powerset, + simpler)
+#		init conditn depd and distribn
+
 def get_node_float_clauses(fn, n):
 	# for PBN
 	# n should be the number of regular nodes (not complements)

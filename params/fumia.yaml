@@ -18,6 +18,7 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 
 steady_basin: 0
 async_trim: 0 #.0001
+track_x0: 0 # should prob rm this param
 
 # implementation details
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
@@ -26,9 +27,9 @@ clause_bin_size : 4 # number of clauses each threads merges at once
 
 PBN : # probabilistic boolean network # seems to req async atm
   active : 0
-  flip_pr : 0
-  init : 'half' # half or uniform
-calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor
+  float : 1
+  flip_pr : 0.01
+  init : 'asgfdf' # curr unused jp, prev half or uniform 
 
 # input
 model_file: 'models/fumia.txt' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
@@ -39,6 +40,6 @@ use_phenos: 1
 fig_legend: 0
 
 # output
-output_dir : 'output/basinRatio/'
-output_img : 'fumia_IBR_sync.png'
+output_dir : 'output/basins2/'
+output_img : 'fumia.png'
 savefig : 0 # as opposed to showing the image

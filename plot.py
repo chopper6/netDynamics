@@ -19,7 +19,7 @@ COLORS= cp.vstack((top(cp.linspace(0, 1, 8)),bottom(cp.linspace(0, 1, 8))))
 COLORS2 = ['#9933ff','#009999','#cc0066','#009933','#0000ff','#99cc00','#ff9933']
 COLORS3 = ['#ff3300','#cc0066','#cc00ff','#6600ff','#0000ff','#0099cc','#00cc99','#00cc00','#888844','#cc9900']
 
-#COLORS = ['#ffff00','#ff9933','#ff5050','#ff33cc','#cc66ff','#3366ff','#00ffcc','#00ff00'] + COLORS2 + COLORS3
+COLORS = ['#ffff00','#ff9933','#ff5050','#ff33cc','#cc66ff','#3366ff','#00ffcc','#00ff00'] + COLORS2 + COLORS3
 
 def pie(params, steadyStates, G, external_label=None):
 	node_name_to_num = G.nodeNames
@@ -183,36 +183,48 @@ def probably_bar(params, feats):
 	# TODO normalize y to max y height
 
 	buffer, width = 1,.8
+	fontsmall, fontmed, fontlarge = 16, 16, 26
 	noises = list(feats.keys())
-	xlabels = list(feats[noises[0]].keys())
+	#xlabels = list(feats[noises[0]].keys()) # to take all
+	#  ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N', 'PP_and_long','PN_and_long','NN_and_long', 'PP_xor','PN_xor','NN_xor','PP_xor_long','PN_xor_long','NN_xor_long']
+	#xlabels = ['PP_and','PP_xor','PN_and','PN_xor','NN_and','NN_xor']
+	xlabels = ['P','PP_and','PP_xor','PP_and_long','PN_and','NN_and','N']#,''] #,'PN_and','PN_and_long','NN_and','NN_and_long']#,'']
 	#stats = list(feats[noises[0]][xlabels[0]].keys())
-	stats = ['average','variance']
+	stats = ['fast variance','slow variance'] #'average',
 
-	fig, axs = plt.subplots(len(noises), len(stats),figsize=(100,8)) # noise(vert) x stats(horz)
-	fig.subplots_adjust(hspace=0.4)
+	fig, axs = plt.subplots(len(noises), len(stats),figsize=(24,8)) # noise(vert) x stats(horz)
+	fig.subplots_adjust(wspace=.15, hspace=1, bottom=0.2)
+	ymax=0
+	#for h in range(len(stats)):
+	#	stat = stats[h]
+	#	ymax = max(ymax, getmax(feats,stat,noises,xlabels)) # one ylim for all plots
 	for h in range(len(stats)):
 		stat = stats[h]
-		ymax = getmax(feats,stat,noises,xlabels)
 		for v in range(len(noises)):
 			noise = noises[v]
 			c,x=0,0
 			xticks=[]
 			for group in xlabels:
-				data = feats[noise][group][stat]
-				X = [i for i in range(x,x+len(data))]
-				xticks += [x+(len(data)-1)/2]
-				x+=len(data) + buffer
-				axs[v,h].bar(X, data, width,color=COLORS[c],edgecolor='black',linewidth=1)
-				c+=1
+				if group!='':
+					data = feats[noise][group][stat]
+					X = [i for i in range(x,x+len(data))]
+					xticks += [x+(len(data)-1)/2]
+					x+=len(data) + buffer
+					axs[v,h].bar(X, data, width,color=COLORS[c],edgecolor='black',linewidth=1)
+					c+=1
+
+			#xticks +=[12]
 			axs[v,h].grid(alpha=.5,zorder=0,color='grey')
 			axs[v,h].set_axisbelow(True)
 			axs[v,h].set_xticks(xticks)
-			axs[v,h].set_xticklabels(xlabels,fontsize=16)
-			axs[v,h].tick_params(axis='y', which='major', labelsize=12)
-			axs[v,h].set_ylim(0,ymax*1.1)
-			axs[v,h].set_title(noise + ' ' + stat,fontsize=22)
+			axs[v,h].set_xticklabels(xlabels,fontsize=fontsmall,rotation=45)
+			axs[v,h].tick_params(axis='y', which='major', labelsize=fontsmall)
+			#axs[v,h].set_ylim(0,ymax*1.1)
+			axs[v,h].set_ylim(0,.25)
+			axs[v,h].set_title(noise + ' ' + stat,fontsize=fontlarge)
 		#fig.suptitle(stat,fontsize=20)
 
+	#plt.tight_layout() # this will override the subplots_adjust argument above though
 	if params['savefig']:
 		plt.savefig(params['output_dir'] +params['output_img']) 	
 	else:
@@ -325,7 +337,10 @@ def LDOIvsCC():
 	import numpy as np
 	nets = ['Fumia','Grieco','Sahin']#,'Zhang']
 	LDOI = [0.029,.086,.236]
-	CC = [0.985,.762,.993]
+	CC = [0.985,.762,.993]  
+	# with num flips = 10, Grieco's score is .787 ... not much better \: so H.O.Ts?
+	# with num flips = 2, .. .722... wait wtf how is it lower than before??
+
 	#BOTH = [0.985,.768,.994]
 
 	colors = cm.get_cmap('Set2',8)

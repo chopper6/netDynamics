@@ -2,17 +2,17 @@
 
 use_phenos : true # quick way to disable outputs
 
-outputs : ['o']
-output_thresholds : [.49] 
+outputs : ['c','d']
+output_thresholds : [.49, .49] 
 # will produce output phenotypes with output=1 if it's average value is > threshold
 
 inputs : ['i']
 # all possible input combinations are evenly sampled
 
-init : {}
+init : {'a':1}
 # each sample begins with these states (x0) 
 
-mutations : {}
+mutations : {} #'a':0,'d':1} 
 # mutations alter the function of the node to always be off or on
 
 pheno_color_map : {'00':0, '01':1,'10':2,'11':3} #to ensure consistent coloring between images

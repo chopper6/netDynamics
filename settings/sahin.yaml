@@ -3,7 +3,7 @@
 net_file : 'input/mammCC.bnet' # examples: 'input/fumia.txt', 'input/toyNet.txt'. See README for syntax description
 
 outputs : ['pRB']
-output_thresholds : [.5] 
+output_thresholds : [.49] 
 # will produce output phenotypes in terms of these
 
 inputs : ['EGF']

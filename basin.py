@@ -26,8 +26,9 @@ def main(param_file):
 		steadyStates = sandbox.test_PBN(params, G)
 	else:
 		steadyStates = measure(params, G)
-		if params['track_x0']:
-			print('basin, total avg=\n',steadyStates.stats['total_avg'])#[1:])
+		if 1:
+			total_avg = [round(s,3) for s in steadyStates.stats['total_avg']]
+			print('basin, total avg=\n',total_avg)#[1:])
 	plot.pie(params, steadyStates,G)
 	
 
@@ -109,7 +110,7 @@ class SteadyStates:
 		self.attractors = {} 
 		self.attractor_order = [] # attractor ids in order 
 		self.phenotypes = {}
-		stat_names = ['total_avg','ensemble_var','temporal_var','total_var']
+		stat_names = ['total_avg','windowed_var','total_var']
 		self.stats = {k:np.zeros(G.n, dtype=float) for k in stat_names}
 		self.params = params
 		self.G = G
@@ -200,9 +201,8 @@ class SteadyStates:
 
 	def update_stats(self, result):
 		self.stats['total_avg'] += result['avg_total']
-		self.stats['ensemble_var'] += result['var_ensemble']
-		self.stats['temporal_var'] += result['var_time']
-		self.stats['total_var'] += result['var_x0']
+		self.stats['total_var'] += result['var_total']
+		self.stats['windowed_var'] += result['windowed_var']
 
 	def normalize_stats(self):
 		reps = int(self.params['num_samples']/self.params['parallelism'])
@@ -216,8 +216,6 @@ class SteadyStates:
 		total=0
 		#assert(self.params['update_rule']=='sync') # else check normzn before using, but should be ok
 		#print('basin:',self.attractors.keys(),SS0.Aweights.keys())
-		#assert(0)
-
 		Aweights = SS0.Aweights
 		assert(math.isclose(sum([A.size for A in self.attractors.values()]),1))
 		assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled
@@ -431,6 +429,8 @@ def get_init_sample(params, G):
 			i+=1
 		assert(i==2**len(params['inputs']))
 
+	#print('temp in basin:')
+	#x0[0] = cp.array([0,0,1,0,1,0,1])
 	return x0
 
 def format_id_str(x):

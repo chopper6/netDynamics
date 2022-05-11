@@ -41,8 +41,8 @@ def step(params, x, G):
 
 			x_next = ((~flip) & x_next) | (flip & (~x_next))		
 
-	else:
-		# PBN float version
+	elif 1:
+		# PBN float version1
 
 		X = cp.concatenate((x,1-x),axis=1) # append NOT x to the states
 		#print('\n\n\nlap.step():')
@@ -50,14 +50,35 @@ def step(params, x, G):
 		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
 		clauses *= G.Fmapd['clauses_multiplier']
 		partial_truths = cp.sum(clauses[:,clauses_to_threads],axis=3)
-		#print('partial_truths =',partial_truths[:20,:20])
-		#print('before matmul =',cp.swapaxes(partial_truths,0,1)[:20,:20],threads_to_nodes[:20,:20])
-		#print('after matmul =',1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes)[:20,:20])
 		x_next = cp.sum(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
 		
-		#print("x_next before flip=")#[:20,:20])
-		#G.print_matrix_names(x_next)
-		#assert(0)
+		flip_pr = params['PBN']['flip_pr']
+		x_next = x_next*(1-flip_pr) + (1-x_next)*flip_pr
+
+		
+		x_next[:,0] = 0 # make sure the OFF nodes are not flipped
+		
+		tol=1e-5
+		assert(cp.all(x_next<1+tol) & cp.all(x_next>0-tol))
+
+	else:
+		# PBN float version2
+
+		X = cp.concatenate((x,1-x),axis=1) # append NOT x to the states
+		print('\n\nlap.step():')
+		G.print_matrix_names(X)
+		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
+		print('clauzez =',clauses[0])
+		partial_truths = cp.prod(1-clauses[:,clauses_to_threads],axis=3)
+		print('partial_truths =',partial_truths[0])
+		print('before matmul =',cp.swapaxes(partial_truths,0,1)[0])
+		print('after matmul =',1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes)[0])
+		x_next = 1-cp.prod(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
+		# jp matmul fucks it up since involves an addition 
+
+		print("x_next before flip=")#[:20,:20])
+		G.print_matrix_names(x_next)
+		assert(0)
 		flip_pr = params['PBN']['flip_pr']
 		x_next = x_next*(1-flip_pr) + (1-x_next)*flip_pr
 
@@ -156,18 +177,6 @@ def categorize_attractor(params,x0, G):
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
 
-	# should be able to clean and rm these or smthg:
-	total_avg_check = cp.zeros(x0.shape)
-	avg_ensemble, var_ensemble, var_time,avg_time, var_x0,avg_x0 = [cp.zeros((1)) for _ in range(6)]  # kinda messy, but just if won't be used
-	if util.istrue(params,'track_x0'): # i.e. if calculating lap stats
-		x0_ids = np.unique(x0.get(),return_inverse=True,axis=0)[1] # just get index for each row of x0, where if x0_i = x0_j, they have same index
-		x0_ids = cp.array(x0_ids)
-		num_x0s = int(cp.max(x0_ids))+1
-		avg_ensemble, var_ensemble = cp.zeros((num_x0s,G.n),dtype=float),cp.zeros((num_x0s,G.n),dtype=float)
-		var_time, avg_time = cp.zeros(x0.shape,dtype=float) , cp.zeros(x0.shape,dtype=float) 
-		if not (num_x0s < len(x0)/2): # otherwise really shouldn't be using 'track_x0' param
-			print("\nReminder to change track_x0 to general stats (lap.py)!!")
-
 	if params['precise_oscils']:
 		period = cp.ones(params['parallelism'],dtype=int)
 		not_finished = cp.ones(params['parallelism'], dtype=bool)
@@ -182,16 +191,19 @@ def categorize_attractor(params,x0, G):
 	larger = cp.zeros((params['parallelism']),dtype=cp.uint8)
 	diff = cp.zeros((params['parallelism'],G.n),dtype=cp.uint8)
 	first_diff_col = cp.zeros((params['parallelism']),dtype=index_dtype)
+	
+	if util.istrue(params,'var_window'):
+		assert(params['var_window']<=params['steps_per_lap']) # else can't calc it
+		# dtype should actually be bool for deterministic but will typ use with PBN
+		windowed_x = cp.zeros((params['var_window'],params['parallelism'],G.n),dtype=float) 
+		windowed_var_total = cp.zeros(G.n,dtype=float) # for each node, will find the var over the window and sum each time step 
 
 	if not G.PBN:
 		avg_states = cp.array(x0,dtype=int)
 	else:
 		avg_states = cp.array(x0,dtype=float)
 
-
 	for i in range(params['steps_per_lap']):
-		#print("lap.py CyclinD=",x[:,G.nodeNums['CycD']].astype(int),",GSK_3+p15=",cp.logical_xor(x[:,G.nodeNums['GSK_3']],x[:,G.nodeNums['p15']]).astype(int))
-		
 		x_next = step(params, x, G)
 		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0 and len(params['inputs'])>0: 
 			# reset inputs in case of flip, every other such that input flips still can effect net
@@ -209,8 +221,11 @@ def categorize_attractor(params,x0, G):
 				which_nodes = cp.ones(x.shape)
 		elif params['update_rule']=='Gasync': # generalized async, note that this is NOT the same as general async
 			p=.5
-			which_nodes = cp.random.rand(params['parallelism'], G.n) > p
-			x = which_nodes*x_next + (1-which_nodes)*x 
+			if util.istrue(params,['PBN','float_update']):
+				x = p*x_next + (1-p)*x
+			else:
+				which_nodes = cp.random.rand(params['parallelism'], G.n) > p
+				x = which_nodes*x_next + (1-which_nodes)*x 
 		elif params['update_rule']=='async':
 			# WARNING: this is incredibly inefficient (uses an array to update a single element)
 			# and in fact even more efficient, maybe due to the extra for loop?
@@ -224,91 +239,40 @@ def categorize_attractor(params,x0, G):
 
 		avg_states += x 
 
-		if util.istrue(params,'track_x0'):
-			total_avg_check += x
-			#avg_ensemble += cp.mean(x,axis=0)
-			#var_ensemble += cp.var(x, axis=0)
-			for i in range(num_x0s):
-				subx = x[x0_ids==i]
-				avg_ensemble[i] += cp.mean(subx,axis=0)
-				var_ensemble[i] += cp.var(subx,axis=0,ddof=0) 
-					# TODO: should be ddof=1 for unbiased sample, but then divides by 0 sometimes...
-			#var_t += cp.power(x,2) # note that actually calculating <x^2> and will - <x>^2 at the end
-			avg_time += x
-
 		# next few lines are just to replace ids with current states that are "larger", where larger is defined by int representation (i.e. first bit that is different)
 		diff = ids-x.astype(cp.int8)
 		first_diff_col = ((diff)!=0).argmax(axis=1).astype(index_dtype) #i'm worred that this first goes to 64 then converts to 8..
 		larger = diff[[simple_ind,first_diff_col]] #note that numpy/cupy handles this as taking all elements indexed at [simple_ind[i],first_diff_col[i]]   
 		
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
+	
+		if util.istrue(params,'var_window'):
+			windowed_x[i%params['var_window']]= x 
+			if i>= params['var_window']:
+				window_avg = cp.mean(windowed_x,axis=0)
+				windowed_var_total += cp.mean(window_avg - cp.power(window_avg,2),axis=0)
 
 		if params['precise_oscils']:
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
 				avg_states = avg_states/(i+2) #+1 for init, +1 since #laps = i+1
 				return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
-	# using num steps +1 since init state is also added to the avg
-	# TODO: this normalization is different in different places...
-	# when checking canalization with Gasync, needed to divide avg by expected # updates, NOT just steps per lap
-	if 0: # TODO: rm all this, just added every node at every step now
-		# only problem is async will artificially have less variance (find normz factor analytically?)
-		if params['update_rule'] == 'async':
-			expected_num_updates = (params['steps_per_lap']+1)/(G.n) # apparently this is normalized elsewhere
-		elif params['update_rule'] == 'Gasync':
-			expected_num_updates = (params['steps_per_lap']+1)/2 # apparently this is normalized elsewhere
-		elif util.istrue(params,['PBN','active']) or params['map_from_A0'] or util.istrue(params,'skips_precise_oscils'):
-			expected_num_updates =params['steps_per_lap']+1 # +1 def needed
-		else: #sync
-			if params['precise_oscils']:
-				expected_num_updates = period[:,cp.newaxis].astype(float)
-				assert(not util.istrue(params,['PBN','active'])) #otherwise need to add normzn jp
-			else:
-				expected_num_updates = params['steps_per_lap']+1
+	#avg_total = cp.sum(avg_states,axis=0)/(params['num_samples']*(params['steps_per_lap']+1))
+	avg_states = avg_states /(params['steps_per_lap']+1)
 
-	if util.istrue(params,'track_x0'): # TODO: clean this and put in a sep fn
-		# average over time steps
-		#print('before avg over t:',avg_ensemble)
-		avg_x0 = cp.copy(avg_time)
-		avg_time /= params['steps_per_lap'] 
-
-		# average over x0
-		avg_ensemble = cp.sum(avg_ensemble,axis=0) / (params['steps_per_lap']+1)
-		var_ensemble = cp.mean(var_ensemble,axis=0) / (params['steps_per_lap']+1)
-
-		#var_t = cp.mean(var_t - cp.power(avg_ensemble,2),axis=0) # note that avg_ensemble is really just average in general
-		
-		# relies on fact that xi is boolean (so xi^2=xi):
-		#	and since avg_total has not yet been avg'd over instances of x_i, works as avg_time
-		var_time = avg_time - cp.power(avg_time,2) # this gives variance for all x0
-		var_time = cp.mean(var_time, axis=0) # now avg variance for each node
-		assert(params['steps_per_lap']>1) # else shouldn't be measuring temporal variance
-		#var_time *= params['steps_per_lap'] / (params['steps_per_lap']-1) # to make it unbiased sample stat
-
-		avg_x0_total=0
-		var_x0 = cp.zeros(G.n)
-		for i in range(num_x0s):
-			w_x0=len(avg_x0[x0_ids==i])/params['num_samples']
-			avg_x0_i = cp.mean(avg_x0[x0_ids==i],axis=0)/params['steps_per_lap']
-			avg_x0_total += avg_x0_i*w_x0
-			var_x0 += (avg_x0_i - cp.power(avg_x0_i,2))*w_x0
-			# TODO: add back unbiased thing once comfortable (shouldn't make big diff)
-			#n = len(avg_x0)*params['steps_per_lap']
-			#var_x0 *= n/(n-1) #make it unbiased
-		#var_x0 /= num_x0s 
-
-		avg_x0 = avg_x0_total #cp.mean(avg_x0,axis=0)/params['steps_per_lap']
-
-	avg_states = avg_states/(params['steps_per_lap']+1)
-	total_avg_check = total_avg_check/params['steps_per_lap']
-	total_avg_check = cp.sum(total_avg_check,axis=0)/params['num_samples']
-	#print("total avg=\n",total_avg_check,'\nvs avg_x0=\n',avg_x0)
-	assert(cp.allclose(total_avg_check,avg_x0))
+	# note that var ignores var btwn diff instances (since some of their var is due to diff in x0)
+	var_total = cp.mean(avg_states - cp.power(avg_states,2),axis=0)
+	avg_total = cp.mean(avg_states,axis=0)
+	if util.istrue(params,'var_window'):
+		windowed_var=windowed_var_total/(params['steps_per_lap']+1-params['var_window'])
+		windowed_var=cp.mean(windowed_var,axis=0)
+	else:
+		windowed_var=cp.array(0)
 
 	if params['precise_oscils']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 	#else:
-	return {'state':ids, 'avg':avg_states,'avg_total':avg_x0, 'var_ensemble':var_ensemble,'var_time':var_time, 'var_x0':var_x0}
+	return {'state':ids, 'avg':avg_states,'avg_total':avg_total,'windowed_var':windowed_var,'var_total':var_total}
 
 
 def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states):

@@ -17,6 +17,127 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # then do comparison over inputs
 # compare #steps reqd to async
 
+def conditional_canalization(param_file):
+
+	# TODO: apply mutations by directly pinning in attractor intersection
+	# and first avg, then use a threshold BEFORE making intersection A
+
+	# DEBUG: simplest ex yet, a=1 supposed to be perfect fix but ain't
+
+	# misc TODO
+	# ikey/okey of an attr should be handled in basin.py (ie standardized)
+
+	num_candidates = 4
+
+	mutations = {'p53_PTEN':0} #'PTEN':0}
+
+	params = param.load(param_file)
+	G = net.Net(model_file=params['model_file'],debug=params['debug'])
+	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])		
+	assert(G.n==Gpar.n) #otherwise parity file doesn't match the regular model file
+
+	G.prepare_for_sim(params) # don't like that this needs to be called for mutations to be applied...
+	SS_healthy = basin.measure(params, G)
+	healthy_dom_pheno = build_dominant_pheno(G, SS_healthy)
+
+	for k in mutations:
+		params[k] = mutations[k]
+	G.prepare_for_sim(params) 
+	SS = basin.measure(params, G)
+
+	A_intersect = build_intersection_attractors(params, Gpar, SS_healthy)
+
+	scores = np.zeros((G.n*2)) # one per poss controller ie 2* num nodes
+	#print("canalization: score names=", [G.nodeNames[i] for i in range(G.n*2)])
+
+	input_ind = G.input_indices(params)
+	output_ind = G.output_indices(params)
+	for A0 in A_intersect.values(): # one per input condition 
+		#print("\nA0 starting...",A0)
+		canal_soln = ldoi.ldoi_bfs(Gpar,A0=A0,pins=mutations)[0].get() # add pins = mutations
+		#print(canal_soln)
+		ikey = str([int(x) for x in A0[input_ind]])
+		major_okey = healthy_dom_pheno[ikey]
+		canal_okeys = canal_soln[:,output_ind]
+		#print(canal_okeys.shape,canal_okeys.dtype,'vs',major_okey.shape,major_okey.dtype)
+		scores += np.all((canal_okeys==major_okey),axis=1).reshape(G.n*2)
+		#print("Canalization:",canal_okeys[44],major_okey)
+	
+	scores /= len(A_intersect.keys())  # normalize by number of input sets
+	#top_node_nums = np.argpartition(scores, -1*num_candidates)[-1*num_candidates:]
+	#top_node_nums = np.flip(top_node_nums) # best 1st
+	top_nodes = [x for _, x in sorted(zip(scores, Gpar.nodeNames))]
+	top_scores = sorted(scores)
+	top_nodes.reverse()
+	top_scores.reverse()
+	#top_nodes = [Gpar.nodeNames[x] for x in top_node_nums]
+	print("Top nodes=",top_nodes[:num_candidates],"\nwith scores=",top_scores[:num_candidates])
+
+
+def build_dominant_pheno(G, SS):
+	# returns dict {ikey:dominant_okey}
+	input_ind = G.input_indices(params)
+	output_ind = G.output_indices(params)
+	count = {}
+	okeys = {}
+	for A in SS.attractors.values():
+		ikey = str([int(x) for x in A.avg[input_ind]])
+		okey = [int(x) for x in A.avg[output_ind]]
+		okeys[str(okey)] = np.array(okey)
+		if ikey not in count:
+			count[ikey] = {}
+		if str(okey) not in count[ikey]:
+			count[ikey][str(okey)] = A.size
+		else:
+			count[ikey][str(okey)] += A.size
+	dominant = {}
+	for ikey in count:
+		max_val = 0
+		for okey in count[ikey]:
+			if count[ikey][str(okey)] > max_val:
+				max_val = count[ikey][str(okey)]
+				dominant[ikey] = okeys[str(okey)]
+
+	return dominant 
+
+def build_intersection_attractors(params, G, SS):
+	assert(isinstance(G,net.ParityNet)) # can change this, but careful 
+	inpt_ind = G.input_indices(params)
+	input_orgnzd = {} #{str(k):[] for k in G.get_input_sets(params)}
+	for A in SS.attractors.values():
+		input_key = str([int(x) for x in A.avg[inpt_ind]])
+		if input_key not in input_orgnzd.keys():
+			input_orgnzd[input_key] = []
+		A_certain = ldoi.build_A0(G,A.avg)
+		input_orgnzd[input_key] += [A_certain]
+
+	A_intersect = {}
+	for k in input_orgnzd:
+		stacked = np.array([input_orgnzd[k][i].get() for i in range(len(input_orgnzd[k]))]) # assumes using cupy
+		# for each node (col), if all attrs (rows) are not the same, then all equal 2
+		isSame = np.array([np.all(np.equal(stacked[:,i],stacked[0,i])) for i in range(len(stacked[0]))]) # should be a better numpy way...
+		A_intersect[k] = input_orgnzd[k][0]
+		A_intersect[k][isSame==False] = 2 
+	
+	#print('A_intersect =',A_intersect)
+	apply_inits_to_intersect(params,G,A_intersect)
+	return A_intersect
+
+def apply_inits_to_intersect(params,G,A_intersect):
+	if 'init' in params.keys():
+		init_nodes = [G.nodeNums[k] for k in params['init']]
+		init_vals = [params['init'][G.nodeNames[k]] for k in init_nodes]
+
+		# then add the complements
+		init_vals += [1-params['init'][G.nodeNames[k]] for k in init_nodes]
+		init_nodes += [G.nodeNums[k]+G.n for k in params['init']]
+
+		init_vals = np.array(init_vals)
+		init_nodes = np.array(init_nodes)
+
+		for k in A_intersect:
+			A_intersect[k][init_nodes] = init_vals
+
 def apply_pins(X,n):
 	# where n is number of nodes (i.e. 1/2 height of X)
 	assert(len(X)==n*2)
@@ -26,27 +147,12 @@ def apply_pins(X,n):
 	X = cp.roll(X_rolled,n,axis=0) 
 	return X
 
-def build_A0(G,A0_avg):
-	assert(isinstance(G,net.ParityNet))
-	A0 = cp.ones(A0_avg.shape,dtype=cp.int8)*2 # only need 0,1,2, but int8 is smallest avail
-	A0[cp.isclose(A0_avg,0)] = 0 
-	A0[cp.isclose(A0_avg,1)] = 1
-
-	A0not = cp.ones(A0_avg.shape,dtype=cp.int8)*2 
-	A0not[A==1]=0 
-	A0not[A==0]=1
-
-	A0exp = cp.zeros(G.n_exp-2*G.n)
-	assert(G.n_exp-2*G.n>=0)
-
-	A0 = cp.hstack([A0,A0not,A0exp])
-	return A0 
 
 def contextual(params, G, A0_avg):
 	# TODO: add pinned nodes, AFTER checking that this just returns A0 again
 
 	# A0_avg should be a numpy or cupy object with the average activity level of each node in A0
-	x = cp.ones(A0_avg.shape,dtype=cp.int8)*2 # only need 0,1,2, but int8 is smallest avail
+	x = cp.ones(A0_avg.shape,dtype=cp.int8)*2 # only need 0,1,2, but int8 is smallest avail (byte)
 	x[cp.isclose(A0_avg,0)] = 0 
 	x[cp.isclose(A0_avg,1)] = 1
 
@@ -120,7 +226,7 @@ def unfair_compare(params, include_exhaustive=True):
 		A0 = SS.attractors[k]
 		z=[(G.nodeNames[i],float(A0.avg[i])) for i in range(len(A0.avg))]
 		print("\nA0 starting...",z)
-		canal_soln = ldoi.ldoi_bfs(Gpar,A0=A0.avg)[0]
+		canal_soln = ldoi.ldoi_bfs(Gpar,A0=build_A0(G,A0.avg))[0]
 		total_pinned = 0
 
 		for node in G.nodes:
@@ -204,8 +310,11 @@ if __name__ == "__main__":
 	params = param.load(sys.argv[1])
 	G = net.Net(model_file=params['model_file'],debug=params['debug'])
 	
-	if 1:
+	if 0:
 		unfair_compare(params)
+
+	elif 1:
+		conditional_canalization(sys.argv[1])
 
 	elif 0:
 		G.prepare_for_sim(params) # there should be a 1-liner for making a net and preparing it...

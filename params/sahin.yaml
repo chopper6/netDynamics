@@ -8,18 +8,18 @@ print_lap : 10 # how many laps before another print statement. only if verbose
 
 parallelism : 10^3 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
 num_samples : 10^3 # number of initial states tested. false to turn off (and use only max_laps instead)
-steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
-update_rule : 'async' # node update scheme: 'sync', 'async', or 'Gasync' 
+update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
 steady_basin: 0
-track_x0: 0
 
 PBN : # probabilistic boolean network
   active : 0
-  float : 1
+  float : 1       # use ensemble expectation for flips
+  float_update : 0 # update Gasync by avg
   flip_pr : 0
   init : 'uniform' # just uniform atm
 calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor

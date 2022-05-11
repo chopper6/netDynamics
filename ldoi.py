@@ -8,6 +8,7 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 #	worried the idea is not correct
 # rm the 'test' function
 
+FLIP_LMT = 2
 
 def test(G,params,init=[],goi=[]):
 
@@ -44,17 +45,23 @@ def convert_solutions(G,ldoi_solns):
 	return soln_dict
 
 
-def ldoi_bfs(G, A0=None):
+def ldoi_bfs(G, A0=None, pins=None):
 	# X is the main array that tracks visited for traditional LDOI
 	# corresponding Vexp to G.A_exp should be ordered such that:
 	#	 Vexp[0:n] are normal nodes, [n:2n] are negative nodes, and [2n:N] are composite nodes
 	
-	# optionally pass avg states of nodes in an attractor as A0
+	# optionally pass an attractor A0 that should already be pre-processed such that oscillating nodes have a value of 2
+
+	if pins != None and len(pins)>0:
+		assert(A0 is not None) # have not done this yet
+		pinned_nodes = cp.array([G.nodeNums[k] for k in pins.keys()] + [G.nodeNums[k]+G.n for k in pins.keys()])
+		pinned_vals = cp.array([k for k in pins.values()] + [1-k for k in pins.values()])
 
 	if isinstance(G,net.ParityNet): # TODO: clean this
 		n=G.n_neg          # this is confusing af
 		n_compl = G.n 
 	elif isinstance(G,net.DeepNet):
+		assert(0) # haven't used this is a long time
 		n=G.n 
 		n_compl = int(G.n/2)
 	else:
@@ -64,14 +71,13 @@ def ldoi_bfs(G, A0=None):
 	A = cp.array(G.A_exp, dtype=bool).copy()
 
 	if A0 is not None:
-		assert(len(A0)==n_compl) 
-		A0=build_A0(G,A0) 
+		assert(len(A0)==G.n_exp)  # as in the lng of the regular + parity + expanded nodes
+		# A0=build_A0(G,A0)  # should already pre-process this
 		#print("transformed A0=",A0)
 		X = cp.array([A0 for _ in range(N)],dtype=cp.int8)
-		changed = cp.zeros((N,N),dtype=bool) # vals in [0,1,2]
+		changed = cp.zeros((N,N),dtype=cp.uint8) # vals in [0,1,2]
 	else:
 		X = cp.zeros((N,N),dtype=bool) # the current sent of nodes being considered
-	
 	
 	negated = cp.zeros(N,dtype=bool) # if negated[i] then the complement of i is in the LDOI of i
 	D = cp.diag(cp.ones(N,dtype=bool))
@@ -90,8 +96,12 @@ def ldoi_bfs(G, A0=None):
 	counts = cp.tile(num_to_activate,N).reshape(N,N) # num input nodes needed to activate
 	zero = cp.zeros((N,N))
 
-	X[D] = 1 # cp.fill_diagonal would also work
 
+	if pins is not None and len(pins) > 0:
+		X[:,pinned_nodes] = pinned_vals
+
+	# note that controllers are prioritized over pinned nodes
+	X[D] = 1 # cp.fill_diagonal would also work
 	if A0 is None:
 		#i.e. the descendants of X, including composite nodes iff X covers all their inputs
 		X = counts-cp.matmul(X.astype(index_dtype),A.astype(index_dtype))<=0 
@@ -103,11 +113,13 @@ def ldoi_bfs(G, A0=None):
 
 	loop,cont=0,True
 	while cont: 
+		#outpts = cp.array([6,22,42,35])
+		#print("\nldoiStep:",X[52,outpts])
 
 		if A0 is None:
 			X, negated, cont = step(X, A, D, D_compl, counts, negated, n, n_compl, index_dtype)
 		else:
-			X, changed, cont = step_A0(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype)
+			X, changed, cont = step_A0(G, X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype, pins=pins)
 			
 		loop = loop_debug(N, loop)
 	
@@ -136,27 +148,31 @@ def step(X, A, D, D_compl, counts, negated, n, n_compl, index_dtype):
 	return X_next, negated, cont
 
 def loop_debug(N, loop):
-	if loop>N:
-		print("WARNING: N steps exceeded in LDOI")
+	#if loop>N*FLIP_LMT:
+	#	print("WARNING: N steps exceeded in LDOI")
 	if loop > N**4:
 		sys.exit("ERROR: infinite loop in ldoi_bfs!")
 	return loop+1
 
-def step_A0(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype):
+def step_A0(G, X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype, pins=None):
 	X, changed = X.copy(), changed.copy()
 	# quick and dirty way to only update composite, then only regular
 	
-	x_next_compl, changed_compl, cont_compl = step_A0_half(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype,composites=True)
+	x_next_compl, changed_compl, cont_compl = step_A0_half(G, X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype,composites=True, pins=pins)
 	X[:,n:], changed[:,n:] = x_next_compl[:,n:], changed_compl[:,n:]
 
-	x_next_reg, changed_reg, cont_reg = step_A0_half(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype)
+	x_next_reg, changed_reg, cont_reg = step_A0_half(G, X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype, pins=pins)
 	X[:,:n], changed[:,:n] = x_next_reg[:,:n], changed_reg[:,:n]
 
+	#print('s',cp.max(changed_compl), cp.any(cont_compl), cp.max(changed_reg), cp.any(cont_reg))
 	cont = cont_reg | cont_compl 
 	return X, changed, cont
 
 
-def step_A0_half(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype,composites=False):
+def step_A0_half(G, X, A, D, D_compl, counts, negated, changed, n, n_compl, index_dtype,composites=False, pins = None):
+	if pins != None and len(pins)>0:
+		pinned_nodes = cp.array([G.nodeNums[k] for k in pins.keys()] + [G.nodeNums[k]+G.n for k in pins.keys()])
+		pinned_vals = cp.array([k for k in pins.values()] + [1-k for k in pins.values()])
 
 	changed=changed.copy()
 	X=X.copy() # prob not nec
@@ -173,12 +189,18 @@ def step_A0_half(X, A, D, D_compl, counts, negated, changed, n, n_compl, index_d
 	x_next[xON==1]=1
 	x_next[xOFF==0]=0  	
 	x_next[(~xON) & xOFF]=2
+
+	if pins is not None and len(pins)>0:
+		x_next[:,pinned_nodes] = pinned_vals
+
+
+	# note that controllers are prioritized over pinned nodes	
 	x_next[D]=1  
 	x_next[D_compl]=0
 
 	if not composites:
-		x_next[(x_next!=X) & changed]=2 
-		changed[x_next!=X]=True
+		x_next[(x_next!=X) & (changed>=FLIP_LMT)] = 2
+		changed[x_next!=X]+=1
 		cont = 1-cp.all(x_next[:n,:n]==X[:n,:n])
 	else:
 		cont = 1-cp.all(x_next[n:,n:]==X[n:,n:])

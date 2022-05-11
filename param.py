@@ -30,6 +30,10 @@ def clean(params):
 	CUPY, cp = util.import_cp_or_np(try_cupy=1) #test import
 	params['cupy'] = CUPY
 
+	if util.istrue(params,['PBN','float_update']):
+		assert(params['PBN']['active']) # float_update requires PBN
+		assert(params['update_rule']=='Gasync') # float_update only makes sense for Gasync
+
 
 def param_pow(params,k):
 	# yaml doesn't maintain json's 10e5 syntax, so here is support for scientific notation. Syntax: 10^5
@@ -57,9 +61,9 @@ def load_model_file(params):
 def adjust_for_inputs(params):
 	if 'inputs' in params.keys():
 		k = len(params['inputs'])
-		actual_num_parallel = round(params['parallelism']/(2**k))*2**k
+		actual_num_parallel = round(params['parallelism']/(2**k))*2**(k)
 
-		if actual_num_parallel < 1:
+		if params['parallelism'] < 2**k:
 			sys.exit("\nERROR: parallelism parameter must be >= # input combinations, since inputs are run in parallel!\n")
 
 		if actual_num_parallel!=params['parallelism']:

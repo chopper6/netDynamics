@@ -1,14 +1,49 @@
 # for making a mess
 # curr mainly with PBNs
 
-import basin
+import basin, util, param
 import sys
 from copy import deepcopy
+import numpy as np
+from net import Net
 
 
 
 
 ############################   PBN   #################################################
+
+def x0_stoch_vs_det(param_file):
+	# also want to check scaling w.r.t # samples and # steps too
+	# then create 3 images
+	reps = 20
+
+
+	params = param.load(param_file)
+	params['track_x0'] = True 
+	params['PBN']['active'] = True
+	params['PBN']['float'] = True
+	PBN = util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float'])
+	G = Net(model_file=params['model_file'],debug=params['debug'],PBN=PBN)
+	G.prepare_for_sim(params)
+
+	std_devs = []
+	flip_prs = [0, .001]#, .01, .1, .5]
+	
+	for flip_pr in flip_prs:
+		params['PBN']['flip_pr'] = flip_pr
+
+		node_avgs = []
+		for r in range(reps):
+			steadyStates = basin.measure(params, G)
+			node_avgs += [steadyStates.stats['total_avg']]
+
+		node_std_btwn_runs = np.std(node_avgs,axis=0)
+		std_devs += [np.mean(node_std_btwn_runs)]
+
+	print('for flip pr=',flip_prs,'\tvariances=',std_devs)
+
+
+
 
 def test_PBN(params, G):
 	# TODO: add an optional 'mult' to multiply the number of A0s, async might also use it
@@ -131,8 +166,11 @@ if __name__ == "__main__":
 		sys.exit("Usage: python3 sandbox.py PARAMS.yaml [runtype]")
 	
 	if len(sys.argv) == 3:
-		if sys.argv[2] != 'repeat':
+		if sys.argv[2] == 'repeat':
+			repeat_test(sys.argv[1])
+		elif sys.argv[2] == 'x0':
+			x0_stoch_vs_det(sys.argv[1])
+		else:
 			print("Unknown 2nd param...",sys.argv[2])
-		repeat_test(sys.argv[1])
 	else:
 		print("I dunno what the default should be yet \\:")
