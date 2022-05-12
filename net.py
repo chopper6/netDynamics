@@ -1,3 +1,5 @@
+# contructs Net objects that include graph structure and the associated logic functions
+
 import os, sys, yaml, util, math, itertools
 import util, logic, deep, PBN
 from copy import deepcopy
@@ -7,43 +9,30 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # in particular Fmapd should be cupy (if cupy is being used instead of numpy)
 
 # TODO: 
-# should also be fine to start w a regular net..right?
-# debug ParityNet & DeepNet
-#   G.nodes() should be the default, not AllNodes!
-#       use G.parityNodes() or something to distinguish
-#           --> need to check all over the place where allNodes may have been used
-#   check that ParityNet name (vs Parity_Net) is fixed elsewhere
-
-# TODO 2:
 #   add explicit debug function for net construction
 #       check that certain objs same, certain diff
-#   debug changes to G.F and node.F()
-#   passing net file sep is awk af
-
+#       ex G.F and node.F()
 
 # TODO LATER:
 #   add time-reverse net (and inheritance with it)
-#       then later higher order Gexp's
 #   Net._build_net() and build_Fmap() are still messy af
-#   function that updates expanded net due to input or mutation holding it static? ldoi cover that case anyway tho
-
+#   check for repeated clauses in build_Fmapd_and_A()
 
 
 class Net:
-    def __init__(self, model_file=None, G=None, debug=False, PBN=False):
-        # complete will also apply any mutations in params and build Fmapd [TODO rename complete]
-        # TODO: don't like that PBN has to be passed here...
-
-        # use a model_file OR an existing net
-        assert(model_file is not None or G is not None)
-        assert(model_file is None or G is None)
+    def __init__(self, params, model_file=None, G=None):
+        # will construct from graph G if passed
+        # otherwise will construct from the default model_file in params (unless otherwise specified)
+        
+        if model_file is None:
+            model_file=params['model_file']
 
         self.F= {} # logic function for each node
         self.A=None # adjacency matrix, unsigned
         self.Fmapd = None
 
         self.n = 0  # # regular nodes
-        self.n_neg = 0 # curr num regular nodes + num negative nodes
+        self.n_neg = 0 # num regular nodes + num negative nodes
 
         self.nodes = [] # object to hold name & number, only regular nodes included
         self.allNodes = [] #includes complement nodes too
@@ -58,39 +47,49 @@ class Net:
         self.max_literals=0 # max literals per clause
         self.max_clauses=0 # max clauses per node
 
-        self.PBN = False
-        if PBN:
-            self.add_node('OFF',debug=debug)
+        self.debug = params['debug']
+
+        if util.istrue(params,['PBN','active']):
+            self.add_node('OFF')
             self.F['OFF'] = [['OFF']]
             self.PBN=True
+        else:
+            self.PBN = False
 
+        # CONSTRUCTION FROM PREVIOUS NET
         if G is not None: 
             self.copy_from_net(G)
+
+        # CONSTRUCTION FROM FILE
         elif model_file is not None:
-            self.read_from_file(model_file, debug=debug)
+            self.read_from_file(model_file)
+
+        # APPLY MUTATIONS AND BUILD Fmapd
+        self.prepare(params)
 
 
     def __str__(self):
         # TODO: make this more complete
         return "Net:\nF =" + str(self.F)
 
-    def prepare_for_sim(self,params): 
+    def prepare(self,params): 
         # applies setting mutations and builds Fmapd
-        self.add_self_loops(params)
-        self.apply_mutations(params,debug=params['debug'])
-        self.build_Fmapd_and_A(params)
+        self.params=params # since sometimes alter the params applied to same net here
+        self.add_self_loops()
+        self.apply_mutations()
+        self.build_Fmapd_and_A()
 
     def copy_from_net(self,G):
         self.__dict__ = deepcopy(G.__dict__) # blasphemy to some
 
-    def add_self_loops(self,params):
+    def add_self_loops(self):
         for node in self.nodes:
             # if function is 0 or 1 set to a self-loop and an init call
             if self.F[node.name] in [[['0']],[['1']]]:
-                params['init'][node.name] = int(self.F[node.name][0][0])
+                self.params['init'][node.name] = int(self.F[node.name][0][0])
                 self.F[node.name] = [[node.name]]
 
-    def read_from_file(self, net_file, debug=False):
+    def read_from_file(self, net_file):
         # inits network, except for F_mapd (which maps the logic to an actual matrix execution)
         # net file should be in DNF, see README for specifications
 
@@ -114,10 +113,10 @@ class Net:
                 node_name = line[0].strip()
                 for symbol in strip_from_node:
                     node_name = node_name.replace(symbol,'')
-                if debug:
+                if self.debug:
                     assert(node_name not in self.nodeNames)
 
-                self.add_node(node_name,debug=debug)
+                self.add_node(node_name)
 
                 clauses = line[1].split(clause_split)
                 for clause in clauses:
@@ -135,14 +134,10 @@ class Net:
 
                 loop += 1
         
-        self.build_negative_nodes(debug=debug) # this is just a pass function for Parity & DeepNet
-
-        #self.count_clauses_and_lits()
+        self.build_negative_nodes() # this is just a pass function for Parity & DeepNet
 
 
-    def write_to_file(self, output_file,parity=False):
-        # parity is an extra switch to treat the network like it is a Parity Net
-        #   for ex when building a parity net from a regular net
+    def write_to_file(self, output_file):
 
         with open(output_file,'w') as ofile:
             if self.encoding != 'bnet':
@@ -185,7 +180,7 @@ class Net:
         return fn_str
 
     
-    def add_node(self,nodeName,isNegative=False,debug=False):
+    def add_node(self,nodeName,isNegative=False):
         # note that F is not added for negatives, since simulation just negates their positive nodes directly
 
         newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
@@ -202,23 +197,23 @@ class Net:
     def nodesByName(self,name):
         return self.nodes[self.nodeNums[name]]
 
-    def build_negative_nodes(self,debug=False):
+    def build_negative_nodes(self):
         # put the negative nodes as 2nd half of node array
         for i in range(self.n):
-            self.add_node(self.not_string + self.nodeNames[i],isNegative=True,debug=debug)
+            self.add_node(self.not_string + self.nodeNames[i],isNegative=True)
 
 
-    def apply_mutations(self,params, debug=False):
-        if 'mutations' in params.keys() and len(params['mutations']) > 0:
+    def apply_mutations(self):
+        if 'mutations' in self.params.keys() and len(self.params['mutations']) > 0:
             for node in self.nodeNames:
-                if node in params['mutations']:
+                if node in self.params['mutations']:
                     lng = len(self.F[node]) 
                     # will be rendundant, but avoids possible issues with changing # of clauses
                     # otherwise need to rebuild Fmapd each time
                     self.F[node] = [[node] for _ in range(lng)]
-                    params['init'][node] = int(params['mutations'][node])
-                    if debug:
-                        assert(params['init'][node] in [0,1]) # for PBN may allow floats
+                    self.params['init'][node] = int(self.params['mutations'][node])
+                    if self.debug:
+                        assert(self.params['init'][node] in [0,1]) # for PBN may allow floats
 
 
     def count_clauses_and_lits(self):
@@ -232,8 +227,7 @@ class Net:
                     self.max_literals = max(self.max_literals, len(clause))
 
 
-    def build_Fmapd_and_A(self, params): 
-        # TODO: check for repeat clauses?
+    def build_Fmapd_and_A(self): 
         
         # Fmapd is a clause index with which to compress the clauses -> nodes
         #   nodes_to_clauses: computes which nodes are inputs (literals) of which clauses
@@ -274,7 +268,7 @@ class Net:
             assert(nodes_to_clauses.shape == (self.num_clauses,self.max_literals))
 
         # BUILDING CLAUSES->THREADS
-        m=min(params['clause_bin_size'],self.max_clauses) 
+        m=min(self.params['clause_bin_size'],self.max_clauses) 
 
         i=0
         while sum([len(nodes_clause[i2]) for i2 in range(n)]) > 0:
@@ -328,9 +322,9 @@ class Net:
             if i>1000000:
                 sys.exit("ERROR: infinite loop likely in net.build_Fmapd_and_A()")
         
-        if params['parallelism']<256 and self.num_clauses<256:
+        if self.params['parallelism']<254 and self.num_clauses<254:
             thread_dtype = cp.uint8
-        elif params['parallelism']<65535 and self.num_clauses<65535:
+        elif self.params['parallelism']<65533 and self.num_clauses<65533:
             thread_dtype = cp.uint16
         else:
             thread_dtype = cp.uint32
@@ -388,17 +382,16 @@ class Net:
             return file.readline().replace('\n','')
 
 
-    def input_indices(self, params):
-        return [self.nodeNums[params['inputs'][i]] for i in range(len(params['inputs']))]
+    def input_indices(self):
+        return [self.nodeNums[self.params['inputs'][i]] for i in range(len(self.params['inputs']))]
     
-    
-    def output_indices(self, params):
-        return [self.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
+    def output_indices(self):
+        return [self.nodeNums[self.params['outputs'][i]] for i in range(len(self.params['outputs']))]
 
-    def get_input_sets(self, params):
+    def get_input_sets(self):
         # assumes that 2^#inputs can fit in memory
         #input_indices = self.input_indices(params)
-        return list(itertools.product([0,1],repeat=len(params['inputs'])))
+        return list(itertools.product([0,1],repeat=len(self.params['inputs'])))
 
     def print_matrix_names(self,X):
         # assumes X is a set of network states
@@ -435,17 +428,21 @@ class Node:
 ##################################################################################################
 
 class ParityNet(Net):
-    def __init__(self,parity_model_file,debug=False):
+    def __init__(self,params, parity_model_file=None):
+        
+        if parity_model_file is None:
+            parity_model_file=params['parity_model_file'] # i.e. default
 
         self.parityNodes = [] # these include all regular nodes and their complements
-        super().__init__(model_file=parity_model_file,debug=debug)
+        self.debug = params['debug']
+        super().__init__(params, model_file=parity_model_file)
         # assumes that negative nodes are already in parity form (i.e. have their logic)
         # note that composite nodes aren't formally added, since only A_exp is actually used
 
-        self.build_Aexp(debug=debug)
+        self.build_Aexp()
 
 
-    def add_node(self,nodeName,isNegative=False,debug=False):
+    def add_node(self,nodeName,isNegative=False):
         if self.not_string in nodeName:
             isNegative=True
         newNode = Node(self,nodeName,self.n_neg,isNegative=isNegative)
@@ -461,20 +458,20 @@ class ParityNet(Net):
             self.nodes += [newNode]
             self.n += 1
 
-        if debug:
+        if self.debug:
             if self.not_string in nodeName:
                 positive_name = nodeName.replace(self.not_string,'')
                 assert(self.nodesByName(nodeName).num - self.n == self.nodesByName(positive_name).num)
                 # for example, LDOI relies on this precise ordering
 
-    def build_Aexp(self,debug=False):
+    def build_Aexp(self):
         self.n_exp = self.n_neg # build_Aexp will iterate this
         N = self.n_neg+self._num_and_clauses()
         self.A_exp = cp.zeros((N,N)) #adj for expanded net 
         composites = []
 
         for node in self.parityNodes:
-            if debug:
+            if self.debug:
                 assert(node.F() == self.F[node.name]) 
 
             for clause in node.F():
@@ -489,7 +486,7 @@ class ParityNet(Net):
                 else:
                     print("net.py build_Aexp(): tautology ignored")
         
-        if debug:
+        if self.debug:
             assert(N==self.n_exp)
     
 
@@ -512,14 +509,11 @@ class ParityNet(Net):
             for clause in node.F():
                 self.max_literals = max(self.max_literals, len(clause))
 
-    def build_negative_nodes(self, debug=False):
+    def build_negative_nodes(self):
         # just to make compatible with default net def
         pass 
 
     def write_to_file(self, output_file):
-        # parity is an extra switch to treat the network like it is a Parity Net
-        #   for ex when building a parity net from a regular net
-
         with open(output_file,'w') as ofile:
             if self.encoding != 'bnet':
                 ofile.write(self.encoding + '\n')
@@ -537,17 +531,24 @@ class ParityNet(Net):
 ##################################################################################################
 
 class DeepNet(Net):
-    def __init__(self,parity_model_file,debug=False):
-        self.complement = {}
+    def __init__(self,params, parity_model_file):
 
-        super().__init__(model_file=parity_model_file,debug=debug)
+        assert(0) # have not updated this in too long, use with caution
+
+        if parity_model_file is None:
+            parity_model_file=params['parity_model_file'] # i.e. default
+
+        self.complement = {}
+        self.debug=params['debug']
+
+        super().__init__(params, model_file=parity_model_file)
         # assumes that negative nodes are already in parity form (i.e. have their logic)
         # note that composite nodes aren't formally added, since only A_exp is actually used
 
         #self.build_Aexp(debug=debug)
 
 
-    def add_node(self,nodeName,debug=False):
+    def add_node(self,nodeName):
         newNode = Node(self,nodeName,self.n)
         self.nodes += [newNode]
         self.nodeNames += [nodeName]
@@ -562,25 +563,25 @@ class DeepNet(Net):
         self.complement[compl] = nodeName
 
 
-    def reorder(self,debug=True):
+    def reorder(self):
         # sorts nodes such that 2nd half are the complements of the 1st half
         visited = [0 for i in range(self.n)]
         new_nodes = []
 
         for i in range(self.n):
             node = self.nodes[i]
-            if debug:
+            if self.debug:
                 assert(node.F() != [])
             compl = self.get_complement(node)
             if compl.num > i:
                 node.num = len(new_nodes)
                 new_nodes += [node]
         half_n = len(new_nodes)
-        if debug:
+        if self.debug:
             assert(half_n == int(self.n/2))
         for i in range(len(new_nodes)):
             compl = self.get_complement(new_nodes[i])
-            if debug:
+            if self.debug:
                 assert(compl.F() != [])
             compl.num = len(new_nodes)
             new_nodes += [compl]
@@ -589,7 +590,7 @@ class DeepNet(Net):
         self.nodeNames = [node.name for node in self.nodes] 
         self.nodeNums = {node.name:node.num for node in self.nodes} 
 
-    def build_Aexp(self,debug=False):
+    def build_Aexp(self):
         self.reorder()
 
         self.n_exp = self.n 
@@ -601,7 +602,7 @@ class DeepNet(Net):
 
         expanded_node_map = {}
         for node in self.nodes:
-            if debug:
+            if self.debug:
                 assert(node.F() == self.F[node.name]) 
             for clause in node.F():
                 if len(clause)>1: 
@@ -616,14 +617,8 @@ class DeepNet(Net):
                         self.n_exp+=1
                 elif clause not in ['0','1',['0'],['1']]: # ignore tautologies
                     self.A_exp[self.nodeNums[clause[0]],node.num]=1
-                #else: JUST DEBUGGING STUFF
-                #    num = node.num 
-                #    if clause == ['0']:
-                #       node.num = (node.num + int(self.n/2)) % self.n
-                #    print("net.build_Aexp of deepNet: tautology found for",node.name,": ",clause)
-                #    print("\tcorresp node function:",node.F())
         
-        if debug:
+        if self.debug:
             assert(N==self.n_exp)
     
     def _num_and_clauses(self):
@@ -637,7 +632,7 @@ class DeepNet(Net):
                         seen+=[str(clause)]
         return count
 
-    def build_negative_nodes(self,debug=False):
+    def build_negative_nodes(self):
         # just to make compatible with default net def
         pass 
 

@@ -106,7 +106,7 @@ def transient(params,x0, G, fixed_points_only=False):
 		not_finished = cp.array([1 for _ in range(params['parallelism'])],dtype=bool)
 	
 	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
-		input_indx = cp.array(G.input_indices(params))
+		input_indx = cp.array(G.input_indices())
 		input_array = x[:,input_indx].copy()
 		# since an input flip should not be permanent, but input_t+1 = input_t
 
@@ -182,7 +182,7 @@ def categorize_attractor(params,x0, G):
 		not_finished = cp.ones(params['parallelism'], dtype=bool)
 
 	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
-		input_indx = cp.array(G.input_indices(params))
+		input_indx = cp.array(G.input_indices())
 		input_array = x[:,input_indx].copy()
 		# since an input flip should not be permanent, but input_t+1 = input_t
 

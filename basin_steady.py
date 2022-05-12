@@ -11,7 +11,8 @@ def calc_size(params, G, SS0=None):
 	# pass A0 for mutated or control runs (for example)
 
 	SS = basin.calc_size(params,G,SS0=SS0) # get steady states from random initial conditions
-	
+
+
 	exact_x0 = True # means rerun with all attractors, rather than just the new ravine attractors
 	# running with exact x0 is much slower and doesn't seem to matter in practice
 	# issue w/ exact_x0 = False is that a new A may end in an old A, but since old A not in that run (to save time), it is not recorded as a known A
@@ -31,9 +32,9 @@ def calc_size(params, G, SS0=None):
 		else:
 			A_labels_prev = deepcopy(A_labels)
 			new_As = {k:SS.attractors[k] for k in SS.attractors if k not in A_labels}
-			merge_A0s(As,new_As)
-			A_labels += [k for k in SS.attractors.keys() if k not in A_labels]
-			#print("\n\nAs_new=\n",As_new.keys(),'\n\nAs=\n',As.keys())
+		merge_A0s(As,new_As)
+		A_labels += [k for k in SS.attractors.keys() if k not in A_labels]
+		#print("\n\nAs_new=\n",new_As.keys(),'\n\nAs=\n',As.keys())
 
 		transit_pr, new_As = map_A_transition_pr(As, A_labels)
 		new = len(new_As)>0 

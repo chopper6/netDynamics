@@ -6,11 +6,9 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 # anything going into lap.py (i.e. x0) should be cp, but other matrices should be np
 import numpy as np
 
-
 # note that size of a phenotype or attractor refers to its basin size
 
 # TODO: 
-#	clean up how var is handled
 # 	keep cleaning SteadyStates class
 #	how A's are added
 #	A0 and final As should prob be the same
@@ -21,14 +19,9 @@ import numpy as np
 def main(param_file):
 
 	params, G = init(param_file)
-	if params['PBN']['active'] and False:
-		print("\nCustom PBN run\n")
-		steadyStates = sandbox.test_PBN(params, G)
-	else:
-		steadyStates = measure(params, G)
-		if 1:
-			total_avg = [round(s,3) for s in steadyStates.stats['total_avg']]
-			print('basin, total avg=\n',total_avg)#[1:])
+	steadyStates = measure(params, G)
+	#total_avg = [round(s,3) for s in steadyStates.stats['total_avg']]
+	#print('basin, total avg=\n',total_avg)#[1:])
 	plot.pie(params, steadyStates,G)
 	
 
@@ -37,44 +30,51 @@ def measure(params, G, SS0=None):
 		steadyStates = calc_size(params,G,SS0=SS0)
 	else:
 		assert(not params['PBN']['active']) # haven't implemented yet
-		# curr assuming that exact ratio of A0 for steady basin is irrelv (only transition pr's matter)
 		steadyStates = basin_steady.calc_size(params, G,SS0=SS0)
+		# currently assuming that exact ratio of A0 for steady basin is irrelv (only transition pr's matter)
+		#	this is true if there is only one stationary distribution for the resulting markov chain
 	#print("#attractors =",len(steadyStates.attractors))
 	return steadyStates
 
 
 def init(param_file):
 	params = param.load(param_file)
-	PBN = util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float'])
-	G = Net(model_file=params['model_file'],debug=params['debug'],PBN=PBN)
-	G.prepare_for_sim(params)
+	G = Net(params)
 	return params, G
 
 
 #########################################################################################################
 
 class Attractor:
-	def __init__(self, params, G, attractor_id, state, period, avg, var, A0):
-		self.id = attractor_id
-		self.state = state
-		self.size = 1
-		if params['precise_oscils']:
-			self.period = period
-		self.avg = avg
-		self.var = var
-		self.totalAvg = avg #won't be normalized so is really a sum
-		self.totalVar = var 
+	def __init__(self, params, G, attr_data):
+		# attr_data mandatory keys: id, state, size, avg
+		# 			 optional keys: period, A0
 
-		if A0 is not None:
-			self.A0s = {format_id_str(A0):1}
+		self.id = attr_data['id']
+		self.state = attr_data['state']
+		self.size = attr_data['size']
+
+		self.avg = attr_data['avg']
+		self.totalAvg = attr_data['avg'].copy() #won't be normalized so is really a sum
+
+		if 'period' in attr_data:
+			self.period = attr_data['period']
+		if 'A0' in attr_data:
+			self.A0s={}
+			for a0 in attr_data['A0']:
+				if a0 not in self.A0s:
+					self.A0s[a0]=1 
+				else:
+					self.A0s[a0]+=1
+
 		if util.istrue(params,'use_phenos'):
 			self.map_to_pheno(params,G) 
 
 	def map_to_pheno(self, params, G):
-		outputs = [G.nodeNums[params['outputs'][i]] for i in range(len(params['outputs']))]
+		outputs = G.output_indices()
 
 		if 'inputs' in params.keys():
-			inputs = G.input_indices(params)
+			inputs = G.input_indices()
 
 		self.phenotype = ''
 		if 'inputs' in params.keys() and params['use_inputs_in_pheno']:
@@ -85,7 +85,9 @@ class Attractor:
 				else:
 					self.phenotype +='0'	
 			self.phenotype +='|'
+
 		for i in range(len(outputs)): 
+			assert(len(outputs)==len(params['output_thresholds'])) # otherwise number of outputs != number of output thresholds!
 			if float(self.avg[outputs[i]]) > params['output_thresholds'][i]: 
 				self.phenotype +='1'
 			else:
@@ -117,7 +119,7 @@ class SteadyStates:
 
 		# see build_A0()
 		self.A0 = None
-		self.A0_source =None
+		self.A0_source = None
 		self.Aweights = None
 
 	def phenos_str(self):
@@ -128,50 +130,42 @@ class SteadyStates:
 			s+=k+':'+str(self.phenotypes[k].size)
 		return s
 
-	def add_attractors(self, params, result, A0s):
-		# map_from_A0 indicates that transition pr from A_0 -> A_f should be measured
-		# TODO clean this mess
-		# also i suspect this is a bottleneck of sorts
+	def add_attractors(self, result, A0s=None):
 
-		if params['map_from_A0']:
+		if self.params['map_from_A0']:
+			assert(A0s is not None) # i could be wrong here \:
 			assert(len(result['state'])==len(A0s))
-		for i in range(len(result['state'])):
-			if not params['precise_oscils']:
-				finished=True
-				period=None
-			else:
-				finished = result['finished'][i]
-				period = result['period'][i]
 
-			if finished:
-				attractor_id = format_id_str(result['state'][i]) 
+		assert(type(result['state']) is np.ndarray) 
 
-				if not params['map_from_A0']:
-					a0=None
-				else:
-					a0 = A0s[i]
+		if self.params['precise_oscils']:
+			finished_indx = (result['finished']==True)
+			for k in result:
+				result[k] = result[k][finished_indx]
 
-				# having 2 fns to add attr is confusing too
-				self.add(attractor_id, result['state'][i], period, result['avg'][i], a0)
+		unique, indx, inverse, counts = np.unique(result['state'],axis=0,return_index=True,return_inverse=True, return_counts=True)
+		# usage:
+		# 	unique, indx, inverse, counts = np.unique(x)
+		# 	x[indx] == unique
+		# 	unique[inverse] = x
+		attractor_ids = [format_id_str(unique[i]) for i in range(len(unique))]		
+
+		avgs = np.zeros((len(unique),self.G.n)) # this used to not be done for sync, unclear why tho
+		if self.params['map_from_A0']:
+			mapped_A0s = [[] for _ in range(len(unique))]
+		for i in range(len(inverse)):
+			avgs[inverse[i]] += result['avg'][i]
+			if self.params['map_from_A0']:
+				mapped_A0s[inverse[i]]+=[format_id_str(A0s[i])]
 	
+		for i in range(len(unique)):
+			attr_data = {'id':attractor_ids[i], 'state':unique[i], 'size':counts[i], 'avg':avgs[i]}
+			if 'period' in result:
+				attr_data['period'] = result['period'][indx][i]
+			if self.params['map_from_A0']:	
+				attr_data['A0'] = mapped_A0s[i]
+			self.attractors[attractor_ids[i]] = Attractor(self.params, self.G, attr_data)
 
-	def add(self, attractor_id, state, period, avg, A0=None,var_t=None): # id should be unique to each attractor
-		if attractor_id not in self.attractors.keys():
-			self.attractors[attractor_id] = Attractor(self.params, self.G, attractor_id, state, period, avg, var_t, A0)
-		else:
-			self.attractors[attractor_id].size += 1
-
-			if A0 is not None:
-				Astr = format_id_str(A0)
-				if Astr in self.attractors[attractor_id].A0s.keys():
-					self.attractors[attractor_id].A0s[Astr] += 1 
-				else:
-					self.attractors[attractor_id].A0s[Astr] = 1 
-
-			if self.params['update_rule'] != 'sync' or util.istrue(self.params,['PBN','active']):
-				self.attractors[attractor_id].avg += avg
-				if var_t is not None:
-					self.attractors[attractor_id].var_t += var_t
 
 	def normalize_attractors(self):		
 		if self.params['update_rule'] in ['async','Gasync'] or util.istrue(self.params,['PBN','active']) or util.istrue(self.params,['skips_precise_oscils']):
@@ -217,8 +211,9 @@ class SteadyStates:
 		#assert(self.params['update_rule']=='sync') # else check normzn before using, but should be ok
 		#print('basin:',self.attractors.keys(),SS0.Aweights.keys())
 		Aweights = SS0.Aweights
+
 		assert(math.isclose(sum([A.size for A in self.attractors.values()]),1))
-		assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled
+		#assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled
 		for A in self.attractors.values():
 			assert(A.size <= 1)
 			incoming_weight=0
@@ -246,8 +241,8 @@ class SteadyStates:
 		# prob could be more effic with some more np
 		# normalizes Aweights accordingly
 		x0=[]
-		input_indices = G.input_indices(params)
-		input_sets = G.get_input_sets(params)
+		input_indices = G.input_indices()
+		input_sets = G.get_input_sets()
 		ref_A0=[] # later used to map which x0 come from which A0
 		for A in self.A0:
 			ref_A0 += [[int(a) for a in A] for i in range(len(input_sets))]
@@ -305,7 +300,7 @@ def calc_size(params, G, SS0=None):
 			result = lap.transient(params,x0, G, fixed_points_only=True)
 			cupy_to_numpy(params,result)
 			result, loop = run_oscils_extract(params, result, oscil_bin, None, 0)
-			steadyStates.add_attractors(params, result, None)
+			steadyStates.add_attractors(result)
 
 		# TRANSIENT OSCILS
 		# run until sure that sample is in the oscil
@@ -327,7 +322,7 @@ def calc_size(params, G, SS0=None):
 			result = lap.categorize_attractor(params, x_in_attractor, G)
 			cupy_to_numpy(params,result)
 			steadyStates.update_stats(result)
-			steadyStates.add_attractors(params,result, A0)
+			steadyStates.add_attractors(result, A0s=A0)
 		steadyStates.normalize_stats()
 
 	steadyStates.normalize_attractors()
@@ -360,7 +355,7 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 		if transient:
 			confirmed_oscils += list(result['state'][result['finished']==True])
 		else:
-			steadyStates.add_attractors(params, result,None) 
+			steadyStates.add_attractors(result) 
 
 	params['steps_per_lap'] = orig_steps_per_lap
 	params['fraction_per_lap'] = orig_fraction_per_lap
@@ -421,8 +416,8 @@ def get_init_sample(params, G):
 			x0[:,node_indx] = params['init'][k]
 
 	if 'inputs' in params.keys():
-		input_indices = G.input_indices(params)
-		input_sets = G.get_input_sets(params)
+		input_indices = G.input_indices()
+		input_sets = G.get_input_sets()
 		i=0
 		for input_set in input_sets:
 			x0[int(i*params['parallelism']/(2**len(params['inputs']))):int((i+1)*params['parallelism']/(2**len(params['inputs']))),input_indices] = cp.array(input_set)
