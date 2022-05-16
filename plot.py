@@ -185,10 +185,10 @@ def probably_bar(params, feats):
 	buffer, width = 1,.8
 	fontsmall, fontmed, fontlarge = 16, 16, 26
 	noises = list(feats.keys())
-	#xlabels = list(feats[noises[0]].keys()) # to take all
+	xlabels = list(feats[noises[0]].keys()) # to take all
 	#  ['P','PP_and','PP_or','PN_and','PN_or','NN_and','NN_or','N', 'PP_and_long','PN_and_long','NN_and_long', 'PP_xor','PN_xor','NN_xor','PP_xor_long','PN_xor_long','NN_xor_long']
 	#xlabels = ['PP_and','PP_xor','PN_and','PN_xor','NN_and','NN_xor']
-	xlabels = ['P','PP_and','PP_xor','PP_and_long','PN_and','NN_and','N']#,''] #,'PN_and','PN_and_long','NN_and','NN_and_long']#,'']
+	#xlabels = ['P','PP_and','PP_xor','PP_and_long','PN_and','NN_and','N']#,''] #,'PN_and','PN_and_long','NN_and','NN_and_long']#,'']
 	#stats = list(feats[noises[0]][xlabels[0]].keys())
 	stats = ['fast variance','slow variance'] #'average',
 

@@ -1,3 +1,7 @@
+# for now just manual optimization: time code with few different parameters
+# later hopefully automatic
+# also has not been updated in some time
+
 import basin, control
 import sys, os
 from timeit import default_timer as timer

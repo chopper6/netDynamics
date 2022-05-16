@@ -8,7 +8,10 @@ inputs : ['EGFR_stimulus', 'FGFR3_stimulus','TGFBR_stimulus', 'DNA_damage']
 init : {'Apoptosis':0,'Proliferation':0,'Growth_Arrest':0}
 # each sample begins with these states (x0) 
 
-mutations : {}
+mutations : {} #'MYC':1}
 # mutations alter the function of the node to always be off or on
+
+controllers : {} #'PTEN':1}
+# so far 'controllers' is only used by basin.sequential()
 
 pheno_color_map : {'000':3, '001':2,'010':0,'100':1} #to ensure consistent coloring between images

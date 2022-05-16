@@ -5,73 +5,75 @@ import numpy as np
 
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 
-# jp will del this file and merge into ldoi.py
-
 # TODO
-# finish unfair compare 
-# ofc gotta clean a lot
-# exh with mult copies for async (poss after clean)
-
-# LATER
-# merge mult As (intersection)
-# then do comparison over inputs
+# ikey/okey of an attr should be handled in basin.py (ie standardized)
+#		similar to id, maybe just put it in attr as soon as make it
+#		but end up using it for the intersection A so i dunno
+# major pheno should maybe be in basin? or make a new module?
 # compare #steps reqd to async
 
-def conditional_canalization(param_file):
+# what was i talking about here? : apply mutations by directly pinning in attractor intersection
+# and first avg, then use a threshold BEFORE making intersection A
 
-	# TODO: apply mutations by directly pinning in attractor intersection
-	# and first avg, then use a threshold BEFORE making intersection A
 
-	# DEBUG: simplest ex yet, a=1 supposed to be perfect fix but ain't
+def contextual_canalization(Gpar, A0, pins=None):
+	# for now just calls a modified ldoi
+	# eventually want to implement without the expanded network form
+	soln, negated = ldoi.ldoi_bfs(Gpar,A0=A0,pins=pins)
+	if CUPY:
+		soln = soln.get()
+	return soln
 
-	# misc TODO
-	# ikey/okey of an attr should be handled in basin.py (ie standardized)
-
-	num_candidates = 4
-
-	mutations = {'p53_PTEN':0} #'PTEN':0}
+def contextual_canalization_control(param_file, num_candidates=4, use_mutated_net=False):
+	# majority control approach using contextual canalization
+	# returns all nodes sorted by their scores (best first), and their corresponding scores
+	# num_candidates is just the number that are printed to console
 
 	params = param.load(param_file)
-	G = net.Net(model_file=params['model_file'],debug=params['debug'])
-	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])		
+	mutations = params['mutations'].copy()  # {'p53_PTEN':0} #'PTEN':0}
+	params['mutations'] = {} # first run without the mutations
+	G = net.Net(params)
+	Gpar = net.ParityNet(params)		
 	assert(G.n==Gpar.n) #otherwise parity file doesn't match the regular model file
 
-	G.prepare_for_sim(params) # don't like that this needs to be called for mutations to be applied...
+	# run healthy network
 	SS_healthy = basin.measure(params, G)
 	healthy_dom_pheno = build_dominant_pheno(G, SS_healthy)
 
-	for k in mutations:
-		params[k] = mutations[k]
-	G.prepare_for_sim(params) 
-	SS = basin.measure(params, G)
+	if use_mutated_net:
+		# run mutated network
+		params['mutations'] = mutations
+		G.prepare(params) 
+		SS_mutant = basin.measure(params, G, SS0=SS_healthy)
 
-	A_intersect = build_intersection_attractors(params, Gpar, SS_healthy)
+		# note that control skips mutated network and just pins the mutated nodes during contextual canalization
+		A_intersect = build_intersection_attractors(params, Gpar, SS_mutant)
+	else:
+		A_intersect = build_intersection_attractors(params, Gpar, SS_healthy)
 
-	scores = np.zeros((G.n*2)) # one per poss controller ie 2* num nodes
-	#print("canalization: score names=", [G.nodeNames[i] for i in range(G.n*2)])
+	scores = np.zeros((G.n*2)) 
+	# one score per poss controller: 2* num nodes, since for each x_i use x_i=1 and x_i=0
 
+	# find controllers by running contextual canalization on A_intersect of each input condition
 	input_ind = G.input_indices(params)
 	output_ind = G.output_indices(params)
-	for A0 in A_intersect.values(): # one per input condition 
-		#print("\nA0 starting...",A0)
-		canal_soln = ldoi.ldoi_bfs(Gpar,A0=A0,pins=mutations)[0].get() # add pins = mutations
-		#print(canal_soln)
+	for A0 in A_intersect.values(): # one per input condition
+		canal_soln = contextual_canalization(Gpar, A0, pins=MUTATIONS)
+
 		ikey = str([int(x) for x in A0[input_ind]])
 		major_okey = healthy_dom_pheno[ikey]
 		canal_okeys = canal_soln[:,output_ind]
-		#print(canal_okeys.shape,canal_okeys.dtype,'vs',major_okey.shape,major_okey.dtype)
+
 		scores += np.all((canal_okeys==major_okey),axis=1).reshape(G.n*2)
-		#print("Canalization:",canal_okeys[44],major_okey)
 	
 	scores /= len(A_intersect.keys())  # normalize by number of input sets
-	#top_node_nums = np.argpartition(scores, -1*num_candidates)[-1*num_candidates:]
-	#top_node_nums = np.flip(top_node_nums) # best 1st
 	top_nodes = [x for _, x in sorted(zip(scores, Gpar.nodeNames))]
 	top_scores = sorted(scores)
 	top_nodes.reverse()
 	top_scores.reverse()
-	#top_nodes = [Gpar.nodeNames[x] for x in top_node_nums]
 	print("Top nodes=",top_nodes[:num_candidates],"\nwith scores=",top_scores[:num_candidates])
+
+	return top_nodes, top_scores
 
 
 def build_dominant_pheno(G, SS):
@@ -148,211 +150,8 @@ def apply_pins(X,n):
 	return X
 
 
-def contextual(params, G, A0_avg):
-	# TODO: add pinned nodes, AFTER checking that this just returns A0 again
-
-	# A0_avg should be a numpy or cupy object with the average activity level of each node in A0
-	x = cp.ones(A0_avg.shape,dtype=cp.int8)*2 # only need 0,1,2, but int8 is smallest avail (byte)
-	x[cp.isclose(A0_avg,0)] = 0 
-	x[cp.isclose(A0_avg,1)] = 1
-
-	X = cp.vstack([x for _ in range(2*G.n)])
-	changed = cp.zeros(X.shape,dtype=bool)
-	X = apply_pins(X,G.n)
-
-	cont = True
-	loop = 0 
-	print('starting conextualdns')
-	while cont:
-		print('\nX  = ',X[5])
-		xON = X.copy()
-		xON[xON==2]=0
-
-		xOFF = X.copy()
-		xOFF[xOFF==2]=1
-
-		# if only looking at a single attractor:
-		#xON = lap.step(params, xON[cp.newaxis,:].astype(bool), G)[0]  # check parallelism arg, newaxis just to increase dim, [0] to return down
-		#xOFF = lap.step(params, xOFF[cp.newaxis,:].astype(bool), G)[0]
-		
-		xON = lap.step(params, xON.astype(bool), G)
-		xOFF = lap.step(params, xOFF.astype(bool), G)
-
-		x_next = X.copy() #cp.ones(A0_avg.shape,dtype=cp.int8)*2
-		x_next[xON==1]=1
-		x_next[xOFF==0]=0  	# can change 2->1 if 1st change...right?
-		x_next[(x_next!=X) & changed]=2 
-		changed[x_next!=X]=True
-
-		x_next = apply_pins(x_next,G.n)
-		cont = 1-cp.all(x_next==X)
-		X=x_next
-		#print("xON=",xON.astype(int),'\nxOFF=',xOFF.astype(int),'\nx_next=',x_next.astype(int))
-
-		loop+=1
-		if loop>100:
-			assert(0) # infinite loop?
-
-	#print('num steps required =',loop) # maybe track this (compared with async # steps reqd)
-	return X
-
-
-def exh_compare():
-	# TODO: other than cleaning the shitstorm that is this file
-	# run exhaustive control...how to compare?
-	# 	a) exh almost never 100% fixes
-	#	b) partial coverage was a control goal...
-	exh_perturbs = control.exhaustive(params, G, CONTROL_PARAMS['mut_thresh'], CONTROL_PARAMS['cnt_thresh'], max_mutator_size=CONTROL_PARAMS['max_mutator_size'], max_control_size = CONTROL_PARAMS['max_control_size'],norm=CONTROL_PARAMS['norm'])
-		
-
-def unfair_compare(params, include_exhaustive=True):
-	# TODO: the whole process of running a single attractor in basin is WAY more convoluted than it should be 
-
-	G = net.Net(model_file=params['model_file'],debug=params['debug'])
-	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])		
-
-	ldoi_soln = ldoi.ldoi_bfs(Gpar)[0]
-	
-
-	cp.fill_diagonal(ldoi_soln, 1) # ldoi usually doesn't consider the drive to be in its soln unless it forms a stable motif
-	ldoi_percent = cp.sum(ldoi_soln)/(2*G.n**2) 
-
-	G.prepare_for_sim(params)
-	SS = basin.measure(params, G)
-	avg_canal_percent = 0
-	avg_combo_percent = 0
-	total_num_missed  = 0
-	for k in SS.attractors:
-		A0 = SS.attractors[k]
-		z=[(G.nodeNames[i],float(A0.avg[i])) for i in range(len(A0.avg))]
-		print("\nA0 starting...",z)
-		canal_soln = ldoi.ldoi_bfs(Gpar,A0=build_A0(G,A0.avg))[0]
-		total_pinned = 0
-
-		for node in G.nodes:
-			print('\tpinning',node.name)
-			for b in [0,1]:
-				#print('\n\ncanal',node.name,b)
-				SS0 = deepcopy(SS) # only want to start from single A0
-				paramscopy, Gcopy = deepcopy(params), deepcopy(G)
-				paramscopy['mutations'][node.name]=b 
-				paramscopy['inputs']=[]
-				Gcopy.prepare_for_sim(paramscopy)
-				SS0.attractors = {k:SS0.attractors[k]}
-				SS0.attractors[k].id = util.char_in_str(SS0.attractors[k].id, node.num, b)
-				SS0.attractors[k].size=1
-				SS0.build_A0()
-				SS_result = basin.calc_size(paramscopy, Gcopy, SS0=SS0)
-				exh_A = np.array([SS_result.attractors[k].avg for k in SS_result.attractors][0]) 
-				# note that this assume only 1 resulting A, better for sync
-
-				if not (exh_A[node.num]==b): # pinned node should stay pinned
-					print("node",node.name,node.num,'set to',b,'doesnt stay pinned!',exh_A[node.num])
-					assert(0)
-
-				total_pinned += (exh_A==1).sum()+(exh_A==0).sum()
-
-
-				# check vs canal soln
-				canal_indx = node.num + (1-b)*G.n
-				for j in range(G.n*2):
-					if canal_soln[canal_indx,j]==1:
-						if j<G.n:
-							if not (exh_A[j]==1): # for exh soln look if regular node is same
-								print('set',node.name,'#',node.num,'to',b,'target',G.nodeNames[j],'#',j,'-> canal:',canal_soln[canal_indx,j],'vs exh',exh_A[j])
-								z={G.nodeNames[i]:exh_A[i] for i in range(len(exh_A))}
-								print('\t\tcanal\t\texh')
-								for ky in z:
-									indx = G.nodeNums[ky]
-									if canal_soln[canal_indx,indx] != exh_A[indx]:
-										print(ky,canal_soln[canal_indx,indx],exh_A[indx])
-
-								assert(0)
-						else:
-							assert(exh_A[j-G.n]==0)  # for exh soln look if compl node is opposite
-					elif canal_soln[canal_indx,j]==0:
-						if j<G.n:
-							if not (exh_A[j]==0):
-								print('set',node.name,'#',node.num,'to',b,'target',G.nodeNames[j],'#',j,'-> canal:',canal_soln[canal_indx,j],'vs exh',exh_A[j])
-								assert(0)
-						else:
-							assert(exh_A[j-G.n]==1)
-
-		percent_pinned_exh = total_pinned/(2*G.n**2) # each poss pin per each poss mutn 
-
-		if not (cp.all(cp.isin(canal_soln[ldoi_soln], cp.array([1,2])))):
-			for i in range(len(canal_soln)):
-				for j in range(len(ldoi_soln)):
-					if ldoi_soln[i,j]==1 and canal_soln[i,j]==0:
-						print("\nerror on",Gpar.nodeNames[j],"when pinning",Gpar.nodeNames[i],'indices=',i,j,'\n')
-						assert(0)
-		num_missed = int(cp.sum(ldoi_soln[canal_soln!=1]))
-
-		total_num_missed += num_missed/(2*G.n**2)
-		avg_canal_percent += cp.sum(canal_soln[canal_soln!=2])/(2*G.n**2)
-		avg_combo_percent += (cp.sum(canal_soln[canal_soln!=2]) + num_missed)/(2*G.n**2)
-
-	avg_canal_percent/=len(SS.attractors)
-	avg_combo_percent/=len(SS.attractors)
-	total_num_missed/=len(SS.attractors)
-
-	ldoi_percent /= percent_pinned_exh
-	avg_canal_percent /= percent_pinned_exh
-	avg_combo_percent /= percent_pinned_exh
-
-	print("Survived. Ldoi score=",ldoi_percent,"vs canal=",avg_canal_percent)
-	print("Combined ldoi and canal score =",avg_combo_percent," canal missed avg",total_num_missed,"of LDOI")
-	# note that some nodes are oscillating, so need exhaustive sim to check
-
 if __name__ == "__main__":
-	import random as rd
+	if len(sys.argv) not in [2]:
+		sys.exit("Usage: python3 canalization.py PARAMS.yaml")
 	
-	params = param.load(sys.argv[1])
-	G = net.Net(model_file=params['model_file'],debug=params['debug'])
-	
-	if 0:
-		unfair_compare(params)
-
-	elif 1:
-		conditional_canalization(sys.argv[1])
-
-	elif 0:
-		G.prepare_for_sim(params) # there should be a 1-liner for making a net and preparing it...
-		SS = basin.measure(params, G)
-		A0 = rd.choice([A for A in SS.attractors.values()])
-		print("A0=",A0.avg.astype(int))
-
-		mutant = rd.choice(G.nodeNames).replace(G.not_string,'')
-		val = (int(A0.id[G.nodeNums[mutant]%len(A0.id)])+1)%2
-
-		print("mutating",mutant,'(#',G.nodeNums[mutant]%len(A0.id),') to',val)
-		params['mutations'][mutant] = val 
-		G.prepare_for_sim(params)
-		A0.avg[G.nodeNums[mutant]] = val
-
-		x = contextual(params, G, A0.avg)
-		print("returns:",x)
-
-	elif 1:
-
-		Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])	
-		G.prepare_for_sim(params) # there should be a 1-liner for making a net and preparing it...
-		SS = basin.measure(params, G)
-		A0 = rd.choice([A for A in SS.attractors.values()])
-		print("A0=",A0.avg)
-		x = ldoi.ldoi_bfs(Gpar, A0=A0.avg)[0]
-		print("returns:",x.astype(int))
-		print("num 2's=",cp.sum(x[x==2])/2,"out of:",len(x)*len(x[0]))
-
-	else: # spc run
-
-		mutant, val = 'x2',1
-		A0 = cp.array([0,1,0,0])	
-
-		print("A0=",A0)
-		params['mutations'][mutant] = val 
-		G.prepare_for_sim(params)
-		A0[G.nodeNums[mutant]] = val
-
-		x = contextual(params, G, A0)
-		print("returns:",x)
+	conditional_canalization(sys.argv[1])

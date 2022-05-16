@@ -76,6 +76,7 @@ class Net:
         # applies setting mutations and builds Fmapd
         self.params=params # since sometimes alter the params applied to same net here
         self.add_self_loops()
+        self.check_mutations()
         self.apply_mutations()
         self.build_Fmapd_and_A()
 
@@ -202,6 +203,11 @@ class Net:
         for i in range(self.n):
             self.add_node(self.not_string + self.nodeNames[i],isNegative=True)
 
+    def check_mutations(self): 
+        if 'mutations' in self.params.keys():
+            for k in self.params['mutations'].keys():
+                if k not in self.nodeNames:
+                    sys.exit("\nSetting file specifies mutation on " + str(k) +", but this node is not in the network!\n") 
 
     def apply_mutations(self):
         if 'mutations' in self.params.keys() and len(self.params['mutations']) > 0:

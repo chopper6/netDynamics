@@ -129,36 +129,6 @@ def dist(A1,A2):
 
 	return (d1+d2)/2
 
-
-#######################################################################################################
-
-# haven't used these in awhile
-
-def temp_print_periodic(SS, G,params):
-	for k in SS.attractors:
-		A=SS.attractors[k]
-		#print("\nnext A:")
-		for i in range(len(A.avg)):
-			inputs = params['inputs']#['EGFR_stimulus', 'TGFBR_stimulus', 'FGFR3_stimulus', 'DNA_damage']
-			input_state = [A.avg[G.nodeNums[inpt]] for inpt in inputs]
-			if A.avg[i] not in [0,1] and G.nodeNames[i] in params['outputs']:
-			#if input_state == [0,0,0,0]:
-				print('inputs=',input_state,':',G.nodeNames[i], 'avg=', A.avg[i])
-
-def debug_print(params,G,steadyStates):
-	k2 = len(params['outputs'])
-	import numpy as np 
-	outpt = np.array([G.nodeNums[params['outputs'][i]] for i in range(k2)])
-	for k in steadyStates.attractors:
-		A =  steadyStates.attractors[k]
-		inpts = A.phenotype.split('|')[0]
-		if inpts == '0000':
-			print('with input 0000: ','A.size, A.period,A.avg[outpt]\n',A.size, A.period,A.avg[outpt])
-	for k in steadyStates.phenotypes:
-		P =  steadyStates.phenotypes[k]	
-		print('pheno',k,'=',P)
-
-
 #######################################################################################################
 
 if __name__ == "__main__":

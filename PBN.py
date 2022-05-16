@@ -1,3 +1,6 @@
+# for building probabilistic boolean networks (PBNs)
+# main not be nec, will see
+
 from itertools import chain, combinations
 import numpy as np # may have to replace w cp
 

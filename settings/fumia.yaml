@@ -14,10 +14,11 @@ init : {'Gli':0,'Proliferation':0,'Apoptosis':0,'Quiescence':1,"PTEN":1, 'APC':1
 # each initial sample is the same for all nodes in init
 # the above are highly recommended init for fumia
 
-mutations : {} #'p53_PTEN':0,'Ras':0} #'Caspase8':0
+mutations : {} #'p53':0} #'Caspase8':0
 # mutations alter the function of the node to always be off or on
 # for example: {'APC':0,'Ras':1,'Smad':0,'PTEN':0,'p53':0}
 
+controllers: {} #'Ras':0}
 
 pheno_color_map : {'100':1,'010':0,'001':2,'000':3} #to ensure consistent coloring between images
 

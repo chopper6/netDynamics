@@ -1,3 +1,6 @@
+# Organizes dynamics of networks into steady states, including attractors and phenotypes
+# and calculates their basin sizes by exhaustive simulation
+
 import itertools, util, math, sys
 import lap, plot, param, basin_steady, sandbox
 from net import Net
@@ -8,15 +11,11 @@ import numpy as np
 
 # note that size of a phenotype or attractor refers to its basin size
 
-# TODO: 
-# 	keep cleaning SteadyStates class
-#	how A's are added
-#	A0 and final As should prob be the same
-#		incld merge normz_As() and Adjust_Aweights()
 
 #########################################################################################################
 
 def main(param_file):
+	# standard simulation: measure the basin size of the steady states and plot them
 
 	params, G = init(param_file)
 	steadyStates = measure(params, G)
@@ -26,10 +25,12 @@ def main(param_file):
 	
 
 def measure(params, G, SS0=None):
+	# just measure the basin size of steady states
+
 	if not util.istrue(params,'steady_basin'):
 		steadyStates = calc_size(params,G,SS0=SS0)
 	else:
-		assert(not params['PBN']['active']) # haven't implemented yet
+		assert(not params['PBN']['active']) # haven't implemented steady basin with PBN
 		steadyStates = basin_steady.calc_size(params, G,SS0=SS0)
 		# currently assuming that exact ratio of A0 for steady basin is irrelv (only transition pr's matter)
 		#	this is true if there is only one stationary distribution for the resulting markov chain
@@ -37,11 +38,43 @@ def measure(params, G, SS0=None):
 	return steadyStates
 
 
+def sequential(param_file):
+	# runs the healthy network, then applies mutations in params and runs the network again with those mutations
+	
+	params = param.load(param_file)
+	mutations = params['mutations'].copy() 
+	params['mutations'] = {} # first run without the mutations
+	G = Net(params)
+	SS_healthy = measure(params, G)
+	params['output_img'] = params['output_img'].replace('.png','_healthy.png')
+	plot.pie(params, SS_healthy,G)
+
+	params['mutations'] = mutations
+	G.prepare(params) 
+	SS_mutated = measure(params, G, SS0=SS_healthy)
+	params['output_img'] = params['output_img'].replace('_healthy.png','_mutated.png')
+	plot.pie(params, SS_mutated,G)
+	#print([A.id[6] for A in SS_mutated.attractors.values()])
+
+	# debug: mutation is correctly applied and always off in lap.py and yet...image doesn't change
+
+	if 'controllers' in params.keys() and len(params['controllers']) > 0:
+		params['mutations'] = {}
+		for k in mutations:
+			if k not in params['controllers'].keys(): # since controller takes precedence
+				params['mutations'][k] = mutations[k]
+		for k in params['controllers']:
+			params['mutations'][k] = params['controllers'][k]
+		G.prepare(params) 
+		SS_controlled = measure(params, G, SS0=SS_mutated)
+		params['output_img'] = params['output_img'].replace('_mutated.png','_controlled.png')
+		plot.pie(params, SS_controlled,G)
+
+
 def init(param_file):
 	params = param.load(param_file)
 	G = Net(params)
 	return params, G
-
 
 #########################################################################################################
 
@@ -51,7 +84,7 @@ class Attractor:
 		# 			 optional keys: period, A0
 
 		self.id = attr_data['id']
-		self.state = attr_data['state']
+		self.state = attr_data['state'] # this is ONE set in the attractor (even if the attractor actually oscilaltes)
 		self.size = attr_data['size']
 
 		self.avg = attr_data['avg']
@@ -210,15 +243,18 @@ class SteadyStates:
 		total=0
 		#assert(self.params['update_rule']=='sync') # else check normzn before using, but should be ok
 		#print('basin:',self.attractors.keys(),SS0.Aweights.keys())
-		Aweights = SS0.Aweights
 
+		#print('SS0:', [(x[:4],round(SS0.Aweights[x],3)) for x in SS0.Aweights.keys()])
+		#print('\nnewSS:', [(x[:4],round(self.Aweights[x],3)) for x in self.Aweights.keys()])
+		#assert(0) 
+		Aweights = SS0.Aweights
 		assert(math.isclose(sum([A.size for A in self.attractors.values()]),1))
 		#assert(math.isclose(sum([A for A in Aweights.values()]),1)) # may not sum to 1 if for ex inputs where shuffled
 		for A in self.attractors.values():
 			assert(A.size <= 1)
 			incoming_weight=0
 			for k in A.A0s:
-				incoming_weight += Aweights[k] #*A.A0s[k] #gotta think more about why this works...
+				incoming_weight += Aweights[k] #*A.A0s[k] .
 			A.size = incoming_weight
 			total += A.size 
 
@@ -226,18 +262,20 @@ class SteadyStates:
 			print('\nbasin.renormz_by_A0 is not correct! total=',total) # curr occurs w A.A0s[k]>1
 			assert(0)
 
+
 	def build_A0(self, SS0=None):
 		self.attractor_order = list(self.attractors.keys())
 		A_ids = [self.attractors[k].id for k in self.attractor_order]# attractors in ORDERED list, like def within SSs
 		self.A0 = cp.array([[int(a) for a in A] for A in A_ids])
 		self.A0_source = self.A0.copy()
-		self.Aweights = {A.id:A.size for A in self.attractors.values()}
-		assert(math.isclose(1,sum(self.Aweights.values())))
 		if SS0 is not None:
 			self.renormz_by_A0(SS0)
+		# in case A.size is altered by SS0, calculate Aweights after any renormz
+		self.Aweights = {A.id:A.size for A in self.attractors.values()}
+		assert(math.isclose(1,sum(self.Aweights.values())))
 
 	def shuffle_A0_inputs(self,params,G):
-		# only called from steady basin
+		# only called from steady basin (maybe move it there?)
 		# prob could be more effic with some more np
 		# normalizes Aweights accordingly
 		x0=[]
@@ -278,11 +316,13 @@ def calc_size(params, G, SS0=None):
 	if SS0 is not None:
 		# poss rename x0/A0 to make more clear (they are only diff if input shuffle occured)
 		x0, A0, Aweights = SS0.A0, SS0.A0_source, SS0.Aweights
+		x0 = apply_setting_to_x0(params, G, x0)
+
 		params['map_from_A0'] = True
 		if not (len(x0)==params['num_samples']==params['parallelism']): # or change implementation
 			params['num_samples']=params['parallelism']=len(x0)
-			#if params['verbose'] or params['debug']:
-			#	print('WARNING: changing parallelism and num_samples parameters to match x0')
+			if params['verbose'] or params['debug']:
+				print('\nWARNING: basin.py changing parallelism and num_samples parameters to match SS0')
 
 	params['precise_oscils']= (params['update_rule'] == 'sync' and not params['map_from_A0'] and not util.istrue(params,['PBN','active']) and not util.istrue(params,['skips_precise_oscils']))
 	# using from A0 with sync causes complications like when to end oscil (since x0 is no longer nec in oscil)
@@ -327,7 +367,6 @@ def calc_size(params, G, SS0=None):
 
 	steadyStates.normalize_attractors()
 	steadyStates.build_A0(SS0) #also renormalizes if SS0!=None
-	#print('end of basin:',[A.size for A in steadyStates.attractors.values()])
 	if util.istrue(params,'use_phenos'):
 		steadyStates.build_phenos()
 
@@ -471,11 +510,28 @@ def replace_row_duplicates(a,val,axis):
 	unique[:, 1:][duplicates] = val 
 	return unique
 
+
+def apply_setting_to_x0(params, G, x0):
+	# in case params have changed, for example sequential run, need to apply mutations to x0
+	for k in params['mutations']:
+		x0[:,G.nodeNums[k]] = params['mutations'][k]
+	for k in params['init']:
+		x0[:,G.nodeNums[k]] = params['init'][k]
+
+	return x0 
+
 #############################################################################################
 
 
 if __name__ == "__main__":
-	if len(sys.argv) not in [2]:
-		sys.exit("Usage: python3 basin.py PARAMS.yaml")
+	if len(sys.argv) not in [2,3]:
+		sys.exit("Usage: python3 basin.py PARAMS.yaml [seq]")
 
-	main(sys.argv[1])
+	if len(sys.argv) == 3: 
+		if sys.argv[2] != 'seq':
+			sys.exit("Only optional arg is 'seq'. Usage: python3 basin.py PARAMS.yaml [seq]")
+		else:
+			sequential(sys.argv[1])
+
+	else:
+		main(sys.argv[1])

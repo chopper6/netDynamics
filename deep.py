@@ -1,3 +1,6 @@
+# builds a deep network to handle higher order terms, such as oscillations that fix downstream nodes to fixed points
+# however, has not been updated in a long time and may not longer work
+
 import sys, pickle, itertools
 import ldoi, logic, param, net
 import espresso # this file uses pyeda, and can be a bit tricky to install on windows

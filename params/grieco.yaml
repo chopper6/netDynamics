@@ -10,19 +10,18 @@ parallelism : 10^3 #number of networks to run in parallel (on my desktop 10^5 is
 num_samples : 10^3  #number of initial states tested.
 steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async & Gasync update methods
-update_rule : 'Gasync' # node update scheme: 'sync', 'async', or 'Gasync' 
+update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
-steady_basin: 0
+steady_basin: 0 
 
 PBN : # probabilistic boolean network # seems to req async atm
-  active : 1
+  active : 0
   flip_pr : 0
   float_update : 0 # update Gasync by avg
   float : 1
   init : 'agadfgm' # half or uniform
-calc_var : 0 # will take 2x as long, adds a per-node variance stat to each attractor
 
 # implementation details
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
@@ -40,5 +39,5 @@ fig_legend : 0
 use_phenos: 1
 
 output_dir : 'output/basinRatio/'
-output_img : 'grieco_SBR_sync.png'
-savefig : 0 # as opposed to showing the image
+output_img : 'grieco_test.png'
+savefig : 1 # as opposed to showing the image

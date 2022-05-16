@@ -9,7 +9,8 @@ def load(param_file):
 
 	clean(params)
 	if 'setting_file' in params.keys():
-		params= load_model_file(params) # apparently reassigning params within file does not update unless explicitly returned
+		params= load_setting_file(params) # apparently reassigning params within file does not update unless explicitly returned
+
 
 	assert(params['fraction_per_lap']==1) # poss odd behavior otherwise...spc in async style sims...debug before using
 
@@ -41,7 +42,7 @@ def param_pow(params,k):
 		parts = params[k].split('^')
 		params[k] = int(parts[0])**int(parts[1])
 
-def load_model_file(params):
+def load_setting_file(params):
 	if not os.path.isfile(params['setting_file']):
 		sys.exit("Can't find model_file: " + params['setting_file'] + ', check path in parameter file.')
 	if os.path.splitext(params['setting_file'])[-1].lower() != '.yaml':
@@ -53,10 +54,12 @@ def load_model_file(params):
 	if params['debug']:
 		shared_items = {k: params[k] for k in params if k in model}
 		assert(len(shared_items)==0) #should not have overlaping keys between params and model files
+
 	params = {**model, **params} # in python3.9 can use params_model | params, but may require some people to update python
 
 	adjust_for_inputs(params)
 	return params
+
 
 def adjust_for_inputs(params):
 	if 'inputs' in params.keys():

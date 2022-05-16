@@ -1,4 +1,6 @@
 # finds control set to drive system into a single attractor
+# haven't looked at this in a long time
+
 import sys
 import ldoi, param, net, util
 import numpy as np

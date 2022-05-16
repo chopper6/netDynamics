@@ -9,11 +9,13 @@ output_thresholds : [.49, .49]
 inputs : ['i']
 # all possible input combinations are evenly sampled
 
-init : {'a':1}
+init : {}
 # each sample begins with these states (x0) 
 
-mutations : {} #'a':0,'d':1} 
+mutations : {'a':0} #'a':0,'d':1} 
 # mutations alter the function of the node to always be off or on
+
+controllers : {'b':1}
 
 pheno_color_map : {'00':0, '01':1,'10':2,'11':3} #to ensure consistent coloring between images
 # only matches color to the output nodes

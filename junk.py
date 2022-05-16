@@ -1,5 +1,107 @@
 # these are pieces of code that are no longer used, but may be useful later
 
+
+# was comparing contextual canalization and ldoi to exh sim, but jp will just redo
+def unfair_compare(params, include_exhaustive=True):
+	# TODO: the whole process of running a single attractor in basin is WAY more convoluted than it should be 
+
+	G = net.Net(model_file=params['model_file'],debug=params['debug'])
+	Gpar = net.ParityNet(params['parity_model_file'],debug=params['debug'])		
+
+	ldoi_soln = ldoi.ldoi_bfs(Gpar)[0]
+	
+
+	cp.fill_diagonal(ldoi_soln, 1) # ldoi usually doesn't consider the drive to be in its soln unless it forms a stable motif
+	ldoi_percent = cp.sum(ldoi_soln)/(2*G.n**2) 
+
+	G.prepare_for_sim(params)
+	SS = basin.measure(params, G)
+	avg_canal_percent = 0
+	avg_combo_percent = 0
+	total_num_missed  = 0
+	for k in SS.attractors:
+		A0 = SS.attractors[k]
+		z=[(G.nodeNames[i],float(A0.avg[i])) for i in range(len(A0.avg))]
+		print("\nA0 starting...",z)
+		canal_soln = ldoi.ldoi_bfs(Gpar,A0=build_A0(G,A0.avg))[0]
+		total_pinned = 0
+
+		for node in G.nodes:
+			print('\tpinning',node.name)
+			for b in [0,1]:
+				#print('\n\ncanal',node.name,b)
+				SS0 = deepcopy(SS) # only want to start from single A0
+				paramscopy, Gcopy = deepcopy(params), deepcopy(G)
+				paramscopy['mutations'][node.name]=b 
+				paramscopy['inputs']=[]
+				Gcopy.prepare_for_sim(paramscopy)
+				SS0.attractors = {k:SS0.attractors[k]}
+				SS0.attractors[k].id = util.char_in_str(SS0.attractors[k].id, node.num, b)
+				SS0.attractors[k].size=1
+				SS0.build_A0()
+				SS_result = basin.calc_size(paramscopy, Gcopy, SS0=SS0)
+				exh_A = np.array([SS_result.attractors[k].avg for k in SS_result.attractors][0]) 
+				# note that this assume only 1 resulting A, better for sync
+
+				if not (exh_A[node.num]==b): # pinned node should stay pinned
+					print("node",node.name,node.num,'set to',b,'doesnt stay pinned!',exh_A[node.num])
+					assert(0)
+
+				total_pinned += (exh_A==1).sum()+(exh_A==0).sum()
+
+
+				# check vs canal soln
+				canal_indx = node.num + (1-b)*G.n
+				for j in range(G.n*2):
+					if canal_soln[canal_indx,j]==1:
+						if j<G.n:
+							if not (exh_A[j]==1): # for exh soln look if regular node is same
+								print('set',node.name,'#',node.num,'to',b,'target',G.nodeNames[j],'#',j,'-> canal:',canal_soln[canal_indx,j],'vs exh',exh_A[j])
+								z={G.nodeNames[i]:exh_A[i] for i in range(len(exh_A))}
+								print('\t\tcanal\t\texh')
+								for ky in z:
+									indx = G.nodeNums[ky]
+									if canal_soln[canal_indx,indx] != exh_A[indx]:
+										print(ky,canal_soln[canal_indx,indx],exh_A[indx])
+
+								assert(0)
+						else:
+							assert(exh_A[j-G.n]==0)  # for exh soln look if compl node is opposite
+					elif canal_soln[canal_indx,j]==0:
+						if j<G.n:
+							if not (exh_A[j]==0):
+								print('set',node.name,'#',node.num,'to',b,'target',G.nodeNames[j],'#',j,'-> canal:',canal_soln[canal_indx,j],'vs exh',exh_A[j])
+								assert(0)
+						else:
+							assert(exh_A[j-G.n]==1)
+
+		percent_pinned_exh = total_pinned/(2*G.n**2) # each poss pin per each poss mutn 
+
+		if not (cp.all(cp.isin(canal_soln[ldoi_soln], cp.array([1,2])))):
+			for i in range(len(canal_soln)):
+				for j in range(len(ldoi_soln)):
+					if ldoi_soln[i,j]==1 and canal_soln[i,j]==0:
+						print("\nerror on",Gpar.nodeNames[j],"when pinning",Gpar.nodeNames[i],'indices=',i,j,'\n')
+						assert(0)
+		num_missed = int(cp.sum(ldoi_soln[canal_soln!=1]))
+
+		total_num_missed += num_missed/(2*G.n**2)
+		avg_canal_percent += cp.sum(canal_soln[canal_soln!=2])/(2*G.n**2)
+		avg_combo_percent += (cp.sum(canal_soln[canal_soln!=2]) + num_missed)/(2*G.n**2)
+
+	avg_canal_percent/=len(SS.attractors)
+	avg_combo_percent/=len(SS.attractors)
+	total_num_missed/=len(SS.attractors)
+
+	ldoi_percent /= percent_pinned_exh
+	avg_canal_percent /= percent_pinned_exh
+	avg_combo_percent /= percent_pinned_exh
+
+	print("Survived. Ldoi score=",ldoi_percent,"vs canal=",avg_canal_percent)
+	print("Combined ldoi and canal score =",avg_combo_percent," canal missed avg",total_num_missed,"of LDOI")
+	# note that some nodes are oscillating, so need exhaustive sim to check
+
+
 # old way to build Parity_Net that allows for dynamic parity network construction
 # 	but in general horrible idea, since should build parity once and write to file (since build v slow)
 class Parity_Net(Net):

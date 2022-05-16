@@ -1,3 +1,6 @@
+# way out of date, has not been updated for a long time
+# randomizes a network
+
 def randomize_experiment(param_file):
 	reps = 2
 	num_swaps = 8

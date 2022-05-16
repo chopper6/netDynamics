@@ -1,3 +1,5 @@
+# currently used for testing sensitivity of small motifs to noise
+
 import basin, param, plot, util
 from net import Net
 import sys, os, itertools, pickle
@@ -19,8 +21,8 @@ def variance_test(param_file):
 
 
 	reps=params['loopy_reps']
-	all_loops = 1 
-	longloops=1
+	all_loops = 0 
+	longloops=0
 	xorr = 0
 
 	print("Simulating loops with flip probability=",params['PBN']['flip_pr'])#,', for',params['loopy_reps'],'repeats.')
@@ -47,7 +49,7 @@ def variance_test(param_file):
 	elif xorr:
 		logics = ['AND','XOR']
 		groups = ['P','PP_and','PP_xor','PN_and','PN_xor','NN_and','NN_xor','N']
-	else: # xor and longloops
+	elif 0: # xor and longloops
 		logics = ['AND','XOR']
 		groups = ['PP_xor','PN_xor','NN_xor']
 		groups += ['PP_xor_long','PN_xor_long','NN_xor_long']
@@ -103,9 +105,7 @@ def from_pickle(param_file):
 def calc_stats_v2(params, reps, noise_str, loopType, gate, feats):
 	avg_stats = {s:0 for s in ['total_avg','total_var','windowed_var']}
 
-	PBN = util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float'])
-	G = Net(model_file=params['model_file'],debug=params['debug'], PBN=PBN)
-	G.prepare_for_sim(params)
+	G = Net(params)
 
 	for r in range(reps):
 		SS = basin.measure(params,G)
