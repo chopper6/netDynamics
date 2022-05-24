@@ -200,8 +200,9 @@ class Net:
 
     def build_negative_nodes(self):
         # put the negative nodes as 2nd half of node array
-        for i in range(self.n):
-            self.add_node(self.not_string + self.nodeNames[i],isNegative=True)
+        if not isinstance(self,ParityNet) and not isinstance(self,DeepNet):
+            for i in range(self.n):
+                self.add_node(self.not_string + self.nodeNames[i],isNegative=True)
 
     def check_mutations(self): 
         if 'mutations' in self.params.keys():
@@ -409,6 +410,12 @@ class Net:
             print(s)
         print('\n')
 
+    def node_vector_to_names(self,v):
+        names = []
+        for i in v:
+            names+=[self.nodeNames[i]]
+        return names
+
 
 ##################################################################################################
 
@@ -515,9 +522,17 @@ class ParityNet(Net):
             for clause in node.F():
                 self.max_literals = max(self.max_literals, len(clause))
 
-    def build_negative_nodes(self):
-        # just to make compatible with default net def
-        pass 
+    def input_names_from_vector(self,v):
+        inpt_ind = self.input_indices()
+        #print(inpt_ind,v)
+        names = []
+        for i in range(len(v)):
+            if v[i]==0:
+                names+=[self.nodeNames[inpt_ind[i]+self.n]]
+            else:
+                assert(v[i]==1)
+                names+=[self.nodeNames[inpt_ind[i]]]
+        return names
 
     def write_to_file(self, output_file):
         with open(output_file,'w') as ofile:
@@ -638,9 +653,6 @@ class DeepNet(Net):
                         seen+=[str(clause)]
         return count
 
-    def build_negative_nodes(self):
-        # just to make compatible with default net def
-        pass 
 
     def get_complement(self, node):
         # returns Node objects, whereas self.complements[name] returns string of the name

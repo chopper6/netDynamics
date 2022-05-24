@@ -23,7 +23,7 @@ Instead of numpy, cupy can optionally be installed. This library provides GPU co
 The program calculates the attractors and their basin sizes of a given network.
 
 Running a single simulation:
-	`python3 main.py params/basic.yaml`
+	`python3 basin.py params/toy.yaml`
 
 The *parameter file* is any YAML file with the required arguments. YAML is like JSON, but with more minimal syntax and allows comments. See params/basic.yaml for a minimal example and parameter explanations.
 
@@ -39,25 +39,39 @@ Timing a simulation:
 	This will time the current simulation. opt.py is a work in progress that will some day (hopfully) aid parameter selection to optimize running time.
 
 If you just want the steady states for some custom code, run:
-	`params = parse.params(param_file)`
-	`G = net.Net(params)`
-	`steadyStates = basin.find_steadyStates(params,G)`
+	`params, G = basin.init(param_file)`
+	`steadyStates = basin.measure(params, G)`
 See the SteadyStates class object in basin.py for details.
 
 ## 4. Control
 
-To exhaustively find all nodes whose mutation changes the phenotype basins over a threshold: 
+Exhaustive simulation can be used to sequentially run the healthy network, then the mutated network from the healthy attractors, and finally the control network from the mutated attractors. To do so, specify the 'mutations' and 'controllers' in the settings file. Then run:
+	`python3 basin.py PARAMS.yaml seq`
+To use in custom code, instead of the command line, call the function:
+	`SS_healthy, SS_mutated, SS_controlled = sequential(path_to_param_file, make_plot=True)`
+	Note that if there are no 'controllers' specified by the settings file, the the function only returns SS_healthy and SS_mutated
 
-Usage: `python3 control.py PARAMS MUT_THRESH CNT_THRESH`
+Contextual canalization can be used to find and score all possible controllers for a given set of mutations. To do so, specify the 'mutations' in the settings file. THen run:
+	`python3 canalization.py PARAMS.yaml`
+To use in custom code, instead of the command line, call the function:
+	`top_nodes, top_scores = canalization.contextual_canalization_control(path_to_param_file)`
+Another example of custom usage can be found in `canalization.usage_example()`, where an initial attractor is passed to contextual canalization instead of being built via network simulation
 
-Where `MUT_THRESH` = minimum distance between wild-type and mutated phenotypes for the mutation to be considered relevant.
-	`CNT_THRESH` = minimum distance between the mutated and control phenotypes for the control to be considered successful. 
 
-To find the minimum recommended values for `MUT_THRESH` and `CNT_THRESH`, run:
-	`python3 control.py PARAMS tune`
+---Exhaustive Control Search is Under Construction---
+	To exhaustively find all nodes whose mutation changes the phenotype basins over a threshold: 
+
+	Usage: `python3 control.py PARAMS MUT_THRESH CNT_THRESH`
+
+	Where `MUT_THRESH` = minimum distance between wild-type and mutated phenotypes for the mutation to be considered relevant.
+		`CNT_THRESH` = minimum distance between the mutated and control phenotypes for the control to be considered successful. 
+
+	To find the minimum recommended values for `MUT_THRESH` and `CNT_THRESH`, run:
+		`python3 control.py PARAMS tune`
 
 
 ## 5. Logic Minimization
+---Logic Minimization has not been used for some time and may no longer work---
 Networks can be exhaustively reduced to their minimal DNF form using a C program.
 The original Quine-McCluskey implementation in C is done by use bp274: https://github.com/bp274/Tabulation-method-Quine-McCluskey-
 Note that `qm.exe` is machine dependent and must be compiled by the user from `logicSynth/qm.c`
@@ -130,3 +144,9 @@ Model file: `models/sahin.bnet`. Original paper: Sahin, Özgür, et al. "Modelin
 
 Mammalian cell cycle network. Not recommended. The output node is almost completely independent of the input, and the network has several faults such as redundant edges.
 
+
+#### Helikar Network
+Will add soon
+
+# TODO:
+- add brief description of each file

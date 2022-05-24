@@ -38,7 +38,7 @@ def measure(params, G, SS0=None):
 	return steadyStates
 
 
-def sequential(param_file):
+def sequential(param_file,make_plot=True):
 	# runs the healthy network, then applies mutations in params and runs the network again with those mutations
 	
 	params = param.load(param_file)
@@ -47,16 +47,15 @@ def sequential(param_file):
 	G = Net(params)
 	SS_healthy = measure(params, G)
 	params['output_img'] = params['output_img'].replace('.png','_healthy.png')
-	plot.pie(params, SS_healthy,G)
+	if make_plot:
+		plot.pie(params, SS_healthy,G)
 
 	params['mutations'] = mutations
 	G.prepare(params) 
 	SS_mutated = measure(params, G, SS0=SS_healthy)
 	params['output_img'] = params['output_img'].replace('_healthy.png','_mutated.png')
-	plot.pie(params, SS_mutated,G)
-	#print([A.id[6] for A in SS_mutated.attractors.values()])
-
-	# debug: mutation is correctly applied and always off in lap.py and yet...image doesn't change
+	if make_plot:
+		plot.pie(params, SS_mutated,G)
 
 	if 'controllers' in params.keys() and len(params['controllers']) > 0:
 		params['mutations'] = {}
@@ -68,7 +67,12 @@ def sequential(param_file):
 		G.prepare(params) 
 		SS_controlled = measure(params, G, SS0=SS_mutated)
 		params['output_img'] = params['output_img'].replace('_mutated.png','_controlled.png')
-		plot.pie(params, SS_controlled,G)
+		if make_plot:
+			plot.pie(params, SS_controlled,G)
+		return SS_healthy, SS_mutated, SS_controlled 
+
+	else:
+		return SS_healthy, SS_mutated
 
 
 def init(param_file):
@@ -124,8 +128,10 @@ class Attractor:
 			if float(self.avg[outputs[i]]) > params['output_thresholds'][i]: 
 				self.phenotype +='1'
 			else:
-				self.phenotype +='0'		 
-
+				self.phenotype +='0'
+	
+	def __str__(self):		 
+		return str(self.id) # note that id is only ONE state in the attractor
 
 class Phenotype:
 	def __init__(self, attractors, size):
@@ -190,6 +196,8 @@ class SteadyStates:
 			avgs[inverse[i]] += result['avg'][i]
 			if self.params['map_from_A0']:
 				mapped_A0s[inverse[i]]+=[format_id_str(A0s[i])]
+		for i in range(len(avgs)):
+			avgs[i]/=counts[i]
 	
 		for i in range(len(unique)):
 			attr_data = {'id':attractor_ids[i], 'state':unique[i], 'size':counts[i], 'avg':avgs[i]}
