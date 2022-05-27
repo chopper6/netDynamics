@@ -25,6 +25,9 @@ def check_file(file_path,name):
 def clean(params):
 	for k in params.keys():
 		param_pow(params, k)
+	if 'PBN' in params.keys():
+		for k in params['PBN'].keys():
+			param_pow(params['PBN'],k)
 
 	params['parallelism'] = int(max(params['parallelism'],1)) #1 is actually sequential, i.e. run 1 at a time
 
@@ -70,13 +73,15 @@ def adjust_for_inputs(params):
 			sys.exit("\nERROR: parallelism parameter must be >= # input combinations, since inputs are run in parallel!\n")
 
 		if actual_num_parallel!=params['parallelism']:
-			print("\nWARNING: parallelism set to",actual_num_parallel,' for balanced input samples on each parallel iteration.')
+			if params['verbose']:
+				print("\nWARNING: parallelism set to",actual_num_parallel,' for balanced input samples on each parallel iteration.')
 			params['parallelism']=actual_num_parallel
 
 		actual_num_samples = round(params['num_samples']/params['parallelism'])*params['parallelism']
 
 		if params['num_samples'] != actual_num_samples:
-			print("WARNING: num_samples set to", actual_num_samples,"for full parallelism each iteration.\n")
+			if params['verbose']:
+				print("WARNING: num_samples set to", actual_num_samples,"for full parallelism each iteration.\n")
 			params['num_samples'] = actual_num_samples
 
 
