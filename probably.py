@@ -4,6 +4,7 @@ import basin, param, plot, util
 from net import Net
 import sys, os, itertools, pickle
 from copy import deepcopy
+import numpy as np
 
 # LATER:
 # try longer loops, see if more robust
@@ -16,6 +17,36 @@ from copy import deepcopy
 # consider var of more than just the pivot node?
 # poss build longer regular FBLs
 
+
+
+###################################### BIGBOIS ##############################################
+#							 		  top down												#
+def full_net_test(param_file):
+	
+	params, G = basin.init(param_file)
+	
+	# mandatory settings
+	params['PBN']['active'] = True
+	params['PBN']['float'] = False		  # fast/slow variance requires full population
+	params['PBN']['float_update'] = False # fast/slow variance requires full population
+	params['verbose'] = False
+	params['skips_precise_oscils'] = True
+	assert(params['var_window']) # need to specify a window for slow variance
+
+	SS = basin.measure(params, G)
+	fast_var = SS.stats['windowed_var'] # should prob just title it fast_var to begin with
+	slow_var = SS.stats['total_var'] - SS.stats['windowed_var']
+	assert(np.all(slow_var>=0))
+
+	print("\n\n~~~Noise level of each node~~~")
+	assert(len(slow_var)==len(G.nodeNums)/2)
+	noisy_ind = [x for _, x in sorted(zip(slow_var, G.nodeNums.values()))]
+	for i in range(len(noisy_ind)):
+		print(G.nodeNames[noisy_ind[i]],':\t',round(slow_var[noisy_ind[i]],5))
+
+
+####################################### LOOPY ###############################################
+#									  bottom up 											#
 def variance_test(param_file):
 	params = param.load(param_file)
 
@@ -222,6 +253,8 @@ if __name__ == "__main__":
 		from_pickle(sys.argv[1])
 	elif sys.argv[2]=='run':
 		variance_test(sys.argv[1])
+	elif sys.argv[2]=='big':
+		full_net_test(sys.argv[1])
 	else:
 		print("Unrecognized 2nd argument:",sys.argv[2])
 		sys.exit()

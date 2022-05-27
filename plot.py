@@ -430,6 +430,24 @@ def SBR_vs_IBR():
 			plt.close()
 
 
+def dev_in_time_lines(std_devs, labels):
+	# std_devs should be a time series, with dev from last time state at each point
+	# one label per such time series
+	assert(len(std_devs) == len(labels))
+	plt.figure(figsize=(12, 8))
+	for i in range(len(labels)):
+		plt.plot(std_devs[i], label=labels[i])
+	plt.legend() #prop={'size': 10})
+	ax = plt.gca()
+	ax.set_yscale('log')
+	plt.xlabel('time')
+	plt.ylabel('std dev in a time step')
+	plt.show()
+	plt.clf()
+	plt.close()
+
+
+
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers
 

@@ -15,10 +15,11 @@ update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync'
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
 steady_basin: 0 
+var_window: 20
 
 PBN : # probabilistic boolean network # seems to req async atm
   active : 0
-  flip_pr : 0
+  flip_pr : .001
   float_update : 0 # update Gasync by avg
   float : 1
   init : 'agadfgm' # half or uniform

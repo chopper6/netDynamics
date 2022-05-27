@@ -1,7 +1,7 @@
 # for making a mess
 # curr mainly with PBNs
 
-import basin, util, param
+import basin, util, param, plot
 import sys
 from copy import deepcopy
 import numpy as np
@@ -12,37 +12,42 @@ from net import Net
 
 ############################   PBN   #################################################
 
-def x0_stoch_vs_det(param_file):
-	# also want to check scaling w.r.t # samples and # steps too
-	# then create 3 images
-	reps = 20
-
+def x0_variance(param_file):
+	reps = 1 # just use 1 now
 
 	params = param.load(param_file)
-	params['track_x0'] = True 
 	params['PBN']['active'] = True
 	params['PBN']['float'] = True
-	PBN = util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float'])
-	G = Net(model_file=params['model_file'],debug=params['debug'],PBN=PBN)
-	G.prepare_for_sim(params)
+	if params['update_rule'] == 'Gasync':
+		params['PBN']['float_update'] = True # this uses PBN representation of Gasync/async
+	G = Net(params)
 
 	std_devs = []
-	flip_prs = [0, .001]#, .01, .1, .5]
+	flip_prs = [0,.001, .01, .1, .5]
+	avg_std_in_time, labels = [],[]
 	
 	for flip_pr in flip_prs:
 		params['PBN']['flip_pr'] = flip_pr
 
+		print("starting flip pr", flip_pr)
 		node_avgs = []
 		for r in range(reps):
 			steadyStates = basin.measure(params, G)
-			node_avgs += [steadyStates.stats['total_avg']]
+			#node_avgs += [steadyStates.stats['total_avg']]
+			#avg_std_in_time += [steadyStates.stats['avg_std_in_time']]
+			#labels += ['flip chance ' + str(flip_pr) + ' repeat ' + str(r)]
 
-		node_std_btwn_runs = np.std(node_avgs,axis=0)
-		std_devs += [np.mean(node_std_btwn_runs)]
+		node_std_btwn_runs = np.std(node_avgs,axis=0)					
+		# TODO: worry that this is handling multiple copies wrong...want to compare floats of SINGLE theads
 
-	print('for flip pr=',flip_prs,'\tvariances=',std_devs)
+		#std_devs += ['{:0.3e}'.format(np.mean(node_std_btwn_runs),3)]
+		std_devs += ['{:0.3e}'.format(steadyStates.stats['std_btwn_threads'],3)] # disad is don't have worst case distance but avg
+		avg_std_in_time += [steadyStates.stats['avg_std_in_time']]
+		labels += ['flip chance ' + str(flip_pr)]
 
+	print('for flip pr=',flip_prs,'\tstd devs=',std_devs)
 
+	plot.dev_in_time_lines(avg_std_in_time, labels)
 
 
 def test_PBN(params, G):
@@ -70,26 +75,33 @@ def stoch_then_det(params_orig, G):
 
 	#print("\nRUNNING STOCHASTIC, THEN DETERMINISTIC\n")
 	params=deepcopy(params_orig)
-	SS = basin.calc_size(params,G)
-	params['PBN']['active'] = params['PBN']['flip_pr'] = 0
-	SS = basin.calc_size(params,G,SS0=SS)
+	params['PBN']['active'] = 1
+	#assert(params['PBN']['flip_pr']>0)
+	G.prepare(params)
+	SS = basin.measure(params,G)
+	params['PBN']['flip_pr'] = 0
+	G.prepare(params)
+	SS = basin.measure(params,G,SS0=SS)
 	return SS
 
 def double_det(params_orig,G):
 	# just to be comparable to stoch_then_det
 	# somehow var is higher than a singular run..jp bug
 	params=deepcopy(params_orig)
-	SS = basin.calc_size(params,G)
+	params['PBN']['flip_pr'] = 0
+	G.prepare(params)
+	SS = basin.measure(params,G)
 	#print('\n1:',[A.id for A in SS.attractors.values()])
 	#print('\t',[A.size for A in SS.attractors.values()])
-	SS = basin.calc_size(params,G,SS0=SS)
+	SS = basin.measure(params,G,SS0=SS)
 	#print('2:',[A.id for A in SS.attractors.values()])
 	#print('\t',[A.size for A in SS.attractors.values()])
 	return SS
 
-def repeat_test(param_file):
-	print("\nRUNNING REPEAT TEST\n")
+def seq_ending_test(param_file):
+	print("\nRUNNING SEQ ENDING TEST\n")
 	params, G = basin.init(param_file) # why is init in basin anyway?
+	assert(params['PBN']['active']) # required such that init loaded net is PBN form
 	repeats=10**1
 
 	if params['PBN']['active']:
@@ -111,6 +123,23 @@ def repeat_test(param_file):
 			max_dist = max(d,max_dist)
 		As += [repeat]
 	print("\n\nMax pairwise distance among",repeats,"repeats =",max_dist,'\n\n')
+
+
+def seq_ending_comparison(param_file):
+	print("\nRUNNING SEQ ENDING COMPARISON TEST\n")
+	params, G = basin.init(param_file) # why is init in basin anyway?
+	assert(params['PBN']['active']) # required such that init loaded net is PBN form
+	repeats=10**1
+
+	avg_dist=0
+	for k in range(repeats):
+		if (k+1)%int(repeats/10)==0:
+			print('starting repeat #',k+1,'/',repeats)
+		noisy=stoch_then_det(params, G).phenotypes
+		det = double_det(params,G).phenotypes
+		avg_dist += dist(noisy,det)
+	avg_dist/=repeats
+	print("\n\nAvg distance between stoch and det=",avg_dist,'\n\n')
 
 
 def dist(A1,A2):
@@ -136,10 +165,10 @@ if __name__ == "__main__":
 		sys.exit("Usage: python3 sandbox.py PARAMS.yaml [runtype]")
 	
 	if len(sys.argv) == 3:
-		if sys.argv[2] == 'repeat':
-			repeat_test(sys.argv[1])
+		if sys.argv[2] == 'end':
+			seq_ending_comparison(sys.argv[1])
 		elif sys.argv[2] == 'x0':
-			x0_stoch_vs_det(sys.argv[1])
+			x0_variance(sys.argv[1])
 		else:
 			print("Unknown 2nd param...",sys.argv[2])
 	else:

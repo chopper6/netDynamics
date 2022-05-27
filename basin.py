@@ -238,6 +238,8 @@ class SteadyStates:
 		self.stats['total_avg'] += result['avg_total']
 		self.stats['total_var'] += result['var_total']
 		self.stats['windowed_var'] += result['windowed_var']
+		self.stats['avg_std_in_time'] = result['avg_std_in_time']
+		self.stats['std_btwn_threads'] = result['std_btwn_threads']
 
 	def normalize_stats(self):
 		reps = int(self.params['num_samples']/self.params['parallelism'])

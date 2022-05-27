@@ -10,7 +10,7 @@ parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 i
 num_samples : 10^2 # number of initial states tested. false to turn off (and use only max_laps instead)
 steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
-update_rule : 'Gasync' # node update scheme: 'sync', 'async', or 'Gasync' 
+update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 use_inputs_in_pheno: 1

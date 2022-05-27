@@ -41,8 +41,8 @@ def step(params, x, G):
 
 			x_next = ((~flip) & x_next) | (flip & (~x_next))		
 
-	elif 1:
-		# PBN float version1
+	else:
+		# PBN float to directly compute an average
 
 		X = cp.concatenate((x,1-x),axis=1) # append NOT x to the states
 		#print('\n\n\nlap.step():')
@@ -55,41 +55,11 @@ def step(params, x, G):
 		flip_pr = params['PBN']['flip_pr']
 		x_next = x_next*(1-flip_pr) + (1-x_next)*flip_pr
 
-		
 		x_next[:,0] = 0 # make sure the OFF nodes are not flipped
-		
-		tol=1e-5
+
+		tol=1e-7
 		assert(cp.all(x_next<1+tol) & cp.all(x_next>0-tol))
 
-	else:
-		# PBN float version2
-
-		X = cp.concatenate((x,1-x),axis=1) # append NOT x to the states
-		print('\n\nlap.step():')
-		G.print_matrix_names(X)
-		clauses = cp.prod(X[:,nodes_to_clauses],axis=2)
-		print('clauzez =',clauses[0])
-		partial_truths = cp.prod(1-clauses[:,clauses_to_threads],axis=3)
-		print('partial_truths =',partial_truths[0])
-		print('before matmul =',cp.swapaxes(partial_truths,0,1)[0])
-		print('after matmul =',1-cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes)[0])
-		x_next = 1-cp.prod(cp.matmul(cp.swapaxes(partial_truths,0,1),threads_to_nodes),axis=0).astype(node_dtype)
-		# jp matmul fucks it up since involves an addition 
-
-		print("x_next before flip=")#[:20,:20])
-		G.print_matrix_names(x_next)
-		assert(0)
-		flip_pr = params['PBN']['flip_pr']
-		x_next = x_next*(1-flip_pr) + (1-x_next)*flip_pr
-
-		# make sure the OFF nodes are not flipped
-		x_next[:,0] = 0
-		
-		tol=1e-5
-
-		#print("x_next over=",x_next[x_next>1+tol])
-		#print("x_next under=",np.where(x_next<0-tol))
-		assert(cp.all(x_next<1+tol) & cp.all(x_next>0-tol))
 
 	return x_next
 
@@ -114,11 +84,12 @@ def transient(params,x0, G, fixed_points_only=False):
 		
 		x_next = step(params, x, G)
 		
-		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0 and len(params['inputs'])>0: 
+		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:  #and i%2==0 
 			# reset inputs in case of flip, every other such that input flips still can effect net
 			# slight bias: inputs mutate 1/2 as freq, effectively
-			x[:,input_indx] = input_array
-			
+			x_next[:,input_indx] = input_array
+		
+
 		if params['update_rule']=='sync':
 			if params['precise_oscils']:
 				if fixed_points_only:
@@ -176,6 +147,7 @@ def categorize_attractor(params,x0, G):
 	x = cp.array(x0,dtype=node_dtype).copy()
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
+	avg_std_in_time = cp.zeros(params['steps_per_lap'])
 
 	if params['precise_oscils']:
 		period = cp.ones(params['parallelism'],dtype=int)
@@ -184,6 +156,8 @@ def categorize_attractor(params,x0, G):
 	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
 		input_indx = cp.array(G.input_indices())
 		input_array = x[:,input_indx].copy()
+		not_input_mask = cp.ones(x0.shape,dtype=bool)
+		not_input_mask[:,cp.append(input_indx,0)] = 0 # always OFF node too
 		# since an input flip should not be permanent, but input_t+1 = input_t
 
 	index_dtype, thread_dtype = get_dtypes(params, G.n)
@@ -205,11 +179,16 @@ def categorize_attractor(params,x0, G):
 
 	for i in range(params['steps_per_lap']):
 		x_next = step(params, x, G)
-		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and i%2==0 and len(params['inputs'])>0: 
-			# reset inputs in case of flip, every other such that input flips still can effect net
-			# slight bias: inputs mutate 1/2 as freq, effectively
-			x[:,input_indx] = input_array
+		#print('lap:',x_next[:,:5])
+		#print(cp.stack([x,x_next]).shape, cp.std(cp.stack([x,x_next]),axis=0).shape,cp.mean(cp.std(cp.stack([x,x_next]),axis=0)).shape)
+		
+		if util.istrue(params,['PBN','active']):
+			if 'inputs' in params.keys() and len(params['inputs'])>0: #and i%1==0: 
+				# do not allow inputs to flip
+				x_next[:,input_indx] = input_array
 
+			avg_std_in_time[i] = cp.mean(cp.std(cp.stack([x*not_input_mask,x_next*not_input_mask]),axis=0)) # note that diff btwn inputs are ignored
+		
 		if params['update_rule']=='sync':
 			x = x_next
 			if params['precise_oscils']:
@@ -263,16 +242,22 @@ def categorize_attractor(params,x0, G):
 	# note that var ignores var btwn diff instances (since some of their var is due to diff in x0)
 	var_total = cp.mean(avg_states - cp.power(avg_states,2),axis=0)
 	avg_total = cp.mean(avg_states,axis=0)
+
 	if util.istrue(params,'var_window'):
 		windowed_var=windowed_var_total/(params['steps_per_lap']+1-params['var_window'])
-		windowed_var=cp.mean(windowed_var,axis=0)
+		#windowed_var=cp.mean(windowed_var,axis=0)	
 	else:
 		windowed_var=cp.array(0)
+
+	if params['PBN']['active']:
+		std_btwn_threads = cp.mean(cp.std(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
+	else:
+		std_btwn_threads = cp.zeros(1) # messy af...
 
 	if params['precise_oscils']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 	#else:
-	return {'state':ids, 'avg':avg_states,'avg_total':avg_total,'windowed_var':windowed_var,'var_total':var_total}
+	return {'state':ids, 'avg':avg_states,'avg_total':avg_total,'windowed_var':windowed_var,'var_total':var_total,'avg_std_in_time':avg_std_in_time,'std_btwn_threads':std_btwn_threads}
 
 
 def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states):
