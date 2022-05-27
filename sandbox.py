@@ -84,6 +84,21 @@ def stoch_then_det(params_orig, G):
 	SS = basin.measure(params,G,SS0=SS)
 	return SS
 
+def just_stoch(params_orig,G):
+	params=deepcopy(params_orig)
+	#assert(params['PBN']['flip_pr']>0)
+	G.prepare(params)
+	SS = basin.measure(params,G)
+	return SS
+
+def just_det(params_orig,G):
+	params=deepcopy(params_orig)
+	params['PBN']['flip_pr'] = 0
+	#assert(params['PBN']['flip_pr']>0)
+	G.prepare(params)
+	SS = basin.measure(params,G)
+	return SS
+
 def double_det(params_orig,G):
 	# just to be comparable to stoch_then_det
 	# somehow var is higher than a singular run..jp bug
@@ -111,7 +126,7 @@ def seq_ending_test(param_file):
 	As=[base]
 	max_dist=0
 	for k in range(repeats):
-		if (k+1)%int(repeats/10)==0:
+		if (k+1)%int(repeats/4)==0:
 			print('starting repeat #',k+1,'/',repeats)
 		if params['PBN']['active']:
 			repeat=stoch_then_det(params, G).attractors
@@ -128,18 +143,23 @@ def seq_ending_test(param_file):
 def seq_ending_comparison(param_file):
 	print("\nRUNNING SEQ ENDING COMPARISON TEST\n")
 	params, G = basin.init(param_file) # why is init in basin anyway?
-	assert(params['PBN']['active']) # required such that init loaded net is PBN form
-	repeats=10**1
+	params['PBN']['active'] = 1 # required such that init loaded net is PBN form
+	params['skips_precise_oscils'] = True
+	repeats=4
 
 	avg_dist=0
 	for k in range(repeats):
-		if (k+1)%int(repeats/10)==0:
+		if (k+1)%int(repeats/2)==0:
 			print('starting repeat #',k+1,'/',repeats)
-		noisy=stoch_then_det(params, G).phenotypes
-		det = double_det(params,G).phenotypes
+		#noisy=stoch_then_det(params, G).phenotypes
+		#det = double_det(params,G).phenotypes
+		det = just_det(params,G).phenotypes
+		noisy=just_stoch(params,G).phenotypes
+		noisyPrint, detPrint ={k:noisy[k].size for k in noisy},{k:det[k].size for k in det}
+		#print('\n\nnoisy=',noisyPrint,'\n\ndet=',detPrint)
 		avg_dist += dist(noisy,det)
 	avg_dist/=repeats
-	print("\n\nAvg distance between stoch and det=",avg_dist,'\n\n')
+	print("\n\nAvg distance between stoch and det=",round(avg_dist,5),'\n\n')
 
 
 def dist(A1,A2):

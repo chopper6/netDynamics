@@ -4,6 +4,7 @@
 
 
 import itertools, util, sys
+from copy import deepcopy
 CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy not installed
 import numpy as np
 
@@ -79,23 +80,28 @@ def transient(params,x0, G, fixed_points_only=False):
 		input_indx = cp.array(G.input_indices())
 		input_array = x[:,input_indx].copy()
 		# since an input flip should not be permanent, but input_t+1 = input_t
+	if util.istrue(params,['PBN','active']) and 'mutations' in params.keys() and len(params['mutations'])>0:
+		mutant_indx = cp.array(G.mutant_indices())
+		mutant_array = x[:,mutant_indx].copy()
 
 	for i in range(params['steps_per_lap']):
-		
 		x_next = step(params, x, G)
 		
 		if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:  #and i%2==0 
 			# reset inputs in case of flip, every other such that input flips still can effect net
 			# slight bias: inputs mutate 1/2 as freq, effectively
 			x_next[:,input_indx] = input_array
+		if util.istrue(params,['PBN','active']) and 'mutations' in params.keys() and len(params['mutations'])>0:
+			x_next[:,mutant_indx] = mutant_array
 		
 
 		if params['update_rule']=='sync':
 			if params['precise_oscils']:
 				if fixed_points_only:
 					not_finished = not_finished & cp.any(cp.logical_xor(x_next,x),axis=1)
-				else:
+				else: 
 					not_finished = not_finished & cp.any(cp.logical_xor(x_next,x0),axis=1)
+					# but in stochastic case this seems like bad idea
 
 				if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
 					return exit_sync_transient(x_next, not_finished)
@@ -159,6 +165,10 @@ def categorize_attractor(params,x0, G):
 		not_input_mask = cp.ones(x0.shape,dtype=bool)
 		not_input_mask[:,cp.append(input_indx,0)] = 0 # always OFF node too
 		# since an input flip should not be permanent, but input_t+1 = input_t
+		turned_off_flips = False
+	if util.istrue(params,['PBN','active']) and 'mutations' in params.keys() and len(params['mutations'])>0:
+		mutant_indx = cp.array(G.mutant_indices())
+		mutant_array = x[:,mutant_indx].copy()
 
 	index_dtype, thread_dtype = get_dtypes(params, G.n)
 	simple_ind = cp.ones(params['parallelism'],dtype=thread_dtype) 
@@ -179,16 +189,25 @@ def categorize_attractor(params,x0, G):
 
 	for i in range(params['steps_per_lap']):
 		x_next = step(params, x, G)
-		#print('lap:',x_next[:,:5])
 		#print(cp.stack([x,x_next]).shape, cp.std(cp.stack([x,x_next]),axis=0).shape,cp.mean(cp.std(cp.stack([x,x_next]),axis=0)).shape)
 		
 		if util.istrue(params,['PBN','active']):
 			if 'inputs' in params.keys() and len(params['inputs'])>0: #and i%1==0: 
 				# do not allow inputs to flip
 				x_next[:,input_indx] = input_array
+			if util.istrue(params,['PBN','active']) and 'mutations' in params.keys() and len(params['mutations'])>0:
+				x_next[:,mutant_indx] = mutant_array
 
 			avg_std_in_time[i] = cp.mean(cp.std(cp.stack([x*not_input_mask,x_next*not_input_mask]),axis=0)) # note that diff btwn inputs are ignored
 		
+			if util.istrue(params,['PBN', 'turn_off_step']) and params['PBN']['turn_off_step']==i and not turned_off_flips:
+				#print("Turning off bit flips at time step",i)
+				params=deepcopy(params)
+				params['PBN']['flip_pr'] = 0 
+				ids = cp.array(x0,dtype=bool).copy()
+				avg_states = cp.array(x0,dtype=float)
+				turned_off_flips=True
+
 		if params['update_rule']=='sync':
 			x = x_next
 			if params['precise_oscils']:
@@ -236,8 +255,12 @@ def categorize_attractor(params,x0, G):
 				avg_states = avg_states/(i+2) #+1 for init, +1 since #laps = i+1
 				return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
-	#avg_total = cp.sum(avg_states,axis=0)/(params['num_samples']*(params['steps_per_lap']+1))
-	avg_states = avg_states /(params['steps_per_lap']+1)
+	if not util.istrue(params,['PBN', 'turn_off_step']):
+		#avg_total = cp.sum(avg_states,axis=0)/(params['num_samples']*(params['steps_per_lap']+1))
+		avg_states = avg_states /(params['steps_per_lap']+1)
+	else:
+		num_steps_since_turned_off = 1+params['steps_per_lap'] - params['PBN']['turn_off_step']
+		avg_states = avg_states / num_steps_since_turned_off
 
 	# note that var ignores var btwn diff instances (since some of their var is due to diff in x0)
 	var_total = cp.mean(avg_states - cp.power(avg_states,2),axis=0)

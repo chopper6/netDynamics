@@ -394,6 +394,9 @@ class Net:
     
     def output_indices(self):
         return [self.nodeNums[self.params['outputs'][i]] for i in range(len(self.params['outputs']))]
+    
+    def mutant_indices(self):
+        return [self.nodeNums[k] for k in self.params['mutations'].keys()]
 
     def get_input_sets(self):
         # assumes that 2^#inputs can fit in memory

@@ -331,7 +331,7 @@ def calc_size(params, G, SS0=None):
 		params['map_from_A0'] = True
 		if not (len(x0)==params['num_samples']==params['parallelism']): # or change implementation
 			params['num_samples']=params['parallelism']=len(x0)
-			if params['verbose'] or params['debug']:
+			if params['verbose']:
 				print('\nWARNING: basin.py changing parallelism and num_samples parameters to match SS0')
 
 	params['precise_oscils']= (params['update_rule'] == 'sync' and not params['map_from_A0'] and not util.istrue(params,['PBN','active']) and not util.istrue(params,['skips_precise_oscils']))
