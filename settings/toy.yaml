@@ -1,21 +1,24 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
-use_phenos : true # quick way to disable outputs
+use_phenos : true               # set to False for a quick way to disable outputs
 
-outputs : ['c','d']
+outputs : ['c','d']             # names of the output nodes in the network
 output_thresholds : [.49, .49] 
-# will produce output phenotypes with output=1 if it's average value is > threshold
+    # will produce output phenotypes with output=1 if it's average value is > threshold
+    # length of outputs must = length of output_thresholds
 
-inputs : ['i']
+inputs : ['i'] # names of input nodes in the network
 # all possible input combinations are evenly sampled
 
-init : {}
-# each sample begins with these states (x0) 
+init : {'e':1}
+# each sample begins with these states (in each x0) 
 
-mutations : {'a':0} #'a':0,'d':1} 
+mutations : {'a':0} 
 # mutations alter the function of the node to always be off or on
 
 controllers : {'b':1}
+# controllers are only used in a few functions, such as basin.sequential
 
-pheno_color_map : {'00':0, '01':1,'10':2,'11':3} #to ensure consistent coloring between images
-# only matches color to the output nodes
+pheno_color_map : {'00':0, '01':1,'10':2,'11':3} 
+# specifies a color index for each output state to ensure consistent coloring between images
+# only matches color to the output nodes, not inputs

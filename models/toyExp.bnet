@@ -3,8 +3,10 @@ a,	i
 b,	!i
 c,	a & b
 d,	b | a
+e,	a
 !i,	!i
 !a,	!i
 !b,	i
 !c,	!a | !b
 !d,	!b & !a
+!e,	!a
