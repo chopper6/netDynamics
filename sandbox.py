@@ -2,7 +2,7 @@
 # curr mainly with PBNs
 
 import basin, util, param, plot
-import sys
+import sys, pickle
 from copy import deepcopy
 import numpy as np
 from net import Net
@@ -79,7 +79,7 @@ def stoch_then_det(params_orig, G):
 	#assert(params['PBN']['flip_pr']>0)
 	G.prepare(params)
 	SS = basin.measure(params,G)
-	params['PBN']['flip_pr'] = 0
+	#params['PBN']['flip_pr'] = 0
 	G.prepare(params)
 	SS = basin.measure(params,G,SS0=SS)
 	return SS
@@ -140,26 +140,69 @@ def seq_ending_test(param_file):
 	print("\n\nMax pairwise distance among",repeats,"repeats =",max_dist,'\n\n')
 
 
-def seq_ending_comparison(param_file):
-	print("\nRUNNING SEQ ENDING COMPARISON TEST\n")
-	params, G = basin.init(param_file) # why is init in basin anyway?
+def ending_comparison(params,G,verbose=True, repeats=1):
+	if verbose:
+		print("\nRUNNING SEQ ENDING COMPARISON TEST\n")
 	params['PBN']['active'] = 1 # required such that init loaded net is PBN form
 	params['skips_precise_oscils'] = True
-	repeats=4
 
-	avg_dist=0
+	#params['PBN']['float'] = False	# distance is based on phenotypes after thresholding...which might be wrong
+
+	outputs = G.output_indices()
+	avg_dist=np.zeros(len(outputs))
 	for k in range(repeats):
-		if (k+1)%int(repeats/2)==0:
+		if (k+1)%int(repeats/1)==0 and verbose:
 			print('starting repeat #',k+1,'/',repeats)
-		#noisy=stoch_then_det(params, G).phenotypes
-		#det = double_det(params,G).phenotypes
-		det = just_det(params,G).phenotypes
-		noisy=just_stoch(params,G).phenotypes
-		noisyPrint, detPrint ={k:noisy[k].size for k in noisy},{k:det[k].size for k in det}
-		#print('\n\nnoisy=',noisyPrint,'\n\ndet=',detPrint)
-		avg_dist += dist(noisy,det)
+		if 1: #new version, seems better
+			det = just_det(params,G).stats['total_avg']
+			noisy=just_stoch(params,G).stats['total_avg']
+			#print('det=',det[outputs],'vs noisy=',noisy[outputs])
+			avg_dist += np.abs(det[outputs]-noisy[outputs]) #avg dist btwn outputs
+		elif 0: #odl version
+			det = just_det(params,G).phenotypes
+			noisy=just_stoch(params,G).phenotypes
+			noisyPrint, detPrint ={k:noisy[k].size for k in noisy},{k:det[k].size for k in det}
+			#print('\n\nnoisy=',noisyPrint,'\n\ndet=',detPrint)
+			avg_dist += dist(noisy,det)
+		else: # real old version
+			noisy=stoch_then_det(params, G).phenotypes
+			det = double_det(params,G).phenotypes
+			# then computed dist
 	avg_dist/=repeats
-	print("\n\nAvg distance between stoch and det=",round(avg_dist,5),'\n\n')
+	if verbose:
+		print("\n\nAvg distance between stoch and det of",params['outputs'] ,"=",np.round(avg_dist,5),'\n\n')
+	return np.round(avg_dist,5)
+
+
+def mutatation_seach(param_file):
+	# compares the phenotypes of deterministic and probabilistic networks over many different mutations
+
+	params_orig, G = basin.init(param_file)
+	params_orig['PBN']['active'] = 1 # required such that init loaded net is PBN form
+	repeats = 1
+	dist = {}
+	for node in G.nodes:
+		if node.name != 'OFF':
+			for b in [0,1]:
+				#print('setting', node.name,'=',b)
+				params=deepcopy(params_orig)
+				params['mutations'] = {node.name:b}
+				dist[node.name+'='+str(b)] = ending_comparison(params,G,verbose=False, repeats=repeats) 
+				print(node.name+'='+str(b),':',dist[node.name+'='+str(b)])
+				# note that ending_comparison() internally calls G.prepare() to apply mutations
+	
+	#print('final dists=')
+	#for k in dist:
+	#	print(k,':',dist[k])
+	with open(params['output_dir']+'stoch_mutant_dist.pickle','wb') as f:
+		pickle.dump({'dist':dist, 'params':params_orig},f)
+
+def plot_stoch_mutant_dist():
+	with open('./output/stoch06/grieco_fast_stoch_mutant_dist.pickle','rb') as f:
+		pickled = pickle.load(f)
+	dist, params = pickled['dist'], pickled['params']
+	dist_vals = [list(d)[0] for d in list(dist.values())]
+	plot.stoch_mutant_dist(params, dist_vals)
 
 
 def dist(A1,A2):
@@ -186,9 +229,14 @@ if __name__ == "__main__":
 	
 	if len(sys.argv) == 3:
 		if sys.argv[2] == 'end':
-			seq_ending_comparison(sys.argv[1])
+			params, G = basin.init(sys.argv[1]) # why is init in basin anyway?
+			ending_comparison(params, G)
 		elif sys.argv[2] == 'x0':
 			x0_variance(sys.argv[1])
+		elif sys.argv[2] == 'mutants':
+			mutatation_seach(sys.argv[1])
+		elif sys.argv[2] == 'plot':
+			plot_stoch_mutant_dist()
 		else:
 			print("Unknown 2nd param...",sys.argv[2])
 	else:

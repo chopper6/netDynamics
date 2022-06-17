@@ -447,6 +447,28 @@ def dev_in_time_lines(std_devs, labels):
 	plt.close()
 
 
+def stoch_mutant_dist(params, mut_dists):
+	name = 'thresh'
+	mut_dists.sort()
+	mut_dists.reverse()
+	ind=[i for i in range(len(mut_dists))]
+	plt.figure(figsize=(20, 12))
+	if name=='grieco':
+		plt.axhline(y=.04, color='#00ff00', linestyle='--',alpha=1,linewidth=8,label='no mutation')
+	elif name=='fumia':
+		plt.axhline(y=.041, color='#00ff00', linestyle='--',alpha=1,linewidth=8,label='no mutation')
+	elif name=='thresh':
+		plt.axhline(y=.1, color='#00ff00', linestyle=':',alpha=1,linewidth=12, label='threshold')
+	plt.bar(ind,mut_dists,color='#6600cc',alpha=1, label='mutations')#,width=.7)
+	plt.ylabel("Noise Sensitivity",fontsize=32)
+	plt.xlabel("Mutations",fontsize=32)
+	plt.legend(fontsize=32)
+	ax=plt.gca()
+	ax.tick_params(axis='y', which='major', labelsize=24)
+	ax.xaxis.set_ticklabels([])
+	#plt.show()
+	plt.savefig('./output/stoch06/grieco1',dpi=300)
+
 
 def init_mpl(params):
 	# in the past this helps to auto pick matplotlib backend for different computers

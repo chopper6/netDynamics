@@ -28,6 +28,7 @@ class Net:
             model_file=params['model_file']
 
         self.F= {} # logic function for each node
+        self.F_orig = {} # back up to restore after a mutation 
         self.A=None # adjacency matrix, unsigned
         self.Fmapd = None
 
@@ -75,6 +76,7 @@ class Net:
     def prepare(self,params): 
         # applies setting mutations and builds Fmapd
         self.params=params # since sometimes alter the params applied to same net here
+        self.restore_from_prev_mutations()
         self.add_self_loops()
         self.check_mutations()
         self.apply_mutations()
@@ -210,10 +212,16 @@ class Net:
                 if k not in self.nodeNames:
                     sys.exit("\nSetting file specifies mutation on " + str(k) +", but this node is not in the network!\n") 
 
+    def restore_from_prev_mutations(self):
+        for node in self.nodeNames:
+            if node in self.F_orig:
+                self.F[node] = deepcopy(self.F_orig[node])
+
     def apply_mutations(self):
         if 'mutations' in self.params.keys() and len(self.params['mutations']) > 0:
             for node in self.nodeNames:
                 if node in self.params['mutations']:
+                    self.F_orig[node] = deepcopy(self.F[node])
                     lng = len(self.F[node]) 
                     # will be rendundant, but avoids possible issues with changing # of clauses
                     # otherwise need to rebuild Fmapd each time
@@ -257,7 +265,7 @@ class Net:
         # BUILDING NODES->CLAUSES
         for i in range(n):
             numbered_clauses = [self._clause_num_and_add_to_A(i,c) for c in self.nodes[i].F()]
-            if self.PBN:
+            if self.PBN and util.istrue(self.params,['PBN','float']):
                 numbered_clauses, clauses_mult = PBN.get_node_float_clauses(numbered_clauses, n)
                 self.max_literals = max([self.max_literals]+ [len(x) for x in numbered_clauses])
                 clauses_multiplier += clauses_mult
@@ -414,9 +422,19 @@ class Net:
         print('\n')
 
     def node_vector_to_names(self,v):
+        # where v is a list of node indices
         names = []
         for i in v:
             names+=[self.nodeNames[i]]
+        return names
+
+    def certain_nodes_to_names(self,s):
+        # where s is a list of node states
+        names = []
+        for i in range(len(s)):
+            if s[i] != 2:
+                assert(s[i] in [0,1])
+                names += [self.nodeNames[i]+'='+str(int(s[i]))]
         return names
 
 

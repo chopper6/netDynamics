@@ -8,7 +8,7 @@ inputs : ['EGFR_stimulus', 'FGFR3_stimulus','TGFBR_stimulus', 'DNA_damage']
 init : {'Apoptosis':0,'Proliferation':0,'Growth_Arrest':0}
 # each sample begins with these states (x0) 
 
-mutations : {} #'MYC':1}
+mutations : {} #'EGFR':1} #'p53':0}
 # mutations alter the function of the node to always be off or on
 
 controllers : {} #'PTEN':1}

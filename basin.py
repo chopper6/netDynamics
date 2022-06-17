@@ -20,7 +20,8 @@ def main(param_file):
 	params, G = init(param_file)
 	steadyStates = measure(params, G)
 	#total_avg = [round(s,3) for s in steadyStates.stats['total_avg']]
-	#print('basin, total avg=\n',total_avg)#[1:])
+	outputs=G.output_indices()
+	#print('basin, total avg of outputs=\n',steadyStates.stats['total_avg'][outputs])#[1:])
 	plot.pie(params, steadyStates,G)
 	
 
