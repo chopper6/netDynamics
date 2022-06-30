@@ -184,7 +184,8 @@ def categorize_attractor(params,x0, G):
 		# dtype should actually be bool for deterministic but will typ use with PBN
 		windowed_x = cp.zeros((params['var_window'],params['parallelism'],G.n),dtype=float) 
 		windowed_var_total = cp.zeros(G.n,dtype=float) # for each node, will find the var over the window and sum each time step 
-		windowed_var_input_split_total = windowed_var_total.copy()
+		windowed_var_input_split_avgd = windowed_var_total.copy()
+		windowed_var_input_split_sep = cp.zeros((len(params['input_state_indices']),G.n))
 
 	if not G.PBN:
 		avg_states = cp.array(x0,dtype=int)
@@ -265,13 +266,14 @@ def categorize_attractor(params,x0, G):
 			if i>= params['var_window']:
 				window_avg = cp.mean(windowed_x,axis=0)
 				windowed_var_total += cp.mean(window_avg - cp.power(window_avg,2),axis=0)
-
 				windowed_var_input_split = 0
 				for i in range(len(params['input_state_indices'])):
 					istart, iend = params['input_state_indices'][i][0], params['input_state_indices'][i][1]
 					window_avg = cp.mean(windowed_x[:,istart:iend],axis=0)
 					windowed_var_input_split += cp.mean(window_avg - cp.power(window_avg,2),axis=0)
-				windowed_var_input_split_total += windowed_var_input_split/len(params['input_state_indices'])
+					windowed_var_input_split_sep[i] += cp.mean(window_avg - cp.power(window_avg,2),axis=0)
+				windowed_var_input_split_avgd += windowed_var_input_split/len(params['input_state_indices'])
+
 
 		if params['precise_oscils']:
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
@@ -295,38 +297,45 @@ def categorize_attractor(params,x0, G):
 
 	if util.istrue(params,'var_window'):
 		windowed_var=windowed_var_total/(params['steps_per_lap']+1-params['var_window'])
-		windowed_var_input_split_avgd = windowed_var_input_split_total/(params['steps_per_lap']+1-params['var_window'])
+		windowed_var_input_split_avgd /= (params['steps_per_lap']+1-params['var_window'])
 		#windowed_var=cp.mean(windowed_var,axis=0)	
+		windowed_var_input_split_sep /= (params['steps_per_lap']+1-params['var_window'])
 	else:
 		windowed_var=cp.array(0)
 		windowed_var_input_split_avgd = cp.array(0)
+		windowed_var_input_split_sep = cp.array(0)
 
 	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
-		std_btwn_threads = cp.mean(cp.var(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
+		var_threads = cp.mean(cp.var(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
 	else:
-		std_btwn_threads = cp.mean(cp.var(avg_states,axis=0)) 
+		var_threads = cp.mean(cp.var(avg_states,axis=0)) 
 
 	if params['precise_oscils']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
 
 	slow_var = var_total - windowed_var  
-	print("\nWARNING slow var < 0! exact value =",slow_var,'\n')
+	if cp.any(slow_var < -.0001):
+		print("\nWARNING slow var < 0! exact value =",slow_var,'\n')
+		
 
-	pop_stats = {'total_avg':avg_total,'slow_var':slow_var,'windowed_var':windowed_var,'total_var':var_total,'avg_std_in_time':avg_std_in_time,'avg_std_in_time_outputs':avg_std_in_time_outputs,'std_btwn_threads':std_btwn_threads, 'windowed_var_input_split':windowed_var_input_split_avgd}
+	pop_stats = {'total_avg':avg_total,'slow_var':slow_var,'windowed_var':windowed_var,'total_var':var_total,'avg_std_in_time':avg_std_in_time,'avg_std_in_time_outputs':avg_std_in_time_outputs,'var_threads':var_threads, 'windowed_var_input_split':windowed_var_input_split_avgd}
 	
 	# pop stats seperated by input states (can avg those later if want)
 	# TODO: sep fn
 	pop_stats['input_sep']={}
-	for k in ['total_avg','total_var','std_btwn_threads','slow_var']:
+	for k in ['total_avg','total_var','var_threads','slow_var']:
 		pop_stats['input_sep'][k] = []
 	for i in range(len(params['input_state_indices'])):
 		istart, iend = params['input_state_indices'][i][0], params['input_state_indices'][i][1]
 		pop_stats['input_sep']['total_avg'] += [cp.mean(avg_states[istart:iend],axis=0)]
 		pop_stats['input_sep']['total_var'] += [cp.mean(avg_states[istart:iend] - cp.power(avg_states[istart:iend],2),axis=0)]
-		pop_stats['input_sep']['std_btwn_threads'] += [cp.var(avg_states[istart:iend],axis=0)] # note that this is per node, unlike non input-sep version
-		pop_stats['input_sep']['slow_var'] += [pop_stats['input_sep']['total_var'][i] - windowed_var_input_split_avgd[i]]
-		if pop_stats['input_sep']['slow_var'] < -.0001:
-			print("\nWARNING input sep slow var < 0! exact value =",pop_stats['input_sep']['slow_var'],'\n')
+		pop_stats['input_sep']['var_threads'] += [cp.var(avg_states[istart:iend],axis=0)] # note that this is per node, unlike non input-sep version
+
+		pop_stats['input_sep']['slow_var'] += [pop_stats['input_sep']['total_var'][i] - windowed_var_input_split_sep[i]]
+		
+		if cp.any(cp.array(pop_stats['input_sep']['slow_var'][-1]) < -.01):
+			print("\nWARNING input sep slow var < 0! exact value =",pop_stats['input_sep']['slow_var'][-1],'\n')
+
 	result =  {'state':ids, 'avg':avg_states}
 	return result, pop_stats
 

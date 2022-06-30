@@ -457,10 +457,10 @@ def stoch_mutant_dist(params, netName, data):
 		
 	# TODO: check that sort is correct
 
-	noise_keys = ['detstoch_dist','thread_sd_det','thread_sd_stoch']
+	noise_keys = ['detstoch_dist','thread_var_det','thread_var_stoch']
 	noise_keys += ['slow_var_outputs_stoch']
 	
-	#noise_keys = ['detstoch_dist','thread_sd_det','thread_sd_stoch', 'temporal_sd_det', 'temporal_sd_stoch']
+	#noise_keys = ['detstoch_dist','thread_var_det','thread_var_stoch', 'temporal_sd_det', 'temporal_sd_stoch']
 	#noise_keys += ['fast_var_all_det', 'slow_var_all_det', 'fast_var_all_stoch', 'slow_var_all_stoch', 'fast_var_outputs_det', 'slow_var_outputs_det', 'fast_var_outputs_stoch', 'slow_var_outputs_stoch']
 	
 	cancer_keys = [ 'diff','cancer_noisy', 'cancer_det']

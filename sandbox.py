@@ -41,7 +41,7 @@ def x0_variance(param_file):
 		# TODO: worry that this is handling multiple copies wrong...want to compare floats of SINGLE theads
 
 		#std_devs += ['{:0.3e}'.format(np.mean(node_std_btwn_runs),3)]
-		std_devs += ['{:0.3e}'.format(steadyStates.stats['std_btwn_threads'],3)] # disad is don't have worst case distance but avg
+		std_devs += ['{:0.3e}'.format(steadyStates.stats['var_threads'],3)] # disad is don't have worst case distance but avg
 		avg_std_in_time += [steadyStates.stats['avg_std_in_time']]
 		labels += ['flip chance ' + str(flip_pr)]
 
@@ -151,15 +151,16 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 
 	outputs = G.output_indices()
 	avg_dist=np.zeros(len(outputs))
-	avg_thread_std=np.zeros(len(outputs))
+	avg_thread_var=np.zeros(len(outputs))
 
-	avg_thread_std_det=np.zeros(len(outputs))
-	temporal_sd_det, temporal_sd_stoch  = 0,0
+	avg_thread_var_det=np.zeros(len(outputs))
+	temporal_var_det, temporal_var_stoch  = 0,0
 	cancer_det, cancer_noisy = 0,0
 
 	fast_var_all_det, slow_var_all_det, fast_var_all_stoch, slow_var_all_stoch = 0,0,0,0
 	fast_var_outputs_det, slow_var_outputs_det, fast_var_outputs_stoch, slow_var_outputs_stoch = 0,0,0,0
 	
+	# TODO put these all stats into a dict and auto pass keys instead lol
 
 	for k in range(repeats):
 		if (k+1)%int(repeats/1)==0 and verbose:
@@ -170,14 +171,14 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 			noisy_stats = just_stoch(params,G).stats
 			noisy_iavg = noisy_stats['input_sep']['total_avg']
 			
-			thread_std, thread_std_det, dist=0,0,0
+			thread_var, thread_var_det, dist=0,0,0
 			avg_slow_var_all_det, avg_slow_var_all_stoch, avg_slow_var_outputs_det, avg_slow_var_outputs_stoch = 0,0,0,0
 			num_input_states = len(params['input_state_indices'])
 
 			# average over inputs first
 			for i in range(num_input_states):
-				thread_std+=noisy_stats['input_sep']['std_btwn_threads'][i]
-				thread_std_det+=det_stats['input_sep']['std_btwn_threads'][i]
+				thread_var += noisy_stats['input_sep']['var_threads'][i]
+				thread_var_det += det_stats['input_sep']['var_threads'][i]
 				dist += np.abs(det_iavg[i][outputs]-noisy_iavg[i][outputs])
 
 				fast_var_all_det += np.mean(det_stats['input_sep']['total_var'][i]) 
@@ -190,35 +191,26 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 				slow_var_outputs_det += np.mean(det_stats['input_sep']['slow_var'][i][outputs])
 				slow_var_outputs_stoch += np.mean(noisy_stats['input_sep']['slow_var'][i][outputs])
 
-			avg_thread_std += thread_std[outputs] / num_input_states
+			avg_thread_var += thread_var[outputs] / num_input_states
 			avg_dist += dist / num_input_states
-			avg_thread_std_det += thread_std_det[outputs] / num_input_states
+			avg_thread_var_det += thread_var_det[outputs] / num_input_states
 
+			fast_var_all_det /= num_input_states
+			fast_var_all_stoch /= num_input_states
+			fast_var_outputs_det /= num_input_states
+			fast_var_outputs_stoch /= num_input_states
+			slow_var_all_det /= num_input_states
+			slow_var_all_stoch /= num_input_states
+			slow_var_outputs_det /= num_input_states
+			slow_var_outputs_stoch /= num_input_states
 
-			# check that def of slow variance is correct
-			#assert(avg_slow_var_all_det/ num_input_states  - np.mean(det_stats['windowed_var_input_split'])>=0)
-			#assert(avg_slow_var_all_stoch/ num_input_states  - np.mean(noisy_stats['windowed_var_input_split'])>=0)
-			#assert(avg_slow_var_outputs_det/ num_input_states  - np.mean(det_stats['windowed_var_input_split'][outputs])>=0)
-			if not (avg_slow_var_outputs_stoch/ num_input_states  - np.mean(noisy_stats['windowed_var_input_split'][outputs])>=-.001):
-				print("\nWARNING: slow var = ",avg_slow_var_outputs_stoch/ num_input_states  - np.mean(noisy_stats['windowed_var_input_split'][outputs]))
-
-			slow_var_all_det += avg_slow_var_all_det/ num_input_states  - np.mean(det_stats['windowed_var_input_split'])
-			slow_var_all_stoch += avg_slow_var_all_stoch/ num_input_states  - np.mean(noisy_stats['windowed_var_input_split'])
-			slow_var_outputs_det += avg_slow_var_outputs_det/ num_input_states  - np.mean(det_stats['windowed_var_input_split'][outputs])
-			slow_var_outputs_stoch += avg_slow_var_outputs_stoch/ num_input_states  - np.mean(noisy_stats['windowed_var_input_split'][outputs])
-
-			fast_var_all_det += np.mean(det_stats['windowed_var_input_split'])
-			fast_var_all_stoch += np.mean(noisy_stats['windowed_var_input_split'])
-			fast_var_outputs_det += np.mean(det_stats['windowed_var_input_split'][outputs])
-			fast_var_outputs_stoch += np.mean(noisy_stats['windowed_var_input_split'][outputs])
-
-			temporal_sd_det += np.mean(det_stats['avg_std_in_time_outputs'])
-			temporal_sd_stoch += np.mean(noisy_stats['avg_std_in_time_outputs'])
+			temporal_var_det += np.mean(det_stats['avg_std_in_time_outputs'])
+			temporal_var_stoch += np.mean(noisy_stats['avg_std_in_time_outputs'])
 			cancer_det += eval_cancerousness(params, det_stats['total_avg'][outputs])
 			cancer_noisy += eval_cancerousness(params, noisy_stats['total_avg'][outputs])
 
 		elif 0: 
-			# look both btwn threads in noise with: 'std_btwn_threads'
+			# look both btwn threads in noise with: 'var_threads'
 			# and the input-sep diff btwn det and noisy avgs of output nodes
 			det = just_det(params,G).stats['total_avg']
 			noisy=just_stoch(params,G).stats['total_avg']
@@ -235,21 +227,11 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 			det = double_det(params,G).phenotypes
 			# then computed dist
 
-	assert(repeats==1) # else normalize all metrics
-	dist=avg_dist/repeats
-	thread_std=avg_thread_std/repeats
-	thread_std_det=avg_thread_std_det/repeats
-	cancer_det/=repeats 
-	cancer_noisy/=repeats
-	temporal_sd_stoch/=repeats
-	temporal_sd_det/=repeats
-	if verbose:
-		print("\n\nAvg input split dist btwn stoch det of output =", np.round(dist,5),'and std dev btwn stoch threads =', np.round(thread_std,5))
-		#print("\n\nAvg distance between stoch and det of",params['outputs'] ,"=",np.round(avg_dist,5),'\n\n')
-	
+	assert(repeats==1) # else normalize all metrics by # repeats
+
 	result = {
-		'dist':dist, 'thread_std_det':thread_std_det, 'thread_std_stoch':thread_std, 
-		'cancer_det':cancer_det, 'cancer_noisy':cancer_noisy, 'temporal_sd_det':temporal_sd_det,'temporal_sd_stoch':temporal_sd_stoch,
+		'dist':dist, 'thread_var_det':thread_var_det, 'thread_var_stoch':thread_var, 
+		'cancer_det':cancer_det, 'cancer_noisy':cancer_noisy, 'temporal_var_det':temporal_var_det,'temporal_var_stoch':temporal_var_stoch,
 		'fast_var_all_det':fast_var_all_det, 'slow_var_all_det':slow_var_all_det, 'fast_var_all_stoch':fast_var_all_stoch, 'slow_var_all_stoch':slow_var_all_stoch,
 		'fast_var_outputs_det':fast_var_outputs_det, 'slow_var_outputs_det':slow_var_outputs_det, 'fast_var_outputs_stoch':fast_var_outputs_stoch, 'slow_var_outputs_stoch':slow_var_outputs_stoch,
 		}
@@ -264,22 +246,22 @@ def mutatation_seach(param_file):
 	params_orig, G = basin.init(param_file)
 	params_orig['PBN']['active'] = 1 # required such that init loaded net is PBN form
 	repeats = 1
-	dist, thread_sd_det, thread_sd_stoch = {}, {}, {} # two metrics of effect of mutation on noise
+	dist, thread_var_det, thread_var_stoch = {}, {}, {} # two metrics of effect of mutation on noise
 	cancerousness_det, cancerousness_noisy = {},{}  # metric for effect of mutation on cancerousness, depending det/noisy model
-	temporal_sd_det, temporal_sd_stoch = {},{}
+	temporal_var_det, temporal_var_stoch = {},{}
 	slowfast_keys = ['fast_var_all_det', 'slow_var_all_det', 'fast_var_all_stoch', 'slow_var_all_stoch', 'fast_var_outputs_det', 'slow_var_outputs_det', 'fast_var_outputs_stoch', 'slow_var_outputs_stoch']
 	slowfast = {k:{} for k in slowfast_keys}
 
 	baseline_result = ending_comparison(params_orig,G,verbose=False, repeats=repeats) 
-	dists, thread_sds_det, thread_sds_stoch, baseline_cancer_det, baseline_cancer_noisy = baseline_result['dist'], baseline_result['thread_std_det'], baseline_result['thread_std_stoch'], baseline_result['cancer_det'], baseline_result['cancer_noisy']
-	temporal_sds_det, temporal_sds_stoch = baseline_result['temporal_sd_det'], baseline_result['temporal_sd_stoch']
+	dists, thread_vars_det, thread_vars_stoch, baseline_cancer_det, baseline_cancer_noisy = baseline_result['dist'], baseline_result['thread_var_det'], baseline_result['thread_var_stoch'], baseline_result['cancer_det'], baseline_result['cancer_noisy']
+	temporal_vars_det, temporal_vars_stoch = baseline_result['temporal_var_det'], baseline_result['temporal_var_stoch']
 	baseline_dist = np.round(np.mean(dists),5)
-	baseline_thread_sd_det = np.round(np.mean(thread_sds_det),5)
-	baseline_thread_sd_stoch = np.round(np.mean(thread_sds_stoch),5)
-	baseline_temporal_sds_det = np.round(np.mean(temporal_sds_det),5)
-	baseline_temporal_sds_stoch = np.round(np.mean(temporal_sds_stoch),5)
+	baseline_thread_var_det = np.round(np.mean(thread_vars_det),5)
+	baseline_thread_var_stoch = np.round(np.mean(thread_vars_stoch),5)
+	baseline_temporal_vars_det = np.round(np.mean(temporal_vars_det),5)
+	baseline_temporal_vars_stoch = np.round(np.mean(temporal_vars_stoch),5)
 	
-	print('\nBASELINE dist:',baseline_dist,'\tthr stddev:',baseline_thread_sd_det,'\n\tcancrness det:',baseline_cancer_det,'\tcancrness_noisy:',baseline_cancer_noisy)
+	print('\nBASELINE dist:',baseline_dist,'\tthr stddev:',baseline_thread_var_det,'\n\tcancrness det:',baseline_cancer_det,'\tcancrness_noisy:',baseline_cancer_noisy)
 	for node in G.nodes:
 		if node.name != 'OFF':
 			for b in [0,1]:
@@ -287,18 +269,18 @@ def mutatation_seach(param_file):
 				params=deepcopy(params_orig)
 				params['mutations'] = {node.name:b}
 				result = ending_comparison(params,G,verbose=False, repeats=repeats) 
-				dists, thread_sds_det, thread_sds_stoch, cancer_det, cancer_noisy, temporal_sds_det, temporal_sds_stoch = result['dist'], result['thread_std_det'], result['thread_std_stoch'], result['cancer_det'], result['cancer_noisy'], result['temporal_sd_det'], result['temporal_sd_stoch']
+				dists, thread_vars_det, thread_vars_stoch, cancer_det, cancer_noisy, temporal_vars_det, temporal_vars_stoch = result['dist'], result['thread_var_det'], result['thread_var_stoch'], result['cancer_det'], result['cancer_noisy'], result['temporal_var_det'], result['temporal_var_stoch']
 				dist[node.name+'='+str(b)] = np.round(np.mean(dists) - baseline_dist,5)
-				thread_sd_det[node.name+'='+str(b)] = np.round(np.mean(thread_sds_det) - baseline_thread_sd_det,5)
-				thread_sd_stoch[node.name+'='+str(b)] = np.round(np.mean(thread_sds_stoch) - baseline_thread_sd_stoch,5)
+				thread_var_det[node.name+'='+str(b)] = np.round(np.mean(thread_vars_det) - baseline_thread_var_det,5)
+				thread_var_stoch[node.name+'='+str(b)] = np.round(np.mean(thread_vars_stoch) - baseline_thread_var_stoch,5)
 				cancerousness_det[node.name+'='+str(b)] = np.round(cancer_det - baseline_cancer_det,5)
 				cancerousness_noisy[node.name+'='+str(b)] = np.round(cancer_noisy - baseline_cancer_noisy,5)
-				print('\n',node.name+'='+str(b),'dist:',dist[node.name+'='+str(b)],'\tthr stddev:',thread_sd_det[node.name+'='+str(b)],'\n    cancerDet:',cancerousness_det[node.name+'='+str(b)],'\tcancerStoch:',cancerousness_noisy[node.name+'='+str(b)])
+				print('\n',node.name+'='+str(b),'dist:',dist[node.name+'='+str(b)],'\tthr stddev:',thread_var_det[node.name+'='+str(b)],'\n    cancerDet:',cancerousness_det[node.name+'='+str(b)],'\tcancerStoch:',cancerousness_noisy[node.name+'='+str(b)])
 				#print("unsubtrct cancer det, stoch =",np.round(np.mean(cancer_det),5),',',np.round(np.mean(cancer_noisy),5) )
 				# note that ending_comparison() internally calls G.prepare() to apply mutations
 
-				temporal_sd_det[node.name+'='+str(b)] = np.round(np.mean(temporal_sds_det)-baseline_temporal_sds_det,5)
-				temporal_sd_stoch[node.name+'='+str(b)] = np.round(np.mean(temporal_sds_stoch)-baseline_temporal_sds_stoch,5)
+				temporal_var_det[node.name+'='+str(b)] = np.round(np.mean(temporal_vars_det)-baseline_temporal_vars_det,5)
+				temporal_var_stoch[node.name+'='+str(b)] = np.round(np.mean(temporal_vars_stoch)-baseline_temporal_vars_stoch,5)
 
 				for k in slowfast_keys:
 					slowfast[k][node.name+'='+str(b)] = np.round(result[k]-baseline_result[k],5)
@@ -313,58 +295,77 @@ def mutatation_seach(param_file):
 		pickle_file = params['output_dir']+'stoch_mutant_dist_' + img_name + '_' + str(i) + '.pickle'
 		i+=1
 	with open(pickle_file,'wb') as f:
-		data = {'detstoch_dist':dist, 'params':params_orig,'thread_sd_det':thread_sd_det,'thread_sd_stoch':thread_sd_stoch,'cancer_det':cancerousness_det, 'cancer_noisy':cancerousness_noisy, 'temporal_sd_det':temporal_sd_det, 'temporal_sd_stoch':temporal_sd_stoch}
+		data = {'detstoch_dist':dist, 'params':params_orig,'thread_var_det':thread_var_det,'thread_var_stoch':thread_var_stoch,'cancer_det':cancerousness_det, 'cancer_noisy':cancerousness_noisy, 'temporal_var_det':temporal_var_det, 'temporal_var_stoch':temporal_var_stoch}
 		for k in slowfast_keys:
 			data[k] = slowfast[k]
 		pickle.dump(data,f)
 
-def plot_stoch_mutant_dist():
-	files = ['./output/noisy07/stoch_mutant_dist_grieco_12.pickle','./output/noisy07/stoch_mutant_dist_fumia_4.pickle']
-	names = ['grieco','fumia']
-	for i in range(len(files)):
-		with open(files[i], 'rb') as f:
-			pickled = pickle.load(f)
-		#for k in pickled:
-		#	if k not in ['params']:
-		#		print(k)
-		#		pickled[k] = [list(d)[0] for d in list(pickled[k].values())]
-		#dist, thread_sd, cancer_det, cancer_stoch, params = pickled['dist'], pickled['params']
-		#dist_vals = [list(d)[0] for d in list(dist.values())]
-		plot.stoch_mutant_dist(pickled['params'],names[i], pickled)
-
 
 def top_down_motifs(param_file_grieco, param_file_fumia):
-	files = ['./output/noisy07/stoch_mutant_dist_grieco_13.pickle','./output/noisy07/stoch_mutant_dist_fumia_5.pickle']
-	names = ['grieco','fumia']
+	files = ['./output/noisy07/stoch_mutant_dist_fumia_4.pickle'] #'./output/noisy07/stoch_mutant_dist_grieco_12.pickle']#,'./output/noisy07/stoch_mutant_dist_fumia_5.pickle']
+	names = ['fumia','grieco']
 	for i in range(len(files)):
 		with open(files[i], 'rb') as f:
 			pickled = pickle.load(f)
-			
-		driver = max(pickled['slow_var_outputs_stoch'], key=pickled['slow_var_outputs_stoch'].get)
-		damper = min(pickled['slow_var_outputs_stoch'], key=pickled['slow_var_outputs_stoch'].get)
+
+		selector_key = 'slow_var_all_stoch' #'slow_var_outputs_stoch'
+		
+		for k in pickled['params']['outputs']:
+			for b in [0,1]:
+				del pickled[selector_key][k+'='+str(b)]
+		for k in pickled['params']['inputs']:
+			for b in [0,1]:
+				del pickled[selector_key][k+'='+str(b)]
+		driver = max(pickled[selector_key], key=pickled[selector_key].get)
+		damper = min(pickled[selector_key], key=pickled[selector_key].get)
+
 		# then test with and without mutation
 		if names[i]=='grieco':
 			param_file = param_file_grieco
 		else:
 			param_file = param_file_fumia
 		params, G = basin.init(param_file)
+		assert(params['PBN']['active'])
+		assert(not params['PBN']['float'])
 
 		driver_node, driver_state = driver.split('=')
 		damper_node, damper_state = damper.split('=')
-		print(driver_node, driver_state)
-		assert(0) # TODO:
-		# slow variance is input-sep atm, should handle in one place (like lap.py)
-		#		except unlike before, want per-node
-		#		maybe all stats should have a per-node and sep-node version?
-		# add call to this fn
-		WT_slowvar = measure(params, G).stats['slowvarorwhatever']
 
-		params['mutations'] = {thrasher[0]:thrasher[1]}
-		params=deepcopy(params_orig)
+		#	maybe all stats should have a per-node and sep-node version?
+
+		WT_slowvar_split = np.array(basin.measure(params, G).stats['input_sep']['slow_var'])
+		#WT_slowvar = avg_input_sep_node_slow_var(WT_stats)
+
+		params['mutations'] = {driver_node:driver_state}
 		G.prepare(params)
-		M_thrash_slowvar = measure(params, G).stats['slowvarorwhatever']
+		M_driver_slowvar_split = np.array(basin.measure(params, G).stats['input_sep']['slow_var'])
+		M_driver_slowvar = np.max(M_driver_slowvar_split - WT_slowvar_split,axis=0) # avg over inputs, keep nodes sep
 
-		# then repeat with damper
+		print("\nDRIVER INDUCED SLOW VAR for", names[i],"using",driver_node,'=',driver_state,":")
+		for j in range(G.n):
+			if M_driver_slowvar[j] > .01:
+				print(G.nodeNames[j],':',np.round(M_driver_slowvar[j],5))
+
+		params['mutations'] = {damper_node:damper_state}
+		G.prepare(params)
+		M_damper_slowvar_split = np.array(basin.measure(params, G).stats['input_sep']['slow_var'])
+		M_damper_slowvar = np.max(M_damper_slowvar_split - WT_slowvar_split,axis=0)
+
+		print("\nDAMPER INDUCED SLOW VAR for", names[i],"using",damper_node,'=',damper_state,":")
+		for j in range(G.n):
+			if M_damper_slowvar[j] < -.001:
+				print(G.nodeNames[j],':',np.round(M_damper_slowvar[j],5))
+
+
+def avg_input_sep_node_slow_var(stats):
+	slow_var_all_inputs = np.array(stats['input_sep']['slow_var'])
+	#print("shape of slow var all inputs =",slow_var_all_inputs.shape)
+	slow_var_nodes = np.mean(slow_var_all_inputs,axis=0)
+	#print("shape of slow var nodes =",slow_var_nodes.shape)
+
+	# INSTEAD USING AVGD, not input set
+	slow_var_nodes = stats['slow_var']
+	return slow_var_nodes
 
 def dist(A1,A2):
 	d1=0
@@ -388,6 +389,23 @@ def eval_cancerousness(params, output_avgs):
 		return output_avgs[1] - output_avgs[0] 
 	else:
 		return 0
+
+#######################################################################################################
+
+def plot_stoch_mutant_dist():
+	files = ['./output/noisy07/stoch_mutant_dist_grieco_15.pickle'] #,'./output/noisy07/stoch_mutant_dist_fumia_5.pickle']
+	names = ['grieco','fumia']
+	for i in range(len(files)):
+		with open(files[i], 'rb') as f:
+			pickled = pickle.load(f)
+		#for k in pickled:
+		#	if k not in ['params']:
+		#		print(k)
+		#		pickled[k] = [list(d)[0] for d in list(pickled[k].values())]
+		#dist, thread_var, cancer_det, cancer_stoch, params = pickled['dist'], pickled['params']
+		#dist_vals = [list(d)[0] for d in list(dist.values())]
+		plot.stoch_mutant_dist(pickled['params'],names[i], pickled)
+
 
 #######################################################################################################
 
