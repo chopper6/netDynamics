@@ -21,7 +21,8 @@ def main(param_file):
 	steadyStates = measure(params, G)
 	#total_avg = [round(s,3) for s in steadyStates.stats['total_avg']]
 	outputs=G.output_indices()
-	#print('basin, total avg of outputs=\n',steadyStates.stats['total_avg'][outputs])#[1:])
+	print('basin, total avg of outputs=\n',steadyStates.stats['total_avg'][outputs])#[1:])
+	print('vs input sep=\n',np.mean(steadyStates.stats['input_sep']['total_avg'],axis=0)[outputs])#[1:])
 	plot.pie(params, steadyStates,G)
 	
 
@@ -124,12 +125,16 @@ class Attractor:
 					self.phenotype +='0'	
 			self.phenotype +='|'
 
+		self.pheno_arr = []
 		for i in range(len(outputs)): 
 			assert(len(outputs)==len(params['output_thresholds'])) # otherwise number of outputs != number of output thresholds!
 			if float(self.avg[outputs[i]]) > params['output_thresholds'][i]: 
 				self.phenotype +='1'
+				self.pheno_arr += [1]
 			else:
 				self.phenotype +='0'
+				self.pheno_arr += [0]
+				
 	
 	def __str__(self):		 
 		return str(self.id) # note that id is only ONE state in the attractor
@@ -152,8 +157,7 @@ class SteadyStates:
 		self.attractors = {} 
 		self.attractor_order = [] # attractor ids in order 
 		self.phenotypes = {}
-		stat_names = ['total_avg','windowed_var','total_var']
-		self.stats = {k:np.zeros(G.n, dtype=float) for k in stat_names}
+		self.stats = {}
 		self.params = params
 		self.G = G
 
@@ -235,17 +239,19 @@ class SteadyStates:
 				self.phenotypes[A.phenotype].attractors[k] = A
 
 
-	def update_stats(self, result):
-		self.stats['total_avg'] += result['avg_total']
-		self.stats['total_var'] += result['var_total']
-		self.stats['windowed_var'] += result['windowed_var']
-		self.stats['avg_std_in_time'] = result['avg_std_in_time']
-		self.stats['std_btwn_threads'] = result['std_btwn_threads']
+	def update_stats(self, lap_stats):
+		# original keys: total_var, windowed_var, avg_std_in_time, std_btwn_threads
+		if len(self.stats) == 0:
+			self.stats = deepcopy(lap_stats)
+		else:
+			for k in lap_stats.keys():
+				self.stats[k] += lap_stats[k]
 
 	def normalize_stats(self):
 		reps = int(self.params['num_samples']/self.params['parallelism'])
 		if reps>1:
-			assert(0) # can rm, just be aware that avg is tech wrong (rather it is an avg of an avg)
+			print("\nWARNING: multiple simulation laps means that stats of steady state are an average of average, rather than pure average.\n")
+			# should be ok, but is technically wrong
 			for k in self.stats.keys():
 				self.stats[k] /= reps
 
@@ -370,9 +376,9 @@ def calc_size(params, G, SS0=None):
 			if util.istrue(params,['PBN','active']) and util.istrue(params,['PBN','float']):
 				x0 = recast_Fmapd_and_x0(params, G, x0)
 			x_in_attractor = lap.transient(params, x0, G)
-			result = lap.categorize_attractor(params, x_in_attractor, G)
-			cupy_to_numpy(params,result)
-			steadyStates.update_stats(result)
+			result, lap_stats = lap.categorize_attractor(params, x_in_attractor, G)
+			cupy_to_numpy(params,result,lap_stats)
+			steadyStates.update_stats(lap_stats)
 			steadyStates.add_attractors(result, A0s=A0)
 		steadyStates.normalize_stats()
 
@@ -397,9 +403,10 @@ def sync_run_oscils(params, oscil_bin, steadyStates, G, transient=False):
 		x0, cutoff, restart_counter = run_oscil_init(params, oscil_bin, restart_counter, loop)
 		if transient:
 			result = lap.transient(params,x0, G, fixed_points_only=False)
+			cupy_to_numpy(params,result)
 		else:
 			result = lap.categorize_attractor(params,x0, G)
-		cupy_to_numpy(params,result)
+			cupy_to_numpy(params,result)
 		result, loop = run_oscils_extract(params, result, oscil_bin, cutoff, loop)
 		
 		if transient:
@@ -470,7 +477,8 @@ def get_init_sample(params, G):
 		input_sets = G.get_input_sets()
 		i=0
 		for input_set in input_sets:
-			x0[int(i*params['parallelism']/(2**len(params['inputs']))):int((i+1)*params['parallelism']/(2**len(params['inputs']))),input_indices] = cp.array(input_set)
+			istate_start, istate_end = params['input_state_indices'][i][0], params['input_state_indices'][i][1]
+			x0[istate_start:istate_end , input_indices] = cp.array(input_set)
 			i+=1
 		assert(i==2**len(params['inputs']))
 
@@ -478,14 +486,24 @@ def get_init_sample(params, G):
 	#x0[0] = cp.array([0,0,1,0,1,0,1])
 	return x0
 
+
 def format_id_str(x):
 	return ''.join(map(str,x.astype(int)))
 
-def cupy_to_numpy(params,result):
+def cupy_to_numpy(params,d1,d2=None):
 	# if using cupy, not extracting these from GPU will lead to SIGNIFICANT slow down
+
 	if params['cupy']:
-		for k in result.keys():
-			result[k]=result[k].get()
+		for k in d1.keys():
+			d1[k]=d1[k].get()
+		if d2 is not None:
+			for k in d2.keys():
+				if k != 'input_sep':
+					d2[k]=d2[k].get()
+				else:
+					for k2 in d2['input_sep']:
+						for i in range(len(d2['input_sep'][k2])):
+							d2['input_sep'][k2][i] = d2['input_sep'][k2][i].get()
 
 def recast_Fmapd_and_x0(params, G,x0):
 	# for PBN!

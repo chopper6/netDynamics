@@ -4,7 +4,9 @@ import matplotlib
 from matplotlib import rcParams, cm
 rcParams['font.family'] = 'serif'
 from matplotlib import pyplot as plt
+from matplotlib import colors as mplc
 import random as rd
+import numpy as np
 import util
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
@@ -447,27 +449,80 @@ def dev_in_time_lines(std_devs, labels):
 	plt.close()
 
 
-def stoch_mutant_dist(params, mut_dists):
-	name = 'thresh'
-	mut_dists.sort()
-	mut_dists.reverse()
-	ind=[i for i in range(len(mut_dists))]
-	plt.figure(figsize=(20, 12))
-	if name=='grieco':
-		plt.axhline(y=.04, color='#00ff00', linestyle='--',alpha=1,linewidth=8,label='no mutation')
-	elif name=='fumia':
-		plt.axhline(y=.041, color='#00ff00', linestyle='--',alpha=1,linewidth=8,label='no mutation')
-	elif name=='thresh':
-		plt.axhline(y=.1, color='#00ff00', linestyle=':',alpha=1,linewidth=12, label='threshold')
-	plt.bar(ind,mut_dists,color='#6600cc',alpha=1, label='mutations')#,width=.7)
-	plt.ylabel("Noise Sensitivity",fontsize=32)
-	plt.xlabel("Mutations",fontsize=32)
-	plt.legend(fontsize=32)
-	ax=plt.gca()
-	ax.tick_params(axis='y', which='major', labelsize=24)
-	ax.xaxis.set_ticklabels([])
-	#plt.show()
-	plt.savefig('./output/stoch06/grieco1',dpi=300)
+def stoch_mutant_dist(params, netName, data):
+	# want 3 plots: (1) mut_dists x cancer stoch, (2) mut_dist x cancer_det, (3) mut_thread_sd x cancer_stoch
+	# in each case want to sort cancer_det by mut_dists/mut_thread_sd, and color by cancer_det/cancer_stoch
+	
+	#data = {'detstoch_dist':dist, 'params':params_orig,'thread_sd_det':thread_sd_det,'thread_sd_stoch':thread_sd_stoch,'cancer_det':cancerousness_det, 'cancer_noisy':cancerousness_noisy, 'temporal_sd_det':abs_sd_det, 'temporal_sd_stoch':abs_sd_stoch}
+		
+	# TODO: check that sort is correct
+
+	noise_keys = ['detstoch_dist','thread_sd_det','thread_sd_stoch']
+	noise_keys += ['slow_var_outputs_stoch']
+	
+	#noise_keys = ['detstoch_dist','thread_sd_det','thread_sd_stoch', 'temporal_sd_det', 'temporal_sd_stoch']
+	#noise_keys += ['fast_var_all_det', 'slow_var_all_det', 'fast_var_all_stoch', 'slow_var_all_stoch', 'fast_var_outputs_det', 'slow_var_outputs_det', 'fast_var_outputs_stoch', 'slow_var_outputs_stoch']
+	
+	cancer_keys = [ 'diff','cancer_noisy', 'cancer_det']
+
+	for ckey in cancer_keys:
+		for nkey in noise_keys:
+			if ckey == 'diff':
+				noiseInduction_dict, cancerness_dict = data[nkey], data['cancer_noisy']	
+			else:
+				noiseInduction_dict, cancerness_dict = data[nkey], data[ckey]
+
+			node_names = list(noiseInduction_dict.keys())
+			noiseInduction = [noiseInduction_dict[k] for k in node_names]
+			cancerness = [cancerness_dict[k] for k in node_names]			
+
+			# double checked that this paired sorting of the two lists is correct
+			cancerness = [x for _, x in sorted(zip(noiseInduction, cancerness))]
+			cancerness.reverse()
+			if ckey == 'diff':
+				cancerness_det = [data['cancer_det'][k] for k in node_names]
+				cancerness_det = [x for _, x in sorted(zip(noiseInduction, cancerness_det))]
+				cancerness_det.reverse()
+				cancerness_x = [cancerness[i] - cancerness_det[i] for i in range(len(cancerness))]
+				cancerness=cancerness_x
+			noiseInduction.sort()
+			noiseInduction.reverse()
+
+			ind=[j for j in range(len(noiseInduction))]
+			plt.figure(figsize=(20, 12))
+			plt.axhline(y=0, color='black',alpha=1,linewidth=1)
+			#	plt.axhline(y=.04, color='#00ff00', linestyle='--',alpha=1,linewidth=8,label='no mutation')
+			#elif name=='thresh':
+			#	plt.axhline(y=.1, color='#00ff00', linestyle=':',alpha=1,linewidth=12, label='threshold')
+
+			cmap = plt.cm.get_cmap('bwr') # good diverging colormaps: 'Spectral_r', 'bwr'
+
+			#colors = my_cmap(cancerness)
+			#centered_norm = mplc.CenteredNorm(vcenter=0.0)
+			divnorm=mplc.TwoSlopeNorm(vmin=min(cancerness), vcenter=0., vmax=max(cancerness))
+			colors = cmap(divnorm(cancerness))
+			plt.bar(ind,noiseInduction,color=colors,alpha=1, edgecolor='black',linewidth=.5)#,width=.7)
+			
+			#divnorm=mplc.TwoSlopeNorm(vmin=min(cancerness), vcenter=0., vmax=max(cancerness))
+			sm = plt.cm.ScalarMappable(cmap=cmap, norm=divnorm) #plt.Normalize(min(cancerness),max(cancerness))) 
+			sm.set_array([])
+			cbar = plt.colorbar(sm)
+			if ckey == 'diff':
+				cbar.set_label('Noise-Induced Cancerousness', rotation=270,labelpad=50,fontsize=32)
+			else:
+				cbar.set_label('Cancerousness', rotation=270,labelpad=50,fontsize=32)
+
+			plt.ylabel("Noise Sensitivity Induced",fontsize=32)
+			plt.xlabel("Mutations",fontsize=32)
+			#plt.legend(fontsize=32)
+			ax=plt.gca()
+			ax.tick_params(axis='y', which='major', labelsize=18)
+			ax.xaxis.set_ticklabels([])
+
+			title = netName + '_' + nkey + '-x-' + ckey
+			#plt.title(title) 
+			#plt.show()
+			plt.savefig('./output/noisy07/'+title+'.png',dpi=300)
 
 
 def init_mpl(params):

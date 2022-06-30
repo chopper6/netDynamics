@@ -153,11 +153,14 @@ def categorize_attractor(params,x0, G):
 	x = cp.array(x0,dtype=node_dtype).copy()
 	x0 = cp.array(x0,dtype=node_dtype).copy() #need for comparisons
 	ids = cp.array(x0,dtype=bool).copy()
-	avg_std_in_time = cp.zeros(params['steps_per_lap'])
+	avg_std_in_time = cp.zeros(params['steps_per_lap'],dtype=float)
+	avg_std_in_time_outputs = cp.zeros(params['steps_per_lap'],dtype=float)
+	convergence = cp.zeros(params['steps_per_lap']-1,dtype=float)
 
 	if params['precise_oscils']:
 		period = cp.ones(params['parallelism'],dtype=int)
 		not_finished = cp.ones(params['parallelism'], dtype=bool)
+
 
 	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
 		input_indx = cp.array(G.input_indices())
@@ -181,6 +184,7 @@ def categorize_attractor(params,x0, G):
 		# dtype should actually be bool for deterministic but will typ use with PBN
 		windowed_x = cp.zeros((params['var_window'],params['parallelism'],G.n),dtype=float) 
 		windowed_var_total = cp.zeros(G.n,dtype=float) # for each node, will find the var over the window and sum each time step 
+		windowed_var_input_split_total = windowed_var_total.copy()
 
 	if not G.PBN:
 		avg_states = cp.array(x0,dtype=int)
@@ -190,7 +194,7 @@ def categorize_attractor(params,x0, G):
 	for i in range(params['steps_per_lap']):
 		x_next = step(params, x, G)
 		#print(cp.stack([x,x_next]).shape, cp.std(cp.stack([x,x_next]),axis=0).shape,cp.mean(cp.std(cp.stack([x,x_next]),axis=0)).shape)
-		
+
 		if util.istrue(params,['PBN','active']):
 			if 'inputs' in params.keys() and len(params['inputs'])>0: #and i%1==0: 
 				# do not allow inputs to flip
@@ -198,8 +202,6 @@ def categorize_attractor(params,x0, G):
 			if util.istrue(params,['PBN','active']) and 'mutations' in params.keys() and len(params['mutations'])>0:
 				x_next[:,mutant_indx] = mutant_array
 
-			avg_std_in_time[i] = cp.mean(cp.std(cp.stack([x*not_input_mask,x_next*not_input_mask]),axis=0)) # note that diff btwn inputs are ignored
-		
 			if util.istrue(params,['PBN', 'turn_off_step']) and params['PBN']['turn_off_step']==i and not turned_off_flips:
 				#print("Turning off bit flips at time step",i)
 				params=deepcopy(params)
@@ -234,7 +236,7 @@ def categorize_attractor(params,x0, G):
 			x = which_nodes*x_next + (1-which_nodes)*x
 		else:
 			sys.exit("\nERROR 'update_rule' parameter not recognized!\n")
-
+			
 		avg_states += x 
 
 		# next few lines are just to replace ids with current states that are "larger", where larger is defined by int representation (i.e. first bit that is different)
@@ -243,12 +245,33 @@ def categorize_attractor(params,x0, G):
 		larger = diff[[simple_ind,first_diff_col]] #note that numpy/cupy handles this as taking all elements indexed at [simple_ind[i],first_diff_col[i]]   
 		
 		ids = (larger==-1)[:,cp.newaxis]*x + (larger!=-1)[:,cp.newaxis]*ids # if x is 'larger' than current id, then replace id with it 
-	
+
+		
+		#avg_std_in_time[i] = cp.mean(cp.std(cp.stack([x*not_input_mask,x_next*not_input_mask]),axis=0)) # note that diff btwn inputs are ignored
+		
+
+		for j in range(len(params['input_state_indices'])):
+			istart, iend = params['input_state_indices'][j][0], params['input_state_indices'][j][1]
+			if i!=0:
+				convergence[i-1] += cp.mean(cp.std(cp.stack([x[istart:iend],xprev[istart:iend]]),axis=0))
+			avg_std_in_time[i] += cp.mean(cp.std(x[istart:iend],axis=0))
+			output_indx = cp.array(G.output_indices())
+			avg_std_in_time_outputs[i] += cp.mean(cp.std(x[istart:iend,output_indx],axis=0)) 
+			# note that seperately comparing over diff inputs also implies that diff btwn inputs are ignored
+		xprev = x.copy()
+
 		if util.istrue(params,'var_window'):
 			windowed_x[i%params['var_window']]= x 
 			if i>= params['var_window']:
 				window_avg = cp.mean(windowed_x,axis=0)
 				windowed_var_total += cp.mean(window_avg - cp.power(window_avg,2),axis=0)
+
+				windowed_var_input_split = 0
+				for i in range(len(params['input_state_indices'])):
+					istart, iend = params['input_state_indices'][i][0], params['input_state_indices'][i][1]
+					window_avg = cp.mean(windowed_x[:,istart:iend],axis=0)
+					windowed_var_input_split += cp.mean(window_avg - cp.power(window_avg,2),axis=0)
+				windowed_var_input_split_total += windowed_var_input_split/len(params['input_state_indices'])
 
 		if params['precise_oscils']:
 			if cp.sum(cp.logical_not(not_finished)/params['parallelism']) >= params['fraction_per_lap']:
@@ -259,6 +282,7 @@ def categorize_attractor(params,x0, G):
 		#avg_total = cp.sum(avg_states,axis=0)/(params['num_samples']*(params['steps_per_lap']+1))
 		avg_states = avg_states /(params['steps_per_lap']+1)
 	else:
+		assert(0) # haven't used 'turn_off_step' in a long time, just double check it
 		num_steps_since_turned_off = 1+params['steps_per_lap'] - params['PBN']['turn_off_step']
 		avg_states = avg_states / num_steps_since_turned_off
 
@@ -266,21 +290,45 @@ def categorize_attractor(params,x0, G):
 	var_total = cp.mean(avg_states - cp.power(avg_states,2),axis=0)
 	avg_total = cp.mean(avg_states,axis=0)
 
+	avg_std_in_time/=len(params['input_state_indices']) # since at each time step added up for each input index
+	avg_std_in_time_outputs/=len(params['input_state_indices'])
+
 	if util.istrue(params,'var_window'):
 		windowed_var=windowed_var_total/(params['steps_per_lap']+1-params['var_window'])
+		windowed_var_input_split_avgd = windowed_var_input_split_total/(params['steps_per_lap']+1-params['var_window'])
 		#windowed_var=cp.mean(windowed_var,axis=0)	
 	else:
 		windowed_var=cp.array(0)
+		windowed_var_input_split_avgd = cp.array(0)
 
-	if params['PBN']['active']:
-		std_btwn_threads = cp.mean(cp.std(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
+	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
+		std_btwn_threads = cp.mean(cp.var(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
 	else:
-		std_btwn_threads = cp.zeros(1) # messy af...
+		std_btwn_threads = cp.mean(cp.var(avg_states,axis=0)) 
 
 	if params['precise_oscils']:
 		return exit_sync_categorize_oscil(params, x0, ids, not_finished, period, avg_states)
-	#else:
-	return {'state':ids, 'avg':avg_states,'avg_total':avg_total,'windowed_var':windowed_var,'var_total':var_total,'avg_std_in_time':avg_std_in_time,'std_btwn_threads':std_btwn_threads}
+
+	slow_var = var_total - windowed_var  
+	print("\nWARNING slow var < 0! exact value =",slow_var,'\n')
+
+	pop_stats = {'total_avg':avg_total,'slow_var':slow_var,'windowed_var':windowed_var,'total_var':var_total,'avg_std_in_time':avg_std_in_time,'avg_std_in_time_outputs':avg_std_in_time_outputs,'std_btwn_threads':std_btwn_threads, 'windowed_var_input_split':windowed_var_input_split_avgd}
+	
+	# pop stats seperated by input states (can avg those later if want)
+	# TODO: sep fn
+	pop_stats['input_sep']={}
+	for k in ['total_avg','total_var','std_btwn_threads','slow_var']:
+		pop_stats['input_sep'][k] = []
+	for i in range(len(params['input_state_indices'])):
+		istart, iend = params['input_state_indices'][i][0], params['input_state_indices'][i][1]
+		pop_stats['input_sep']['total_avg'] += [cp.mean(avg_states[istart:iend],axis=0)]
+		pop_stats['input_sep']['total_var'] += [cp.mean(avg_states[istart:iend] - cp.power(avg_states[istart:iend],2),axis=0)]
+		pop_stats['input_sep']['std_btwn_threads'] += [cp.var(avg_states[istart:iend],axis=0)] # note that this is per node, unlike non input-sep version
+		pop_stats['input_sep']['slow_var'] += [pop_stats['input_sep']['total_var'][i] - windowed_var_input_split_avgd[i]]
+		if pop_stats['input_sep']['slow_var'] < -.0001:
+			print("\nWARNING input sep slow var < 0! exact value =",pop_stats['input_sep']['slow_var'],'\n')
+	result =  {'state':ids, 'avg':avg_states}
+	return result, pop_stats
 
 
 def exit_sync_categorize_oscil(params,x0, ids, not_finished, period, avg_states):

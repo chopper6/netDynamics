@@ -1,4 +1,4 @@
-import os, sys, yaml, util, math
+import os, sys, yaml, util, math, itertools
 
 CUPY, cp = util.import_cp_or_np(try_cupy=0) #should import numpy as cp if cupy not installed
 
@@ -10,7 +10,8 @@ def load(param_file):
 	clean(params)
 	if 'setting_file' in params.keys():
 		params= load_setting_file(params) # apparently reassigning params within file does not update unless explicitly returned
-
+	else:
+		params['input_state_indices'] = [(0,params['parallelism'])]
 
 	assert(params['fraction_per_lap']==1) # poss odd behavior otherwise...spc in async style sims...debug before using
 
@@ -61,6 +62,7 @@ def load_setting_file(params):
 	params = {**model, **params} # in python3.9 can use params_model | params, but may require some people to update python
 
 	adjust_for_inputs(params)
+	add_input_state_indices(params)
 	return params
 
 
@@ -85,6 +87,18 @@ def adjust_for_inputs(params):
 			params['num_samples'] = actual_num_samples
 
 
+def add_input_state_indices(params):
+	# ie which threads handle which input states
+	# not to be confused with the node indices for each input node within a thread
+	input_sets = list(itertools.product([0,1],repeat=len(params['inputs'])))
+	i=0
+	state_indices = []
+	for input_set in input_sets:
+		state_indices += [(int(i*params['parallelism']/(2**len(params['inputs']))),int((i+1)*params['parallelism']/(2**len(params['inputs']))))]
+		i+=1
+		
+	assert(state_indices[-1][1]==params['parallelism'])
+	params['input_state_indices'] = state_indices
 
 if __name__ == "__main__": # just for debugging purposes
 	print("Debugging parse.py")

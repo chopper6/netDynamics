@@ -36,6 +36,11 @@ def full_net_test(param_file):
 	SS = basin.measure(params, G)
 	fast_var = SS.stats['windowed_var'] # should prob just title it fast_var to begin with
 	slow_var = SS.stats['total_var'] - SS.stats['windowed_var']
+
+	assert(0) # have not updated yet, suggested change:
+	#fast_var = SS.stats['windowed_var_input_split'] # should prob just title it fast_var to begin with
+	#slow_var = SS.stats['input_sep']['total_var'] - SS.stats['windowed_var_input_split']
+
 	assert(np.all(slow_var>=0))
 
 	print("\n\n~~~Noise level of each node~~~")
