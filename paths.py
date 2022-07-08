@@ -4,6 +4,9 @@ import numpy as np
 import cupy as cp
 
 # TODO: clean tf out of the function
+#	merge with canalization
+#	only keep parts in ldoi if really nec
+#	
 
 def causal_paths(param_file):
 	params = param.load(param_file)
