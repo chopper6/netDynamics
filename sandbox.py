@@ -147,13 +147,18 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 	params['skips_precise_oscils'] = True
 	assert(params['var_window']>0)
 
+	# very much in need of a clean, confusing af
+	# some of these stats are never used/passed on
+	# some are normalized before repeats, some after, and multiple repeats doesn't even work
+	# mutatation_seach() will further normalize some of the stats
+
 	#params['PBN']['float'] = False	# distance is based on phenotypes after thresholding...which might be wrong
 
 	outputs = G.output_indices()
 	avg_dist=np.zeros(len(outputs))
-	avg_thread_var=np.zeros(len(outputs))
+	avg_thread_var=0
 
-	avg_thread_var_det=np.zeros(len(outputs))
+	avg_thread_var_det=0
 	temporal_var_det, temporal_var_stoch  = 0,0
 	cancer_det, cancer_noisy = 0,0
 
@@ -181,10 +186,10 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 				thread_var_det += det_stats['input_sep']['var_threads'][i]
 				dist += np.abs(det_iavg[i][outputs]-noisy_iavg[i][outputs])
 
-				fast_var_all_det += np.mean(det_stats['input_sep']['total_var'][i]) 
-				fast_var_all_stoch += np.mean(noisy_stats['input_sep']['total_var'][i])
-				fast_var_outputs_det += np.mean(det_stats['input_sep']['total_var'][i][outputs])
-				fast_var_outputs_stoch += np.mean(noisy_stats['input_sep']['total_var'][i][outputs])
+				fast_var_all_det += np.mean(det_stats['windowed_var_input_split']) #'input_sep']['total_var'][i]) 
+				fast_var_all_stoch += np.mean(noisy_stats['windowed_var_input_split'])
+				fast_var_outputs_det += np.mean(det_stats['windowed_var_input_split'][outputs])
+				fast_var_outputs_stoch += np.mean(noisy_stats['windowed_var_input_split'][outputs])
 
 				slow_var_all_det += np.mean(det_stats['input_sep']['slow_var'][i])
 				slow_var_all_stoch += np.mean(noisy_stats['input_sep']['slow_var'][i])
@@ -192,8 +197,14 @@ def ending_comparison(params,G,verbose=True, repeats=1):
 				slow_var_outputs_stoch += np.mean(noisy_stats['input_sep']['slow_var'][i][outputs])
 
 			avg_thread_var += thread_var[outputs] / num_input_states
-			avg_dist += dist / num_input_states
+			dist /= num_input_states
 			avg_thread_var_det += thread_var_det[outputs] / num_input_states
+
+			# next 2 lines just for debug plz dont use
+			#avg_thread_var += np.mean(det_stats['var_threads']) # just to check w grieco only
+			#avg_thread_var_det += np.mean(det_stats['var_threads'][outputs])
+			# either 1) std vs var matters (would be v weird), 2) input split matters, 3) didn't use [outputs] before
+
 
 			fast_var_all_det /= num_input_states
 			fast_var_all_stoch /= num_input_states
@@ -302,8 +313,8 @@ def mutatation_seach(param_file):
 
 
 def top_down_motifs(param_file_grieco, param_file_fumia):
-	files = ['./output/noisy07/stoch_mutant_dist_fumia_4.pickle'] #'./output/noisy07/stoch_mutant_dist_grieco_12.pickle']#,'./output/noisy07/stoch_mutant_dist_fumia_5.pickle']
-	names = ['fumia','grieco']
+	files = ['./output/noisy07/finals/stoch_mutant_dist_grieco_sync.pickle'] #'./output/noisy07/stoch_mutant_dist_grieco_12.pickle']#,'./output/noisy07/stoch_mutant_dist_fumia_5.pickle']
+	names = ['grieco','fumia']
 	for i in range(len(files)):
 		with open(files[i], 'rb') as f:
 			pickled = pickle.load(f)
@@ -333,17 +344,16 @@ def top_down_motifs(param_file_grieco, param_file_fumia):
 
 		#	maybe all stats should have a per-node and sep-node version?
 
-		WT_slowvar_split = np.array(basin.measure(params, G).stats['input_sep']['slow_var'])
-		#WT_slowvar = avg_input_sep_node_slow_var(WT_stats)
+		WT_slowvar_split = np.array(basin.measure(params, G).stats['windowed_var_input_split_sep']) #['input_sep']['slow_var'])
 
 		params['mutations'] = {driver_node:driver_state}
 		G.prepare(params)
-		M_driver_slowvar_split = np.array(basin.measure(params, G).stats['input_sep']['slow_var'])
+		M_driver_slowvar_split = np.array(basin.measure(params, G).stats['windowed_var_input_split_sep']) #['input_sep']['slow_var'])
 		M_driver_slowvar = np.max(M_driver_slowvar_split - WT_slowvar_split,axis=0) # avg over inputs, keep nodes sep
 
 		print("\nDRIVER INDUCED SLOW VAR for", names[i],"using",driver_node,'=',driver_state,":")
 		for j in range(G.n):
-			if M_driver_slowvar[j] > .01:
+			if 1 : #M_driver_slowvar[j] > .01:
 				print(G.nodeNames[j],':',np.round(M_driver_slowvar[j],5))
 
 		params['mutations'] = {damper_node:damper_state}
@@ -356,16 +366,6 @@ def top_down_motifs(param_file_grieco, param_file_fumia):
 			if M_damper_slowvar[j] < -.001:
 				print(G.nodeNames[j],':',np.round(M_damper_slowvar[j],5))
 
-
-def avg_input_sep_node_slow_var(stats):
-	slow_var_all_inputs = np.array(stats['input_sep']['slow_var'])
-	#print("shape of slow var all inputs =",slow_var_all_inputs.shape)
-	slow_var_nodes = np.mean(slow_var_all_inputs,axis=0)
-	#print("shape of slow var nodes =",slow_var_nodes.shape)
-
-	# INSTEAD USING AVGD, not input set
-	slow_var_nodes = stats['slow_var']
-	return slow_var_nodes
 
 def dist(A1,A2):
 	d1=0
@@ -393,7 +393,7 @@ def eval_cancerousness(params, output_avgs):
 #######################################################################################################
 
 def plot_stoch_mutant_dist():
-	files = ['./output/noisy07/stoch_mutant_dist_grieco_15.pickle'] #,'./output/noisy07/stoch_mutant_dist_fumia_5.pickle']
+	files = ['./output/noisy07/fastvar_corrected/stoch_mutant_dist_grieco_Gasync.pickle','./output/noisy07/fastvar_corrected/stoch_mutant_dist_fumia_Gasync.pickle']
 	names = ['grieco','fumia']
 	for i in range(len(files)):
 		with open(files[i], 'rb') as f:

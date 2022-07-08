@@ -455,18 +455,21 @@ def stoch_mutant_dist(params, netName, data):
 	
 	#data = {'detstoch_dist':dist, 'params':params_orig,'thread_sd_det':thread_sd_det,'thread_sd_stoch':thread_sd_stoch,'cancer_det':cancerousness_det, 'cancer_noisy':cancerousness_noisy, 'temporal_sd_det':abs_sd_det, 'temporal_sd_stoch':abs_sd_stoch}
 		
-	# TODO: check that sort is correct
-
+	# RELEVANT KEYS:
 	noise_keys = ['detstoch_dist','thread_var_det','thread_var_stoch']
-	noise_keys += ['slow_var_outputs_stoch']
+	noise_keys += ['slow_var_outputs_stoch','fast_var_outputs_stoch']
+	noise_key_transl = ['Pheno Diff PBN vs DBN', 'DBN Variance by Initial Condition', 'Variance by Initial Condition', 'Slow Variance', 'Fast Variance']
 	
-	#noise_keys = ['detstoch_dist','thread_var_det','thread_var_stoch', 'temporal_sd_det', 'temporal_sd_stoch']
+	# ALL KEYS:
+	#noise_keys = ['detstoch_dist','thread_var_det','thread_var_stoch'] #, 'temporal_sd_det', 'temporal_sd_stoch']
 	#noise_keys += ['fast_var_all_det', 'slow_var_all_det', 'fast_var_all_stoch', 'slow_var_all_stoch', 'fast_var_outputs_det', 'slow_var_outputs_det', 'fast_var_outputs_stoch', 'slow_var_outputs_stoch']
 	
-	cancer_keys = [ 'diff','cancer_noisy', 'cancer_det']
+	cancer_keys = [ 'diff','cancer_noisy'] #, 'cancer_det']
 
 	for ckey in cancer_keys:
-		for nkey in noise_keys:
+		for nk in range(len(noise_keys)):
+			nkey = noise_keys[nk]
+			nkey_name = noise_key_transl[nk]
 			if ckey == 'diff':
 				noiseInduction_dict, cancerness_dict = data[nkey], data['cancer_noisy']	
 			else:
@@ -507,19 +510,22 @@ def stoch_mutant_dist(params, netName, data):
 			sm = plt.cm.ScalarMappable(cmap=cmap, norm=divnorm) #plt.Normalize(min(cancerness),max(cancerness))) 
 			sm.set_array([])
 			cbar = plt.colorbar(sm)
+			cbar.ax.tick_params(labelsize=18)
 			if ckey == 'diff':
-				cbar.set_label('Noise-Induced Cancerousness', rotation=270,labelpad=50,fontsize=32)
+				cbar.set_label('Noise-Induced Cancer Phenotype', rotation=270,labelpad=50,fontsize=32)
 			else:
-				cbar.set_label('Cancerousness', rotation=270,labelpad=50,fontsize=32)
+				cbar.set_label('Cancer Phenotype', rotation=270,labelpad=50,fontsize=32)
 
-			plt.ylabel("Noise Sensitivity Induced",fontsize=32)
+			plt.ylabel(nkey_name,fontsize=32)
 			plt.xlabel("Mutations",fontsize=32)
 			#plt.legend(fontsize=32)
 			ax=plt.gca()
 			ax.tick_params(axis='y', which='major', labelsize=18)
 			ax.xaxis.set_ticklabels([])
 
-			title = netName + '_' + nkey + '-x-' + ckey
+			plt.tight_layout()
+
+			title = netName + '_' + nkey_name + '-x-' + ckey
 			#plt.title(title) 
 			#plt.show()
 			plt.savefig('./output/noisy07/'+title+'.png',dpi=300)

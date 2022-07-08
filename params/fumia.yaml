@@ -8,11 +8,11 @@ debug : 0 # adds various checks, may cause slow down
 verbose : true # prints out more info 
 print_lap : 10 # how many laps before another print statement. only if verbose 
 
-parallelism : 10^3 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
-num_samples : 10^3 # number of initial states tested.
+parallelism : 10^2 # number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+num_samples : 10^2 # number of initial states tested.
 steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async update methods
-update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
+update_rule : 'Gasync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
@@ -31,6 +31,8 @@ PBN : # probabilistic boolean network # seems to req async atm
   flip_pr : 0.001
   init : 'asgfdf' # curr unused jp, prev half or uniform 
 
+var_window: 20
+
 # input
 model_file: 'models/fumia.txt' #'input/fumiaPhenos.yaml', 'input/toyPhenos.yaml' if you don't want it, use null or turn use_phenos off
 setting_file: 'settings/fumia.yaml'
@@ -40,6 +42,6 @@ use_phenos: 1
 fig_legend: 0
 
 # output
-output_dir : 'output/basins2/'
-output_img : 'fumia.png'
+output_dir : 'output/noisy07/'
+output_img : 'fumia_Gasync.png'
 savefig : 0 # as opposed to showing the image

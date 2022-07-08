@@ -128,7 +128,8 @@ class Attractor:
 		self.pheno_arr = []
 		for i in range(len(outputs)): 
 			assert(len(outputs)==len(params['output_thresholds'])) # otherwise number of outputs != number of output thresholds!
-			if float(self.avg[outputs[i]]) > params['output_thresholds'][i]: 
+			#if float(self.avg[outputs[i]]) > params['output_thresholds'][i]: 
+			if float(self.totalAvg[outputs[i]]) > params['output_thresholds'][i]:
 				self.phenotype +='1'
 				self.pheno_arr += [1]
 			else:
@@ -213,13 +214,14 @@ class SteadyStates:
 			self.attractors[attractor_ids[i]] = Attractor(self.params, self.G, attr_data)
 
 
-	def normalize_attractors(self):		
+	def normalize_attractors(self):	
+		'''	
 		if self.params['update_rule'] in ['async','Gasync'] or util.istrue(self.params,['PBN','active']) or util.istrue(self.params,['skips_precise_oscils']):
 			for s in self.attractors:
 				A = self.attractors[s] 
 				A.totalAvg = A.avg.copy() 
 				A.avg/=A.size 
-
+		'''
 		for s in self.attractors:
 			self.attractors[s].size /= self.params['num_samples']
 

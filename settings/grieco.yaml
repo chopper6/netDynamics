@@ -1,11 +1,11 @@
 # specifies which nodes are 'outputs' and determine the phenotype
 
 outputs : ['Apoptosis','Proliferation','Growth_Arrest']
-output_thresholds : [.5,.5,.5] 
+output_thresholds : [0.1,0.1,0.1] 
 # will produce output phenotypes in terms of these
 
 inputs : ['EGFR_stimulus', 'FGFR3_stimulus','TGFBR_stimulus', 'DNA_damage']
-init : {'Apoptosis':0,'Proliferation':0,'Growth_Arrest':0}
+init : {} #'Apoptosis':0,'Proliferation':0,'Growth_Arrest':0}
 # each sample begins with these states (x0) 
 
 mutations : {} #'EGFR':1} #'p53':0}
@@ -14,4 +14,4 @@ mutations : {} #'EGFR':1} #'p53':0}
 controllers : {} #'PTEN':1}
 # so far 'controllers' is only used by basin.sequential()
 
-pheno_color_map : {'000':3, '001':2,'010':0,'100':1} #to ensure consistent coloring between images
+pheno_color_map : {'000':3, '001':2,'010':0,'100':1,'101':1,'111':1,'011':2} #to ensure consistent coloring between images

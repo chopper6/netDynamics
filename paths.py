@@ -8,44 +8,123 @@ import cupy as cp
 def causal_paths(param_file):
 	params = param.load(param_file)
 	G = net.Net(params)	
+	Gpar = net.ParityNet(params)
 
 	SS = basin.measure(params, G)
 	dom_pheno = canalization.build_dominant_pheno(G, SS)
-	A_intersect = build_dom_intersection_attractors(params, G, SS, dom_pheno)
-	causal_A_nums = causal_trim(G, A_intersect, dom_pheno)
-	causal_A = convert2names(G, causal_A_nums)
-	for k in causal_A:
-		print(k,':::',causal_A[k],'\n\n')
+	#A_intersect = build_dom_intersection_attractors(params, G, SS, dom_pheno)
+	A_intersect = canalization.build_intersection_attractors(params, Gpar, SS, transients=True, composites=False)
+	#print([(G.nodeNames[i], A_intersect['[0, 1, 0, 0]'][i][0]) for i in range(G.n)]) 
+	#assert(0)
+	# transients ensures that nodes labelled "2" are oscil in all attractors
+	# no composites to reduce memory required 
 
-def convert2names(G, causal_A):
-	for k in causal_A:
-		causal_A[k] = G.certain_nodes_to_names(causal_A[k])
-	return causal_A
+	SMs = SM_in_attr(params, Gpar, A_intersect)  # note that expanded network is needed for SM
 
-def causal_trim(G, A_intersect, dom_pheno):
+	causal_A_On_nums, causal_A_Tr_nums = causal_trim(Gpar, A_intersect, dom_pheno, SMs)
+	causal_On, causal_Tr = convert2names(G, causal_A_On_nums), convert2names(G, causal_A_Tr_nums, transient=True)
+	
+	for k in causal_On:
+		print('\n\n\n############### for k =',k,'#############')
+		causal_inputs = 0 
+		for inpt in params['inputs']:
+			if inpt in causal_On[k] or inpt in causal_Tr[k] or G.not_string + inpt in causal_On[k] or G.not_string + inpt in causal_Tr[k]:
+				causal_inputs+=1
+		causal_inputs /= len(params['inputs'])
+		print("\nFraction of causal inputs=",causal_inputs)
+
+		if 1:
+			print("\n~~~Causal On~~~")
+			print(causal_On[k],'\n\n')
+			print("~~~Causal Tr~~~")
+			print(causal_Tr[k],'\n\n')
+
+def convert2names(G, causal_A, transient=False):
+	# if only looking at transient don't distinguish x from !x (since if x is transient so is !x)
+	named = {k:[] for k in causal_A}
+	if transient:
+		n=G.n 
+	else:
+		n=G.n_neg
+	for k in causal_A:
+		for i in range(n):
+			if causal_A[k][i]:
+				named[k] += [G.nodeNames[i]]
+		#causal_A[k] = G.certain_nodes_to_names(causal_A[k])
+	return named
+
+def causal_trim(Gpar, A_intersect, dom_pheno, SMs):
 	# takes a subgraph of fixed points and a target output
 	# removes nodes whose states do not drive the output
-	causal_A = {k:np.ones(G.n)*2 for k in A_intersect} # i.e. start all in nodes 'uncertain' state 2 
+
+	causal_A_On = {k:np.zeros(Gpar.n_neg, dtype=bool) for k in A_intersect}  # why are these np and not dict anyway? slightly more mem effic
+	causal_A_Tr = {k:np.zeros(Gpar.n_neg, dtype=bool) for k in A_intersect} 
 	for k in A_intersect.keys():
 		assert(k in dom_pheno.keys())
-		children = G.output_indices()
-		causal_A[k][children] = A_intersect[k][children]
-		checked = []
+		outputs = Gpar.output_indices()
+		children, checked, checked_transient = [],[], []
+		# children is a tuple of (node_number, transient_counts)
+		# transient counts if the output node is transient, or if there is a downstream stable motif that is causally related to the output
+
+		for o in outputs:
+			for suffix in [0,Gpar.n]:
+				onum=o+suffix
+				if A_intersect[k][onum] == 1:
+					if SMs[k][onum]:
+						children += [(onum,True)]
+					else:
+						children += [(onum,False)]
+					causal_A_On[k][onum] = 1
+					checked += [onum]
+				elif A_intersect[k][onum] == 2: #i.e. transient
+					# ARBITRARILY ONLY ADD THE TRUE SIDE
+					if suffix==0:
+						children += [(onum,True)]
+						causal_A_Tr[k][onum] = A_intersect[k][onum]
+						checked_transient += [onum]
+				else:
+					assert(A_intersect[k][onum]==0) # if is 3, then not the dominant pheno!
+
 		while len(children) > 0:
 			new_children = []
-			checked += children
-			for c in children:
-				name = G.nodeNames[c]
-				for clause in G.F[name]:
+			for tup in children:
+				c, transient = tup[0],tup[1]
+				name = Gpar.nodeNames[c]
+				for clause in Gpar.F[name]:
 					# need indices + nec values instead
-					ind, vals = clause_ind_and_vals(G,clause)
-					if np.all(A_intersect[k][ind] == vals):
-						causal_A[k][ind] = A_intersect[k][ind]
+					#ind, vals = clause_ind_and_vals(G,clause)
+					ind = np.array([Gpar.nodeNums[x] for x in clause])
+					#print('here',clause, 'AU',A_intersect[k][ind])
+					#if k == '[1, 0, 0, 0]' and name=='Proliferation':
+					#	print("prolifs parents:",A_intersect[k][ind])
+					if transient:
+						causal = np.all((A_intersect[k][ind] == 1) | (A_intersect[k][ind] == 2))
+					else:
+						causal = np.all(A_intersect[k][ind] == 1)
+					if causal:
+						parent_names = [Gpar.nodeNames[i] for i in ind]
+						#if k == '[1, 0, 0, 0]': # and name=='GRB2':
+						#	if 'FRS2' in parent_names or '!FRS2' in parent_names:
+						#		print("parents",parent_names,'of child', name)
+							
+						#causal_A[k][ind] = A_intersect[k][ind]
 						for num in ind:
-							if num not in checked:
-								new_children += [num]
+							if A_intersect[k][num] == 1:
+								if num not in checked:
+									causal_A_On[k][num] = A_intersect[k][num]
+									checked += [num]
+									child_transient = transient | SMs[k][num]
+									new_children += [(num,child_transient)]
+							else:
+								assert(A_intersect[k][num] == 2)
+								if num not in checked_transient and (num + Gpar.n)%Gpar.n_neg not in checked_transient:
+									causal_A_Tr[k][num] = A_intersect[k][num]
+									checked_transient += [num]
+									child_transient = transient | SMs[k][num]
+									new_children += [(num,child_transient)]
+							
 			children = new_children
-	return causal_A
+	return causal_A_On, causal_A_Tr
 
 def clause_ind_and_vals(G,clause):
 	ind, vals = [],[]
@@ -88,7 +167,7 @@ def build_dom_intersection_attractors(params, G, SS, dom_pheno):
 
 def build_A0(G,A0_avg):
 	# this is same as in ldoi, except for regular net
-	assert(not isinstance(G,net.ParityNet))
+	#assert(not isinstance(G,net.ParityNet))
 	A0 = np.ones(A0_avg.shape,dtype=np.int8)*2 # only need 0,1,2, but int8 is smallest avail
 	A0[np.isclose(A0_avg,0)] = 0 
 	A0[np.isclose(A0_avg,1)] = 1
@@ -144,6 +223,39 @@ def robust_senstive_structs():
 
 	for k in R_out.keys():
 		print("\noutput set",k,':\n',R_out[k])
+
+
+def SM_in_attr(params, Gpar, A_intersect):
+	SM = {input_state:np.zeros(Gpar.n_neg, dtype=bool) for input_state in A_intersect.keys()}
+	for input_state in A_intersect.keys(): 
+		for name in Gpar.nodeNames:
+			num = Gpar.nodeNums[name]
+			if A_intersect[input_state][num]==1:
+				SM[input_state][num] = logical_BFS_for_SM(Gpar, name, A_intersect[input_state])
+
+	return SM
+
+def logical_BFS_for_SM(Gpar, origin, A_intersect):
+	# note that here A_intersect is just for one input state
+	visited = {node:False for node in Gpar.nodeNames}
+	tocheck = [origin]
+	while len(tocheck) > 0:
+		v=tocheck[0]
+		for clause in Gpar.F[v]:
+			clauseon=True
+			for parent in clause:
+				parent_num = Gpar.nodeNums[parent]
+				if A_intersect[parent_num] != 1:
+					clauseon=False
+			if clauseon:
+				for parent in clause:
+					if not visited[parent]:
+						visited[parent]=True
+						tocheck+=[parent]
+					if parent == origin:
+						return True
+		tocheck.remove(v)
+	return False
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ FRS2,	(FGFR3 & !GRB2 & !SPRY)
 GAB1,	(PI3K) | (GRB2)
 GADD45,	(p53) | (SMAD)
 GRB2,	(TGFBR) | (FRS2) | (EGFR)
-Growth_Arrest,	p21
+Growth_Arrest,	(p21 & !Apoptosis)
 JNK,	(!DUSP1 & TAOK) | (!DUSP1 & TAK1) | (!DUSP1 & MTK1) | (!DUSP1 & MAP3K1_3) | (TAK1 & TAOK) | (MTK1 & TAOK) | (MTK1 & TAK1) | (MAP3K1_3 & TAOK) | (MAP3K1_3 & TAK1) | (MAP3K1_3 & MTK1)
 JUN,	JNK
 MAP3K1_3,	RAS
@@ -40,7 +40,7 @@ PI3K,	(RAS & SOS) | (GAB1)
 PKC,	PLCG
 PLCG,	(FGFR3) | (EGFR)
 PPP2CA,	p38
-Proliferation,	(MYC & !p21 & p70) 
+Proliferation,	(MYC & !p21 & p70) | (Proliferation & !Apoptosis & !Growth_Arrest) 
 PTEN,	p53
 RAF,	(!AKT & !ERK & RAS) | (!AKT & !ERK & PKC)
 RAS,	(SOS) | (PLCG)

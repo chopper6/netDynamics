@@ -6,16 +6,16 @@ debug : true # adds various checks, may cause slow down
 verbose : 0 # prints out more info 
 print_lap : 10 # how many laps before another print statement. only if verbose 
 
-parallelism : 10^4 #number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
-num_samples : 10^4  #number of initial states tested.
-steps_per_lap : 10^2 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
+parallelism : 10^3 #number of networks to run in parallel (on my desktop 10^5 is the limit with fumia network)
+num_samples : 10^3 #number of initial states tested.
+steps_per_lap : 10^3 # number of times to update net in a lap, unless 'lap_stop_rule' is triggered
 # note that 'steps_per_lap' is also the assumed transient period for async & Gasync update methods
-update_rule : 'sync' # node update scheme: 'sync', 'async', or 'Gasync' 
+update_rule : 'Gasync' # node update scheme: 'sync', 'async', or 'Gasync' 
 # WARNING: async is not efficiently implemented, recommended only to compare with Gasync
 # Gasync = "generalized async" where a subset of nodes are sync updated each step 
 
 steady_basin: 0 
-var_window: 10
+var_window: 50
 
 PBN : # probabilistic boolean network # seems to req async atm
   active : 0
@@ -27,7 +27,7 @@ PBN : # probabilistic boolean network # seems to req async atm
 
 # implementation details
 steps_per_lap_gain : 2 # how steps per lap increases as oscillations are not found, set to 1 to turn off
-fraction_per_lap : 1 # fraction of networks needed to satisfy stop condition to exit a lap
+fraction_per_lap : 1 # fraction of networks needed to satisfy stpo condition to exit a lap
 clause_bin_size : 4 # number of clauses each threads merges at once
 
 # input
@@ -40,6 +40,6 @@ use_inputs_in_pheno: 1
 fig_legend : 0
 use_phenos: 1
 
-output_dir : 'output/basinRatio/'
-output_img : 'grieco_test.png'
+output_dir : 'output/noisy07/'
+output_img : 'grieco.png'
 savefig : 0 # as opposed to showing the image

@@ -116,42 +116,61 @@ def contextual_canalization_control(param_file, num_candidates=4, use_mutated_ne
 		return top_nodes, top_scores
 
 
-def build_dominant_pheno(G, SS):
-	# returns dict {ikey:dominant_okey}
+def state_avg_to_trinary(x):
+	thresh=.1
+	if x<thresh:
+		return 0 
+	elif x>1-thresh:
+		return 1
+	else:
+		return 2
+
+def trinary_io_keys(G,X):
 	input_ind = G.input_indices()
 	output_ind = G.output_indices()
+	ikey = str([state_avg_to_trinary(x) for x in X[input_ind]])
+	okey = str([state_avg_to_trinary(x) for x in X[output_ind]])
+	Z = [state_avg_to_trinary(x) for x in X[input_ind]]
+	for indx in input_ind:
+		assert(Z[indx]!=2) # inputs should not fluctuate
+	return ikey, okey
+
+def build_dominant_pheno(G, SS):
+	# returns dict {ikey:dominant_okey}
 	count = {}
-	okeys = {}
 	for A in SS.attractors.values():
-		ikey = str([int(x) for x in A.avg[input_ind]])
-		okey = [int(x) for x in A.avg[output_ind]]
-		okeys[str(okey)] = np.array(okey)
+		ikey, okey = trinary_io_keys(G,A.avg)
 		if ikey not in count:
 			count[ikey] = {}
-		if str(okey) not in count[ikey]:
-			count[ikey][str(okey)] = A.size
+		if okey not in count[ikey]:
+			count[ikey][okey] = A.size
 		else:
-			count[ikey][str(okey)] += A.size
+			count[ikey][okey] += A.size
 	dominant = {}
 	for ikey in count:
 		max_val = 0
 		for okey in count[ikey]:
-			if count[ikey][str(okey)] > max_val:
-				max_val = count[ikey][str(okey)]
-				dominant[ikey] = okeys[str(okey)]
+			if count[ikey][okey] > max_val:
+				max_val = count[ikey][okey]
+				dominant[ikey] = okey
 
 	return dominant 
 
-def build_intersection_attractors(params, G, SS):
+def build_intersection_attractors(params, G, SS, transients= False, composites=True, dominant_pheno=True):
 	assert(isinstance(G,net.ParityNet)) # can change this, but careful 
-	inpt_ind = G.input_indices()
+
+	if dominant_pheno:
+		dom = build_dominant_pheno(G, SS)
+
+	inpt_ind, output_ind = G.input_indices(), G.output_indices()
 	input_orgnzd = {} #{str(k):[] for k in G.get_input_sets(params)}
 	for A in SS.attractors.values():
-		input_key = str([int(x) for x in A.avg[inpt_ind]])
-		if input_key not in input_orgnzd.keys():
-			input_orgnzd[input_key] = []
-		A_certain = ldoi.build_A0(G,A.avg)
-		input_orgnzd[input_key] += [A_certain]
+		input_key, okey = trinary_io_keys(G,A.avg)
+		if not dominant_pheno or dom[input_key]==okey:
+			if input_key not in input_orgnzd.keys():
+				input_orgnzd[input_key] = []
+			A_certain = ldoi.build_A0(G,A.avg, composites=composites)
+			input_orgnzd[input_key] += [A_certain]
 
 	A_intersect = {}
 	for k in input_orgnzd:
@@ -160,10 +179,34 @@ def build_intersection_attractors(params, G, SS):
 		else:
 			stacked = np.array([input_orgnzd[k][i] for i in range(len(input_orgnzd[k]))])
 		# for each node (col), if all attrs (rows) are not the same, then all equal 2
-		isSame = np.array([np.all(np.equal(stacked[:,i],stacked[0,i])) for i in range(len(stacked[0]))]) # should be a better numpy way...
-		A_intersect[k] = input_orgnzd[k][0]
-		A_intersect[k][isSame==False] = 2 
-	
+
+		#isSame = np.array([np.all(np.equal(stacked[:,i],stacked[0,i])) for i in range(len(stacked[0]))]) # should be a better numpy way...
+		#A_intersect[k] = input_orgnzd[k][0]
+		if transients:
+			# lazy route, if decide to keep this approach plz rewrite
+			arr = np.ones(len(stacked[0]),dtype=np.int8)*3
+			for i in range(len(stacked[0])):
+				is0 = (0 in stacked[:,i])
+				is1 = (1 in stacked[:,i])
+				is2 = (2 in stacked[:,i])
+
+				#arr = np.ones(len(input_orgnzd[k][0]),dtype=np.int8)*3
+				#for i in range(len(input_orgnzd[k][0])):
+				#	is0 = (0 in [input_orgnzd[k][a][i] for a in range(len(input_orgnzd[k]))]) # lazy af seesh
+				#	is1 = (1 in [input_orgnzd[k][a][i] for a in range(len(input_orgnzd[k]))])
+				#	is2 = (2 in [input_orgnzd[k][a][i] for a in range(len(input_orgnzd[k]))])
+				if is0 and not is1 and not is2:
+					arr[i]=0
+				elif not is0 and is1 and not is2:
+					arr[i]=1
+				elif (is2 and not is1 and not is0): # or (is1 and not is0) or (is0 and not is1) 
+					arr[i]=2
+				# else there are conflicting states so keep as 0
+			A_intersect[k] = arr
+		else:
+			assert(0) # may be some repairs to do
+			A_intersect[k][isSame==False] = 2
+
 	return A_intersect
 
 def apply_inits_to_intersect(params,G,A_intersect):

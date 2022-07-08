@@ -12,8 +12,13 @@ CUPY, cp = util.import_cp_or_np(try_cupy=1) #should import numpy as cp if cupy n
 #   add explicit debug function for net construction
 #       check that certain objs same, certain diff
 #       ex G.F and node.F()
+#   Gpar should have all parity nodes in G.nodes too..but worried will break other things
+#       like with Gpar.n vs .n_neg problem is on the one had want to be able to Gpar in place of G without changing anything
+#           on the other hand want Gpar to be a proper network where !x is a sep node altogether...
 
 # TODO LATER:
+#   node.F should be composed of other node object, rather than names jp
+#   util: custom print that auto states the file/fn calling it
 #   add time-reverse net (and inheritance with it)
 #   Net._build_net() and build_Fmap() are still messy af
 #   check for repeated clauses in build_Fmapd_and_A()
@@ -23,7 +28,7 @@ class Net:
     def __init__(self, params, model_file=None, G=None):
         # will construct from graph G if passed
         # otherwise will construct from the default model_file in params (unless otherwise specified)
-        
+
         if model_file is None:
             model_file=params['model_file']
 
@@ -51,6 +56,7 @@ class Net:
         self.debug = params['debug']
 
         if util.istrue(params,['PBN','active']):
+            assert(not isinstance(self,ParityNet)) # haven't implemented PBN with ParityNet yet
             self.add_node('OFF')
             self.F['OFF'] = [['OFF']]
             self.PBN=True

@@ -238,20 +238,26 @@ def debug_A0(x, n, n_compl):
 	assert(indx1==indx0_compl)
 
 
-def build_A0(G,A0_avg):
+def build_A0(G,A0_avg, composites=True):
 	assert(isinstance(G,net.ParityNet))
 	A0 = cp.ones(A0_avg.shape,dtype=cp.int8)*2 # only need 0,1,2, but int8 is smallest avail
-	A0[cp.isclose(A0_avg,0)] = 0 
-	A0[cp.isclose(A0_avg,1)] = 1
+
+	thresh = .1
+	A0[A0_avg < thresh] = 0
+	A0[A0_avg > 1-thresh] = 1
+	#A0[cp.isclose(A0_avg,0)] = 0 
+	#A0[cp.isclose(A0_avg,1)] = 1
 
 	A0not = cp.ones(A0_avg.shape,dtype=cp.int8)*2 
 	A0not[A0==1]=0 
 	A0not[A0==0]=1
 
-	A0exp = cp.zeros(G.n_exp-2*G.n)
-	assert(G.n_exp-2*G.n>=0)
-
-	A0 = cp.hstack([A0,A0not,A0exp])
+	if composites:
+		A0exp = cp.zeros(G.n_exp-2*G.n)
+		assert(G.n_exp-2*G.n>=0)
+		A0 = cp.hstack([A0,A0not,A0exp])
+	else:
+		A0 = cp.hstack([A0,A0not])
 	return A0 
 
 

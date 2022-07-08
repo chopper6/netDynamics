@@ -306,7 +306,7 @@ def categorize_attractor(params,x0, G):
 		windowed_var_input_split_sep = cp.array(0)
 
 	if util.istrue(params,['PBN','active']) and 'inputs' in params.keys() and len(params['inputs'])>0:
-		var_threads = cp.mean(cp.var(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
+		var_threads = (cp.var(avg_states*not_input_mask,axis=0)) # ignores difference in inputs
 	else:
 		var_threads = cp.mean(cp.var(avg_states,axis=0)) 
 
@@ -317,8 +317,7 @@ def categorize_attractor(params,x0, G):
 	if cp.any(slow_var < -.0001):
 		print("\nWARNING slow var < 0! exact value =",slow_var,'\n')
 		
-
-	pop_stats = {'total_avg':avg_total,'slow_var':slow_var,'windowed_var':windowed_var,'total_var':var_total,'avg_std_in_time':avg_std_in_time,'avg_std_in_time_outputs':avg_std_in_time_outputs,'var_threads':var_threads, 'windowed_var_input_split':windowed_var_input_split_avgd}
+	pop_stats = {'total_avg':avg_total,'slow_var':slow_var,'windowed_var':windowed_var,'total_var':var_total,'avg_std_in_time':avg_std_in_time,'avg_std_in_time_outputs':avg_std_in_time_outputs,'var_threads':var_threads, 'windowed_var_input_split':windowed_var_input_split_avgd,'windowed_var_input_split_sep':windowed_var_input_split_sep}
 	
 	# pop stats seperated by input states (can avg those later if want)
 	# TODO: sep fn

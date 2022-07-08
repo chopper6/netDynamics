@@ -1,6 +1,4 @@
 i,	i
-a,	i
-b,	!i
-c,	a & b
-d,	b | a
-e,	a
+a,	a
+b,	!b
+o,	o

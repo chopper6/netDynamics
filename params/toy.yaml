@@ -17,14 +17,14 @@ update_rule : 'sync'      # node update scheme: 'sync', 'async', or 'Gasync'
 
 use_inputs_in_pheno: 1    # if True, a phenotype is the input and output nodes
 
-loopy_reps: 1             # ignore
+loopy_reps: 0             # ignore
 skips_precise_oscils: 0   # ignore
 steady_basin: 0            # use steady basin (aka dynamic input dependent phenotypes)
-var_window: 50             # ignore
+var_window: 2             # ignore
 
 PBN :                       # probabilistic boolean network
-  active : False            # PBN is only used if active=True
-  float : False             # each instance tracks the average of an ensemble
+  active : 1           # PBN is only used if active=True
+  float : 0             # each instance tracks the average of an ensemble
   float_update : False      # update Gasync using float, in progress
   flip_pr : 0.01            # probability of a node flip
 
@@ -40,5 +40,5 @@ setting_file: 'settings/toy.yaml'       # the setting file, which specifies inpu
 
 # output
 output_dir : 'output/'                # output directory
-output_img : 'test.png'               # name of image, if savefig = True
+output_img : 'toy.png'               # name of image, if savefig = True
 savefig : False                       # saves the image if True, otherwise produces a pop-up
